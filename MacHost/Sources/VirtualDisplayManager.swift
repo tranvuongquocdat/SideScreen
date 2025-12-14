@@ -177,6 +177,71 @@ class VirtualDisplayManager {
         print("✅ Extend mode enabled (mirror disabled)")
     }
 
+    /// Get current display position (origin)
+    func getDisplayPosition() -> CGPoint? {
+        guard let displayID = displayID else { return nil }
+        let bounds = CGDisplayBounds(displayID)
+        return bounds.origin
+    }
+
+    /// Set display position in arrangement
+    func setDisplayPosition(x: Int32, y: Int32) throws {
+        guard let display = virtualDisplay else {
+            throw VirtualDisplayError.displayNotCreated
+        }
+
+        var config: CGDisplayConfigRef?
+        let beginResult = CGBeginDisplayConfiguration(&config)
+
+        guard beginResult == CGError.success, let config = config else {
+            throw VirtualDisplayError.configurationFailed("Failed to begin display configuration")
+        }
+
+        let originResult = CGConfigureDisplayOrigin(config, display.displayID, x, y)
+
+        if originResult != CGError.success {
+            CGCancelDisplayConfiguration(config)
+            throw VirtualDisplayError.configurationFailed("Failed to set display origin: \(originResult)")
+        }
+
+        let completeResult = CGCompleteDisplayConfiguration(config, .permanently)
+
+        if completeResult != CGError.success {
+            throw VirtualDisplayError.configurationFailed("Failed to complete configuration: \(completeResult)")
+        }
+
+        print("📍 Display position set to (\(x), \(y))")
+    }
+
+    /// Save current display position to UserDefaults
+    func saveDisplayPosition() {
+        guard let position = getDisplayPosition() else { return }
+        let defaults = UserDefaults.standard
+        defaults.set(Int(position.x), forKey: "VirtualDisplay_positionX")
+        defaults.set(Int(position.y), forKey: "VirtualDisplay_positionY")
+        defaults.set(true, forKey: "VirtualDisplay_hasPosition")
+        print("💾 Saved display position: (\(Int(position.x)), \(Int(position.y)))")
+    }
+
+    /// Restore saved display position
+    func restoreDisplayPosition() {
+        let defaults = UserDefaults.standard
+        guard defaults.bool(forKey: "VirtualDisplay_hasPosition") else {
+            print("📍 No saved display position found")
+            return
+        }
+
+        let x = defaults.integer(forKey: "VirtualDisplay_positionX")
+        let y = defaults.integer(forKey: "VirtualDisplay_positionY")
+
+        do {
+            try setDisplayPosition(x: Int32(x), y: Int32(y))
+            print("📍 Restored display position: (\(x), \(y))")
+        } catch {
+            print("⚠️  Failed to restore display position: \(error)")
+        }
+    }
+
     /// Destroy the virtual display
     func destroyDisplay() {
         if virtualDisplay != nil {

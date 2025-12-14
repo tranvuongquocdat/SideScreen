@@ -206,6 +206,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             print("⏳ Waiting for display to initialize...")
             try await Task.sleep(nanoseconds: 500_000_000)
 
+            // Restore saved display position (if any)
+            virtualDisplayManager?.restoreDisplayPosition()
+
             // Setup capture
             print("🔨 Setting up screen capture...")
             guard let displayID = virtualDisplayManager?.displayID else {
@@ -271,6 +274,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func stopServer() {
+        // Save display position before destroying
+        virtualDisplayManager?.saveDisplayPosition()
+
         screenCapture?.stopStreaming()
         streamingServer?.stop()
         virtualDisplayManager?.destroyDisplay()

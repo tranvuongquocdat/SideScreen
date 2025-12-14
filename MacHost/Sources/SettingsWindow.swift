@@ -510,12 +510,44 @@ struct RotationButton: View {
 
 @available(macOS 14.0, *)
 class DisplaySettings: ObservableObject {
-    @Published var resolution = "1920x1200"
-    @Published var refreshRate = 60
-    @Published var hiDPI = false
-    @Published var bitrate = 500
-    @Published var quality = "medium"
-    @Published var gamingBoost = false
+    private let defaults = UserDefaults.standard
+    private let keyPrefix = "VirtualDisplay_"
+
+    @Published var resolution: String {
+        didSet { save("resolution", resolution) }
+    }
+    @Published var refreshRate: Int {
+        didSet { save("refreshRate", refreshRate) }
+    }
+    @Published var hiDPI: Bool {
+        didSet { save("hiDPI", hiDPI) }
+    }
+    @Published var bitrate: Int {
+        didSet { save("bitrate", bitrate) }
+    }
+    @Published var quality: String {
+        didSet { save("quality", quality) }
+    }
+    @Published var gamingBoost: Bool {
+        didSet { save("gamingBoost", gamingBoost) }
+    }
+    @Published var port: UInt16 {
+        didSet { save("port", Int(port)) }
+    }
+    @Published var rotation: Int {
+        didSet { save("rotation", rotation) }
+    }
+    @Published var showAllResolutions: Bool {
+        didSet { save("showAllResolutions", showAllResolutions) }
+    }
+    @Published var customWidth: Int {
+        didSet { save("customWidth", customWidth) }
+    }
+    @Published var customHeight: Int {
+        didSet { save("customHeight", customHeight) }
+    }
+
+    // Runtime state (not persisted)
     @Published var displayCreated = false
     @Published var clientConnected = false
     @Published var hasScreenRecordingPermission = false
@@ -523,13 +555,29 @@ class DisplaySettings: ObservableObject {
     @Published var isRunning = false
     @Published var currentFPS: Double = 0
     @Published var currentBitrate: Double = 0
-    @Published var port: UInt16 = 8888
-    @Published var rotation = 0  // 0, 90, 180, 270 degrees
-    @Published var showAllResolutions = false
-    @Published var customWidth = 1920
-    @Published var customHeight = 1200
 
     var onToggleServer: (() -> Void)?
+
+    init() {
+        // Load saved settings or use defaults
+        self.resolution = defaults.string(forKey: keyPrefix + "resolution") ?? "1920x1200"
+        self.refreshRate = defaults.object(forKey: keyPrefix + "refreshRate") as? Int ?? 60
+        self.hiDPI = defaults.bool(forKey: keyPrefix + "hiDPI")
+        self.bitrate = defaults.object(forKey: keyPrefix + "bitrate") as? Int ?? 500
+        self.quality = defaults.string(forKey: keyPrefix + "quality") ?? "medium"
+        self.gamingBoost = defaults.bool(forKey: keyPrefix + "gamingBoost")
+        self.port = UInt16(defaults.object(forKey: keyPrefix + "port") as? Int ?? 8888)
+        self.rotation = defaults.object(forKey: keyPrefix + "rotation") as? Int ?? 0
+        self.showAllResolutions = defaults.bool(forKey: keyPrefix + "showAllResolutions")
+        self.customWidth = defaults.object(forKey: keyPrefix + "customWidth") as? Int ?? 1920
+        self.customHeight = defaults.object(forKey: keyPrefix + "customHeight") as? Int ?? 1200
+
+        print("📂 Loaded settings: \(resolution) @ \(refreshRate)Hz, bitrate=\(bitrate), quality=\(quality)")
+    }
+
+    private func save(_ key: String, _ value: Any) {
+        defaults.set(value, forKey: keyPrefix + key)
+    }
 
     // Common resolutions (default view)
     static let commonResolutions = [
@@ -571,6 +619,15 @@ class DisplaySettings: ObservableObject {
     }
 
     func resetToDefaults() {
+        // Clear all saved settings
+        let keys = ["resolution", "refreshRate", "hiDPI", "bitrate", "quality",
+                    "gamingBoost", "port", "rotation", "showAllResolutions",
+                    "customWidth", "customHeight"]
+        for key in keys {
+            defaults.removeObject(forKey: keyPrefix + key)
+        }
+
+        // Reset to defaults
         resolution = "1920x1200"
         refreshRate = 60
         hiDPI = false
@@ -582,6 +639,8 @@ class DisplaySettings: ObservableObject {
         showAllResolutions = false
         customWidth = 1920
         customHeight = 1200
+
+        print("🔄 Settings reset to defaults")
     }
 
     var resolutionSize: (width: Int, height: Int) {
