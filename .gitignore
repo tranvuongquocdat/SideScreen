@@ -1,0 +1,23 @@
+# macOS
+.DS_Store
+MacHost/.build/
+MacHost/.swiftpm/
+*.xcodeproj
+*.xcworkspace
+
+# Android
+AndroidClient/.gradle/
+AndroidClient/.idea/
+AndroidClient/build/
+AndroidClient/app/build/
+AndroidClient/local.properties
+*.apk
+*.aab
+*.iml
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log

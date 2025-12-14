@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:background="@drawable/bottom_sheet_background">
+
+    <!-- Header -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Display Settings"
+        android:textColor="#FFFFFF"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="24dp" />
+
+    <!-- Show Stats Toggle -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="20dp">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Show Stats Overlay"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Display FPS, bitrate, and resolution"
+                android:textColor="#AAAAAA"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/showStatsSwitch"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            app:thumbTint="#FFFFFF"
+            app:trackTint="#4CAF50" />
+    </LinearLayout>
+
+    <!-- Opacity Slider -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Overlay Opacity"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="24dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="20%"
+            android:textColor="#AAAAAA"
+            android:textSize="12sp"
+            android:layout_marginEnd="12dp" />
+
+        <com.google.android.material.slider.Slider
+            android:id="@+id/opacitySlider"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:valueFrom="0.2"
+            android:valueTo="1.0"
+            android:value="0.8"
+            android:stepSize="0.1"
+            app:thumbColor="#FFFFFF"
+            app:trackColorActive="#4CAF50"
+            app:trackColorInactive="#33FFFFFF" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="100%"
+            android:textColor="#AAAAAA"
+            android:textSize="12sp"
+            android:layout_marginStart="12dp" />
+    </LinearLayout>
+
+    <!-- Reset Position Button -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/resetPositionButton"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:text="Reset Overlay Position"
+        android:textColor="#FFFFFF"
+        app:strokeColor="#FFFFFF"
+        app:strokeWidth="1dp"
+        app:cornerRadius="12dp"
+        android:layout_marginBottom="16dp" />
+
+    <!-- Close Button -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/closeButton"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:text="DONE"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        app:cornerRadius="14dp"
+        app:backgroundTint="#4CAF50" />
+
+</LinearLayout>
