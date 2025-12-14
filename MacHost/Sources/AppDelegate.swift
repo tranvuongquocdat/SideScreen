@@ -245,34 +245,47 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         print("⏹️ Server stopped")
     }
 
+    private var lastMousePosition: CGPoint = .zero
+    private let eventSource = CGEventSource(stateID: .hidSystemState)
+
     func handleTouch(x: Float, y: Float, action: Int) {
         guard let displayID = virtualDisplayManager?.displayID else { return }
 
-        guard let bounds = CGDisplayBounds(displayID) as CGRect? else { return }
+        let bounds = CGDisplayBounds(displayID)
 
+        // Calculate absolute position on the virtual display
         let absoluteX = bounds.origin.x + (CGFloat(x) * bounds.width)
         let absoluteY = bounds.origin.y + (CGFloat(y) * bounds.height)
-
         let point = CGPoint(x: absoluteX, y: absoluteY)
 
-        let eventType: CGEventType
         switch action {
-        case 0:
-            eventType = .leftMouseDown
-        case 1:
-            eventType = .leftMouseDragged
-        case 2:
-            eventType = .leftMouseUp
+        case 0: // Touch down - move cursor and click down
+            // First move cursor to position using CGEvent (generates events unlike CGWarpMouseCursorPosition)
+            if let moveEvent = CGEvent(mouseEventSource: eventSource, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left) {
+                moveEvent.post(tap: .cghidEventTap)
+            }
+
+            // Then mouse down
+            if let downEvent = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left) {
+                downEvent.setIntegerValueField(.mouseEventClickState, value: 1)
+                downEvent.post(tap: .cghidEventTap)
+            }
+            lastMousePosition = point
+
+        case 1: // Touch move - drag
+            if let dragEvent = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDragged, mouseCursorPosition: point, mouseButton: .left) {
+                dragEvent.post(tap: .cghidEventTap)
+            }
+            lastMousePosition = point
+
+        case 2: // Touch up - release click
+            if let upEvent = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) {
+                upEvent.setIntegerValueField(.mouseEventClickState, value: 1)
+                upEvent.post(tap: .cghidEventTap)
+            }
+
         default:
             return
-        }
-
-        if let event = CGEvent(mouseEventSource: nil, mouseType: eventType, mouseCursorPosition: point, mouseButton: .left) {
-            if action == 0 {
-                let localPoint = CGPoint(x: CGFloat(x) * bounds.width, y: CGFloat(y) * bounds.height)
-                CGDisplayMoveCursorToPoint(displayID, localPoint)
-            }
-            event.post(tap: .cghidEventTap)
         }
     }
 

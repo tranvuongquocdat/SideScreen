@@ -101,18 +101,25 @@ class StreamClient(
         }
     }
 
+    // Pre-allocated buffer for touch events (13 bytes: 1 type + 4 x + 4 y + 4 action)
+    private val touchBuffer = ByteBuffer.allocate(13).order(ByteOrder.LITTLE_ENDIAN)
+
     fun sendTouch(x: Float, y: Float, action: Int) {
         if (!isConnected) return
 
         // Send touch on high-priority thread to minimize latency
         touchScope.launch {
             try {
-                outputStream?.apply {
-                    writeByte(2) // Touch event type
-                    writeFloat(x)
-                    writeFloat(y)
-                    writeInt(action)
-                    flush()
+                socket?.getOutputStream()?.let { out ->
+                    synchronized(touchBuffer) {
+                        touchBuffer.clear()
+                        touchBuffer.put(2.toByte()) // Touch event type
+                        touchBuffer.putFloat(x)
+                        touchBuffer.putFloat(y)
+                        touchBuffer.putInt(action)
+                        out.write(touchBuffer.array())
+                        out.flush()
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Failed to send touch", e)

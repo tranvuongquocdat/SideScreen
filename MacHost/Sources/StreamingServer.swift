@@ -105,8 +105,9 @@ class StreamingServer {
                         return
                     }
 
-                    let x = touchData.withUnsafeBytes { $0.load(fromByteOffset: 0, as: Float32.self) }
-                    let y = touchData.withUnsafeBytes { $0.load(fromByteOffset: 4, as: Float32.self) }
+                    // Android sends Little Endian (native byte order) - read directly
+                    let x = touchData.withUnsafeBytes { $0.load(fromByteOffset: 0, as: Float.self) }
+                    let y = touchData.withUnsafeBytes { $0.load(fromByteOffset: 4, as: Float.self) }
                     let action = touchData.withUnsafeBytes { $0.load(fromByteOffset: 8, as: Int32.self) }
 
                     self.onTouchEvent?(x, y, Int(action))
