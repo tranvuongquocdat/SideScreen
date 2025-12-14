@@ -329,6 +329,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var touchState: TouchState?
     private var lastScrollTime: Date = .distantPast
 
+    // Momentum scrolling
+    private var momentumTimer: Timer?
+    private var momentumVelocityX: CGFloat = 0
+    private var momentumVelocityY: CGFloat = 0
+    private var lastMomentumPosition: CGPoint = .zero
+    private var lastScrollVelocityX: CGFloat = 0
+    private var lastScrollVelocityY: CGFloat = 0
+
     func handleTouch(x: Float, y: Float, action: Int) {
         // Check Accessibility permission before injecting events
         if !AXIsProcessTrusted() {
@@ -399,6 +407,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Check velocity to determine if scroll or drag
             if velocity > GestureThresholds.scrollMinVelocity {
                 state.gestureType = .scroll
+                stopMomentumScroll()  // Cancel any existing momentum
+                NSCursor.hide()  // Hide cursor during scroll
                 print("📜 Gesture detected: SCROLL (velocity: \(Int(velocity)) px/s)")
             } else {
                 state.gestureType = .drag
@@ -417,6 +427,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Accumulate scroll delta
             state.accumulatedScrollX += deltaX * GestureThresholds.scrollSensitivity
             state.accumulatedScrollY += deltaY * GestureThresholds.scrollSensitivity
+
+            // Track velocity for momentum (use per-frame delta)
+            lastScrollVelocityX = deltaX * GestureThresholds.scrollSensitivity
+            lastScrollVelocityY = deltaY * GestureThresholds.scrollSensitivity
 
             // Throttle scroll events
             let now = Date()
@@ -474,7 +488,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if abs(state.accumulatedScrollX) > 0.5 || abs(state.accumulatedScrollY) > 0.5 {
                 injectScrollEvent(deltaX: state.accumulatedScrollX, deltaY: state.accumulatedScrollY, at: point)
             }
-            print("📜 SCROLL ended")
+
+            // Start momentum scrolling if velocity is significant
+            let momentumThreshold: CGFloat = 3.0
+            if abs(lastScrollVelocityX) > momentumThreshold || abs(lastScrollVelocityY) > momentumThreshold {
+                // Amplify velocity for momentum effect
+                let momentumMultiplier: CGFloat = 8.0
+                startMomentumScroll(
+                    velocityX: lastScrollVelocityX * momentumMultiplier,
+                    velocityY: lastScrollVelocityY * momentumMultiplier,
+                    at: point
+                )
+                print("📜 SCROLL ended - starting momentum (vX: \(Int(lastScrollVelocityX)), vY: \(Int(lastScrollVelocityY)))")
+            } else {
+                NSCursor.unhide()  // No momentum, show cursor immediately
+                print("📜 SCROLL ended")
+            }
+
+            // Reset velocity tracking
+            lastScrollVelocityX = 0
+            lastScrollVelocityY = 0
         }
 
         touchState = nil
@@ -495,10 +528,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func injectScrollEvent(deltaX: CGFloat, deltaY: CGFloat, at position: CGPoint) {
-        // Note: macOS natural scrolling - content moves with finger direction
-        // Negate delta for traditional scrolling behavior (scroll up = content goes up)
-        let scrollY = Int32(-deltaY)
-        let scrollX = Int32(-deltaX)
+        // Natural scrolling - content moves with finger direction (like iOS/trackpad)
+        let scrollY = Int32(deltaY)
+        let scrollX = Int32(deltaX)
 
         guard let scrollEvent = CGEvent(
             scrollWheelEvent2Source: eventSource,
@@ -514,6 +546,47 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         scrollEvent.location = position
         scrollEvent.post(tap: CGEventTapLocation.cghidEventTap)
+    }
+
+    // MARK: - Momentum Scrolling
+
+    private func startMomentumScroll(velocityX: CGFloat, velocityY: CGFloat, at position: CGPoint) {
+        stopMomentumScroll()  // Cancel any existing momentum
+
+        momentumVelocityX = velocityX
+        momentumVelocityY = velocityY
+        lastMomentumPosition = position
+
+        // Schedule timer on main run loop
+        momentumTimer = Timer.scheduledTimer(withTimeInterval: 0.016, repeats: true) { [weak self] _ in
+            self?.momentumTick()
+        }
+    }
+
+    private func momentumTick() {
+        let decelerationRate: CGFloat = 0.92  // Slightly faster decay for snappier feel
+        let minVelocity: CGFloat = 0.5
+
+        // Stop if velocity is negligible
+        if abs(momentumVelocityX) < minVelocity && abs(momentumVelocityY) < minVelocity {
+            stopMomentumScroll()
+            return
+        }
+
+        // Inject scroll event
+        injectScrollEvent(deltaX: momentumVelocityX, deltaY: momentumVelocityY, at: lastMomentumPosition)
+
+        // Decay velocity exponentially
+        momentumVelocityX *= decelerationRate
+        momentumVelocityY *= decelerationRate
+    }
+
+    private func stopMomentumScroll() {
+        momentumTimer?.invalidate()
+        momentumTimer = nil
+        momentumVelocityX = 0
+        momentumVelocityY = 0
+        NSCursor.unhide()  // Show cursor when momentum ends
     }
 
     func applicationWillTerminate(_ notification: Notification) {
