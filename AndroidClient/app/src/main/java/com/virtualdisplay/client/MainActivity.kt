@@ -15,6 +15,8 @@ import android.view.Window
 import android.view.WindowManager
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.constraintlayout.widget.ConstraintSet
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.slider.Slider
@@ -325,8 +327,10 @@ class MainActivity : AppCompatActivity() {
         resetButton.setOnClickListener {
             prefs.overlayX = -1f
             prefs.overlayY = -1f
+            // Use displayMetrics for reliable positioning
+            val dm = resources.displayMetrics
             binding.statusBar.animate()
-                .x(binding.root.width - binding.statusBar.width - 48f)
+                .x(dm.widthPixels - binding.statusBar.width - 48f)
                 .y(48f)
                 .setDuration(300)
                 .start()
@@ -386,46 +390,55 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun restoreSettingsButtonPosition() {
-        binding.settingsButton.post {
-            updateSettingsButtonPosition(prefs.settingsButtonCorner)
-        }
+        updateSettingsButtonPosition(prefs.settingsButtonCorner)
     }
 
+    /**
+     * Use ConstraintSet to position settings button - most reliable method
+     * Works correctly with orientation changes
+     */
     private fun updateSettingsButtonPosition(corner: Int) {
-        val margin = 24f
-        val x: Float
-        val y: Float
+        val constraintLayout = binding.root as ConstraintLayout
+        val constraintSet = ConstraintSet()
+        constraintSet.clone(constraintLayout)
+
+        val buttonId = binding.settingsButton.id
+        val marginDp = (24 * resources.displayMetrics.density).toInt()
+
+        // Clear all constraints first
+        constraintSet.clear(buttonId, ConstraintSet.TOP)
+        constraintSet.clear(buttonId, ConstraintSet.BOTTOM)
+        constraintSet.clear(buttonId, ConstraintSet.START)
+        constraintSet.clear(buttonId, ConstraintSet.END)
 
         when (corner) {
             0 -> { // Bottom Right (default)
-                x = binding.root.width - binding.settingsButton.width.toFloat() - margin
-                y = binding.root.height - binding.settingsButton.height.toFloat() - margin
+                constraintSet.connect(buttonId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, marginDp)
+                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, marginDp)
             }
             1 -> { // Bottom Left
-                x = margin
-                y = binding.root.height - binding.settingsButton.height.toFloat() - margin
+                constraintSet.connect(buttonId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, marginDp)
+                constraintSet.connect(buttonId, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, marginDp)
             }
             2 -> { // Top Right
-                x = binding.root.width - binding.settingsButton.width.toFloat() - margin
-                y = margin
+                constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, marginDp)
+                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, marginDp)
             }
             3 -> { // Top Left
-                x = margin
-                y = margin
+                constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, marginDp)
+                constraintSet.connect(buttonId, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, marginDp)
             }
             else -> { // Default to bottom right
-                x = binding.root.width - binding.settingsButton.width.toFloat() - margin
-                y = binding.root.height - binding.settingsButton.height.toFloat() - margin
+                constraintSet.connect(buttonId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, marginDp)
+                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, marginDp)
             }
         }
 
-        binding.settingsButton.animate()
-            .x(x)
-            .y(y)
-            .setDuration(200)
-            .start()
+        // Reset any absolute positioning that might have been set
+        binding.settingsButton.translationX = 0f
+        binding.settingsButton.translationY = 0f
 
-        log("⚙️ Settings button positioned at corner $corner: x=$x, y=$y")
+        constraintSet.applyTo(constraintLayout)
     }
 
     private fun initializeDecoder(holder: SurfaceHolder) {
@@ -598,6 +611,9 @@ class MainActivity : AppCompatActivity() {
             scaleX = 1f
             scaleY = 1f
         }
+
+        // ConstraintSet handles orientation changes automatically
+        // No need for postDelayed positioning
 
         log("🔄 Orientation: ${when(rotation) {
             90 -> "Portrait"
