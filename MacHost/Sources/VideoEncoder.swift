@@ -5,12 +5,34 @@ import CoreMedia
 class VideoEncoder {
     private var compressionSession: VTCompressionSession?
     var onEncodedFrame: ((Data) -> Void)?
+    private var width: Int
+    private var height: Int
+    private var bitrateMbps: Int = 20
+    private var quality: String = "medium"
+    private var gamingBoost: Bool = false
 
-    init(width: Int, height: Int) {
-        setupCompressionSession(width: width, height: height)
+    init(width: Int, height: Int, bitrateMbps: Int = 20, quality: String = "medium", gamingBoost: Bool = false) {
+        self.width = width
+        self.height = height
+        self.bitrateMbps = gamingBoost ? 50 : bitrateMbps
+        self.quality = gamingBoost ? "low" : quality
+        self.gamingBoost = gamingBoost
+        setupCompressionSession()
     }
 
-    private func setupCompressionSession(width: Int, height: Int) {
+    func updateSettings(bitrateMbps: Int, quality: String, gamingBoost: Bool) {
+        self.bitrateMbps = gamingBoost ? 50 : bitrateMbps
+        self.quality = gamingBoost ? "low" : quality
+        self.gamingBoost = gamingBoost
+
+        // Recreate compression session with new settings
+        if let session = compressionSession {
+            VTCompressionSessionInvalidate(session)
+        }
+        setupCompressionSession()
+    }
+
+    private func setupCompressionSession() {
         var session: VTCompressionSession?
 
         let status = VTCompressionSessionCreate(
@@ -37,9 +59,10 @@ class VideoEncoder {
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_RealTime, value: kCFBooleanTrue)
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ProfileLevel, value: kVTProfileLevel_HEVC_Main_AutoLevel)
 
-        // Increase bitrate for better quality at 60fps
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: 20_000_000 as CFNumber)
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_DataRateLimits, value: [20_000_000, 1] as CFArray)
+        // Dynamic bitrate based on settings
+        let bitrateBps = bitrateMbps * 1_000_000
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: bitrateBps as CFNumber)
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_DataRateLimits, value: [bitrateBps, 1] as CFArray)
 
         // Frame rate settings
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: 60 as CFNumber)
@@ -47,16 +70,31 @@ class VideoEncoder {
 
         // Critical for low latency
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse)
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxFrameDelayCount, value: 1 as CFNumber)
 
-        // Quality vs speed tradeoff - favor speed for low latency
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_Quality, value: 0.7 as CFNumber)
+        // Gaming boost: even more aggressive low-latency settings
+        if gamingBoost {
+            VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxFrameDelayCount, value: 0 as CFNumber) // Zero delay!
+            VTSessionSetProperty(session, key: kVTCompressionPropertyKey_Quality, value: 0.5 as CFNumber) // Lower quality for speed
+        } else {
+            VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxFrameDelayCount, value: 1 as CFNumber)
+
+            // Quality based on preset
+            let qualityValue: Float = switch quality {
+                case "low": 0.5
+                case "medium": 0.7
+                case "high": 0.85
+                default: 0.7
+            }
+            VTSessionSetProperty(session, key: kVTCompressionPropertyKey_Quality, value: qualityValue as CFNumber)
+        }
 
         // Enable multi-threaded encoding
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxH264SliceBytes, value: 1400 as CFNumber)
 
         VTCompressionSessionPrepareToEncodeFrames(session)
-        print("✅ VideoToolbox encoder configured (H.265, 20Mbps, 60fps, low-latency)")
+
+        let mode = gamingBoost ? "🎮 GAMING BOOST" : quality.uppercased()
+        print("✅ VideoToolbox encoder configured (H.265, \(bitrateMbps)Mbps, 60fps, \(mode))")
     }
 
     func encode(sampleBuffer: CMSampleBuffer) {

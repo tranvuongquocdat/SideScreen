@@ -1,6 +1,7 @@
 import Cocoa
 import ScreenCaptureKit
 import SwiftUI
+import Combine
 
 @available(macOS 14.0, *)
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -10,6 +11,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var settings = DisplaySettings()
     var settingsWindow: SettingsWindowController?
     var statusItem: NSStatusItem?
+    private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("✅ App launched")
@@ -20,6 +22,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Setup settings window
         setupSettingsWindow()
 
+        // Setup settings observers
+        setupSettingsObservers()
+
         // Check permissions
         Task {
             await checkPermissions()
@@ -27,6 +32,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Show settings window
         showSettings()
+    }
+
+    func setupSettingsObservers() {
+        // Observer cho gaming boost changes
+        settings.$gamingBoost
+            .dropFirst() // Skip initial value
+            .sink { [weak self] gamingBoost in
+                guard let self = self, self.settings.isRunning else { return }
+                print("🎮 Gaming Boost \(gamingBoost ? "ENABLED" : "DISABLED")")
+                self.screenCapture?.updateEncoderSettings(
+                    bitrateMbps: self.settings.effectiveBitrate,
+                    quality: self.settings.effectiveQuality,
+                    gamingBoost: gamingBoost
+                )
+            }
+            .store(in: &cancellables)
+
+        // Observer cho bitrate/quality changes (chỉ khi không gaming boost)
+        Publishers.CombineLatest(settings.$bitrate, settings.$quality)
+            .dropFirst()
+            .sink { [weak self] bitrate, quality in
+                guard let self = self, self.settings.isRunning, !self.settings.gamingBoost else { return }
+                print("⚙️ Settings updated: \(bitrate)Mbps, \(quality)")
+                self.screenCapture?.updateEncoderSettings(
+                    bitrateMbps: bitrate,
+                    quality: quality,
+                    gamingBoost: false
+                )
+            }
+            .store(in: &cancellables)
     }
 
     func setupMenuBar() {
@@ -168,7 +203,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             print("🔨 Starting server on port \(settings.port)...")
             streamingServer?.start()
             print("🔨 Starting screen capture streaming...")
-            screenCapture?.startStreaming(to: streamingServer)
+            screenCapture?.startStreaming(
+                to: streamingServer,
+                bitrateMbps: settings.effectiveBitrate,
+                quality: settings.effectiveQuality,
+                gamingBoost: settings.gamingBoost
+            )
 
             await MainActor.run {
                 settings.isRunning = true

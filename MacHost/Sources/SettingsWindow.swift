@@ -131,6 +131,58 @@ struct SettingsView: View {
                         .padding(12)
                     }
 
+                    // Gaming Boost Mode
+                    GroupBox {
+                        VStack(alignment: .leading, spacing: 16) {
+                            HStack {
+                                Image(systemName: settings.gamingBoost ? "bolt.fill" : "bolt.slash.fill")
+                                    .foregroundColor(settings.gamingBoost ? .orange : .secondary)
+                                    .font(.system(size: 16))
+
+                                Text("Gaming Boost")
+                                    .font(.system(size: 13, weight: .semibold))
+
+                                Spacer()
+
+                                Toggle("", isOn: $settings.gamingBoost)
+                                    .labelsHidden()
+                            }
+
+                            if settings.gamingBoost {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(.green)
+                                            .font(.system(size: 10))
+                                        Text("High bitrate (50 Mbps)")
+                                            .font(.system(size: 11))
+                                    }
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(.green)
+                                            .font(.system(size: 10))
+                                        Text("Ultra-low latency encoding")
+                                            .font(.system(size: 11))
+                                    }
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(.green)
+                                            .font(.system(size: 10))
+                                        Text("Optimized for FPS games")
+                                            .font(.system(size: 11))
+                                    }
+                                }
+                                .padding(.leading, 20)
+                                .foregroundColor(.secondary)
+                            } else {
+                                Text("Enable for competitive gaming with minimal input lag")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(12)
+                    }
+
                     // Streaming Settings
                     GroupBox {
                         VStack(alignment: .leading, spacing: 16) {
@@ -144,14 +196,21 @@ struct SettingsView: View {
                                         .font(.system(size: 11))
                                         .foregroundColor(.secondary)
                                     Spacer()
-                                    Text("\(settings.bitrate) Mbps")
+                                    Text("\(settings.effectiveBitrate) Mbps")
                                         .font(.system(size: 11, weight: .medium))
                                 }
 
                                 Slider(value: Binding(
                                     get: { Double(settings.bitrate) },
                                     set: { settings.bitrate = Int($0) }
-                                ), in: 5...30, step: 5)
+                                ), in: 5...80, step: 5)
+                                .disabled(settings.gamingBoost)
+
+                                if settings.gamingBoost {
+                                    Text("Bitrate locked at 50 Mbps in Gaming Boost mode")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.orange)
+                                }
                             }
 
                             // Quality
@@ -166,6 +225,13 @@ struct SettingsView: View {
                                     Text("High (Slow)").tag("high")
                                 }
                                 .pickerStyle(.segmented)
+                                .disabled(settings.gamingBoost)
+
+                                if settings.gamingBoost {
+                                    Text("Quality locked to Low in Gaming Boost mode")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.orange)
+                                }
                             }
                         }
                         .padding(12)
@@ -282,6 +348,7 @@ class DisplaySettings: ObservableObject {
     @Published var hiDPI = false
     @Published var bitrate = 20
     @Published var quality = "medium"
+    @Published var gamingBoost = false
     @Published var displayCreated = false
     @Published var clientConnected = false
     @Published var hasScreenRecordingPermission = false
@@ -291,6 +358,16 @@ class DisplaySettings: ObservableObject {
     @Published var port: UInt16 = 8888
 
     var onToggleServer: (() -> Void)?
+
+    // Computed property for effective bitrate
+    var effectiveBitrate: Int {
+        return gamingBoost ? 50 : bitrate
+    }
+
+    // Computed property for effective quality
+    var effectiveQuality: String {
+        return gamingBoost ? "low" : quality
+    }
 
     func toggleServer() {
         onToggleServer?()
@@ -302,6 +379,7 @@ class DisplaySettings: ObservableObject {
         hiDPI = false
         bitrate = 20
         quality = "medium"
+        gamingBoost = false
         port = 8888
     }
 

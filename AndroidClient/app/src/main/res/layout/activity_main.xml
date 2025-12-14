@@ -187,8 +187,8 @@
                     android:id="@+id/hostInput"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:hint="Host Address"
-                    android:text="localhost"
+                    android:hint="Host Address (use 127.0.0.1 for USB)"
+                    android:text="127.0.0.1"
                     android:textColor="#FFFFFF"
                     android:textColorHint="#888888"
                     android:inputType="text" />
@@ -200,7 +200,7 @@
                 style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
                 app:boxStrokeColor="#FFFFFF"
                 app:hintTextColor="#AAAAAA"
-                android:layout_marginBottom="24dp">
+                android:layout_marginBottom="32dp">
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/portInput"
                     android:layout_width="match_parent"
@@ -216,30 +216,13 @@
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/connectButton"
                 android:layout_width="match_parent"
-                android:layout_height="56dp"
+                android:layout_height="64dp"
                 android:text="CONNECT"
-                android:textSize="16sp"
+                android:textSize="18sp"
                 android:textStyle="bold"
                 android:letterSpacing="0.1"
-                app:cornerRadius="16dp"
+                app:cornerRadius="20dp"
                 app:backgroundTint="#4CAF50"
-                android:layout_marginBottom="12dp" />
-
-            <!-- Disconnect Button -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/disconnectButton"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_width="match_parent"
-                android:layout_height="56dp"
-                android:text="DISCONNECT"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:letterSpacing="0.1"
-                android:textColor="#F44336"
-                android:enabled="false"
-                app:strokeColor="#F44336"
-                app:strokeWidth="2dp"
-                app:cornerRadius="16dp"
                 android:layout_marginBottom="24dp" />
 
             <!-- Status Section -->
@@ -247,14 +230,13 @@
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
                 android:background="#33FFFFFF"
-                android:layout_marginBottom="24dp" />
+                android:layout_marginBottom="20dp" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginBottom="16dp">
+                android:gravity="center_vertical">
 
                 <View
                     android:id="@+id/statusIndicator"
@@ -268,39 +250,26 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Disconnected"
+                    android:text="Ready to connect"
                     android:textColor="#FFFFFF"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
+                    android:textSize="15sp" />
             </LinearLayout>
 
-            <!-- Log Section -->
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Activity Log"
-                android:textColor="#AAAAAA"
-                android:textSize="12sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="8dp" />
-
-            <ScrollView
-                android:layout_width="match_parent"
-                android:layout_height="100dp"
-                android:background="#1AFFFFFF"
-                android:padding="12dp"
-                android:scrollbars="vertical">
-                <TextView
-                    android:id="@+id/logText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Ready to connect..."
-                    android:textColor="#AAAAAA"
-                    android:textSize="12sp"
-                    android:fontFamily="monospace" />
-            </ScrollView>
+            <!-- Hidden disconnect button reference (needed by code) -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/disconnectButton"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:visibility="gone" />
 
         </LinearLayout>
     </androidx.cardview.widget.CardView>
+
+    <!-- Hidden log text (needed by code) -->
+    <TextView
+        android:id="@+id/logText"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

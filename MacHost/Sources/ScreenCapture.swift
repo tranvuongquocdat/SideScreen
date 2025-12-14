@@ -85,13 +85,13 @@ class ScreenCapture {
         print("✅ Stream configured: \(config.width)x\(config.height) @ 60fps (low-latency mode)")
     }
 
-    func startStreaming(to server: StreamingServer?) {
+    func startStreaming(to server: StreamingServer?, bitrateMbps: Int = 20, quality: String = "medium", gamingBoost: Bool = false) {
         let width = display?.width ?? 1920
         let height = display?.height ?? 1080
 
         server?.setDisplaySize(width: width, height: height)
 
-        encoder = VideoEncoder(width: width, height: height)
+        encoder = VideoEncoder(width: width, height: height, bitrateMbps: bitrateMbps, quality: quality, gamingBoost: gamingBoost)
         encoder?.onEncodedFrame = { [weak server] data in
             server?.sendFrame(data)
         }
@@ -108,6 +108,10 @@ class ScreenCapture {
                 print("❌ Failed to start capture: \(error)")
             }
         }
+    }
+
+    func updateEncoderSettings(bitrateMbps: Int, quality: String, gamingBoost: Bool) {
+        encoder?.updateSettings(bitrateMbps: bitrateMbps, quality: quality, gamingBoost: gamingBoost)
     }
 
     func stopStreaming() {

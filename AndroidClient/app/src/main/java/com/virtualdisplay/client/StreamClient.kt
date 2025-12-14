@@ -1,13 +1,18 @@
 package com.virtualdisplay.client
 
+import android.os.Process
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.DataInputStream
 import java.io.IOException
 import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.Executors
 
 class StreamClient(
     private val host: String,
@@ -26,6 +31,18 @@ class StreamClient(
     private var bytesReceived = 0L
     private var framesReceived = 0L
     private var lastStatsTime = System.currentTimeMillis()
+
+    // High-priority thread for touch events to minimize latency
+    private val touchExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable).apply {
+            name = "TouchThread"
+            priority = Thread.MAX_PRIORITY
+            // Set to urgent display priority
+            Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_DISPLAY)
+        }
+    }
+    private val touchDispatcher = touchExecutor.asCoroutineDispatcher()
+    private val touchScope = CoroutineScope(touchDispatcher)
 
     suspend fun connect() = withContext(Dispatchers.IO) {
         try {
@@ -87,16 +104,19 @@ class StreamClient(
     fun sendTouch(x: Float, y: Float, action: Int) {
         if (!isConnected) return
 
-        try {
-            outputStream?.apply {
-                writeByte(2) // Touch event type
-                writeFloat(x)
-                writeFloat(y)
-                writeInt(action)
-                flush()
+        // Send touch on high-priority thread to minimize latency
+        touchScope.launch {
+            try {
+                outputStream?.apply {
+                    writeByte(2) // Touch event type
+                    writeFloat(x)
+                    writeFloat(y)
+                    writeInt(action)
+                    flush()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Failed to send touch", e)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to send touch", e)
         }
     }
 
@@ -132,6 +152,7 @@ class StreamClient(
             outputStream?.close()
             inputStream?.close()
             socket?.close()
+            touchExecutor.shutdown()
         } catch (e: Exception) {
             Log.e(TAG, "Error during cleanup", e)
         }

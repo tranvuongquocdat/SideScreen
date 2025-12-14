@@ -2,9 +2,11 @@ package com.virtualdisplay.client
 
 import android.annotation.SuppressLint
 import android.app.Dialog
+import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
+import android.os.PowerManager
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.View
@@ -27,6 +29,7 @@ class MainActivity : AppCompatActivity() {
     private var streamClient: StreamClient? = null
     private var displayWidth = 1920
     private var displayHeight = 1080
+    private var wakeLock: PowerManager.WakeLock? = null
 
     // For dragging stats overlay
     private var isDraggingOverlay = false
@@ -38,6 +41,9 @@ class MainActivity : AppCompatActivity() {
     private var settingsDx = 0f
     private var settingsDy = 0f
 
+    // Input prediction for low-latency gaming
+    private val inputPredictor = InputPredictor()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -46,17 +52,11 @@ class MainActivity : AppCompatActivity() {
         // Keep screen on
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        // Fullscreen immersive mode
-        window.decorView.systemUiVisibility = (
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-            or View.SYSTEM_UI_FLAG_FULLSCREEN
-            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-        )
-
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Enable performance mode for gaming (after binding is initialized)
+        enablePerformanceMode()
 
         setupSurface()
         setupUI()
@@ -64,6 +64,48 @@ class MainActivity : AppCompatActivity() {
         setupSettingsButton()
         restoreOverlayPosition()
         restoreSettingsButtonPosition()
+    }
+
+    /**
+     * Enable sustained performance mode for gaming
+     * Maximizes CPU/GPU clocks and prevents thermal throttling
+     */
+    @SuppressLint("WakelockTimeout")
+    private fun enablePerformanceMode() {
+        // Request sustained performance mode (Android 7.0+)
+        window.setSustainedPerformanceMode(true)
+
+        // Acquire wake lock to prevent CPU slowdown
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(
+            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+            "VirtualDisplay::PerformanceMode"
+        )
+        wakeLock?.acquire()
+
+        log("🎮 Performance mode ENABLED - CPU/GPU at max clocks")
+    }
+
+    /**
+     * Enable fullscreen immersive mode (only when connected)
+     */
+    @Suppress("DEPRECATION")
+    private fun enableFullscreenMode() {
+        window.decorView.systemUiVisibility = (
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            or View.SYSTEM_UI_FLAG_FULLSCREEN
+            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+        )
+    }
+
+    /**
+     * Disable fullscreen mode (when disconnected)
+     */
+    @Suppress("DEPRECATION")
+    private fun disableFullscreenMode() {
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -92,8 +134,21 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupUI() {
         binding.connectButton.setOnClickListener {
-            val host = binding.hostInput.text.toString().ifEmpty { "localhost" }
+            var host = binding.hostInput.text.toString().ifEmpty { "127.0.0.1" }
             val port = binding.portInput.text.toString().toIntOrNull() ?: 8888
+
+            // Convert localhost to 127.0.0.1 for better Android compatibility
+            if (host.equals("localhost", ignoreCase = true)) {
+                host = "127.0.0.1"
+            }
+
+            // Validate input
+            if (host.isBlank()) {
+                showError("Please enter a host address")
+                return@setOnClickListener
+            }
+
+            updateStatus("Connecting to $host:$port...")
             connect(host, port)
         }
 
@@ -101,7 +156,24 @@ class MainActivity : AppCompatActivity() {
             disconnect()
         }
 
-        // Settings button click is handled in setupDraggableSettingsButton()
+        // Initial status
+        updateStatus("Ready to connect")
+    }
+
+    private fun showError(message: String) {
+        runOnUiThread {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Connection Error")
+                .setMessage(message)
+                .setPositiveButton("OK", null)
+                .show()
+        }
+    }
+
+    private fun updateStatus(status: String) {
+        runOnUiThread {
+            binding.statusText.text = status
+        }
     }
 
     @SuppressLint("ClickableViewAccessibility", "InflateParams")
@@ -353,8 +425,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun initializeDecoder(holder: SurfaceHolder) {
         try {
-            videoDecoder = VideoDecoder(holder.surface)
-            log("✅ Decoder initialized")
+            // Pass display for vsync-aligned frame presentation
+            val display = windowManager.defaultDisplay
+            videoDecoder = VideoDecoder(holder.surface, display)
+            log("✅ Decoder initialized (${display.refreshRate}Hz display)")
         } catch (e: Exception) {
             log("❌ Failed to initialize decoder: ${e.message}")
         }
@@ -372,7 +446,12 @@ class MainActivity : AppCompatActivity() {
 
                 streamClient?.onConnectionStatus = { connected ->
                     runOnUiThread {
-                        binding.statusText.text = if (connected) "Connected" else "Disconnected"
+                        if (connected) {
+                            updateStatus("Connected - Streaming active")
+                        } else {
+                            updateStatus("Disconnected")
+                        }
+
                         binding.connectButton.isEnabled = !connected
                         binding.disconnectButton.isEnabled = connected
 
@@ -383,12 +462,17 @@ class MainActivity : AppCompatActivity() {
                         )
 
                         if (connected) {
+                            // Enter fullscreen mode when connected
+                            enableFullscreenMode()
+
                             binding.settingsPanel.visibility = View.GONE
                             binding.settingsButton.visibility = View.VISIBLE
                             restoreSettingsButtonPosition()
-                            log("⚙️ Settings button set to VISIBLE")
                             updateOverlayVisibility(prefs.showStatsOverlay)
                         } else {
+                            // Exit fullscreen mode when disconnected
+                            disableFullscreenMode()
+
                             binding.settingsPanel.visibility = View.VISIBLE
                             binding.settingsButton.visibility = View.GONE
                             binding.statusBar.visibility = View.GONE
@@ -415,10 +499,18 @@ class MainActivity : AppCompatActivity() {
                 streamClient?.connect()
 
             } catch (e: Exception) {
-                log("❌ Connection failed: ${e.message}")
-                runOnUiThread {
-                    binding.statusText.text = "Connection failed"
+                val errorMessage = when {
+                    e.message?.contains("ECONNREFUSED") == true ->
+                        "Mac server is not running.\n\nPlease start VirtualDisplay.app on your Mac first."
+                    e.message?.contains("Network is unreachable") == true ->
+                        "Cannot reach Mac.\n\nMake sure both devices are connected via USB cable and ADB reverse is configured."
+                    e.message?.contains("timeout") == true ->
+                        "Connection timeout.\n\nCheck if Mac firewall is blocking port $port."
+                    else ->
+                        "Connection failed: ${e.message}\n\nTry:\n• Start VirtualDisplay.app on Mac\n• Check USB connection\n• Run: adb reverse tcp:8888 tcp:8888"
                 }
+                updateStatus("Connection failed")
+                showError(errorMessage)
             }
         }
     }
@@ -432,6 +524,11 @@ class MainActivity : AppCompatActivity() {
         disconnect()
         videoDecoder?.release()
         videoDecoder = null
+
+        // Release wake lock
+        wakeLock?.release()
+        wakeLock = null
+        log("🎮 Performance mode DISABLED")
     }
 
     private fun handleTouch(view: View, event: MotionEvent) {
@@ -439,13 +536,31 @@ class MainActivity : AppCompatActivity() {
         val y = event.y / view.height.toFloat()
 
         val action = when (event.action) {
-            MotionEvent.ACTION_DOWN -> 0
-            MotionEvent.ACTION_MOVE -> 1
-            MotionEvent.ACTION_UP -> 2
+            MotionEvent.ACTION_DOWN -> {
+                inputPredictor.reset()
+                inputPredictor.addSample(x, y)
+                0
+            }
+            MotionEvent.ACTION_MOVE -> {
+                inputPredictor.addSample(x, y)
+                1
+            }
+            MotionEvent.ACTION_UP -> {
+                inputPredictor.reset()
+                2
+            }
             else -> return
         }
 
-        streamClient?.sendTouch(x, y, action)
+        // Use predicted position for faster response (predict 12ms ahead - typical glass-to-glass latency)
+        val (predictedX, predictedY) = if (action == 1) {
+            inputPredictor.predictPosition(12f)
+        } else {
+            Pair(x, y)
+        }
+
+        // Send predicted position to reduce perceived input latency
+        streamClient?.sendTouch(predictedX, predictedY, action)
     }
 
     private fun log(message: String) {
