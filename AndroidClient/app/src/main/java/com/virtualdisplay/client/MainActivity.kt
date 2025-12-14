@@ -40,11 +40,6 @@ class MainActivity : AppCompatActivity() {
     private var overlayDx = 0f
     private var overlayDy = 0f
 
-    // For dragging settings button
-    private var isDraggingSettings = false
-    private var settingsDx = 0f
-    private var settingsDy = 0f
-
     // Input prediction for low-latency gaming
     private val inputPredictor = InputPredictor()
 
@@ -287,29 +282,44 @@ class MainActivity : AppCompatActivity() {
         val disconnectButton = view.findViewById<View>(R.id.disconnectSettingsButton)
         val closeButton = view.findViewById<View>(R.id.closeButton)
 
-        // Corner position buttons
+        // Position buttons (8 directions)
         val cornerTopLeft = view.findViewById<MaterialButton>(R.id.cornerTopLeft)
         val cornerTopRight = view.findViewById<MaterialButton>(R.id.cornerTopRight)
         val cornerBottomLeft = view.findViewById<MaterialButton>(R.id.cornerBottomLeft)
         val cornerBottomRight = view.findViewById<MaterialButton>(R.id.cornerBottomRight)
+        val positionTopCenter = view.findViewById<MaterialButton>(R.id.positionTopCenter)
+        val positionBottomCenter = view.findViewById<MaterialButton>(R.id.positionBottomCenter)
+        val positionCenterLeft = view.findViewById<MaterialButton>(R.id.positionCenterLeft)
+        val positionCenterRight = view.findViewById<MaterialButton>(R.id.positionCenterRight)
 
         // Load current settings
         showStatsSwitch.isChecked = prefs.showStatsOverlay
         opacitySlider.value = prefs.overlayOpacity
         opacityValue.text = "${(prefs.overlayOpacity * 100).toInt()}%"
 
-        // Highlight current corner selection
-        fun updateCornerSelection(selectedCorner: Int) {
-            val buttons = listOf(cornerBottomRight, cornerBottomLeft, cornerTopRight, cornerTopLeft)
+        // Highlight current position selection (8 positions)
+        // 0=BottomRight, 1=BottomLeft, 2=TopRight, 3=TopLeft
+        // 4=TopCenter, 5=BottomCenter, 6=CenterLeft, 7=CenterRight
+        fun updatePositionSelection(selectedPosition: Int) {
+            val buttons = listOf(
+                cornerBottomRight,    // 0
+                cornerBottomLeft,     // 1
+                cornerTopRight,       // 2
+                cornerTopLeft,        // 3
+                positionTopCenter,    // 4
+                positionBottomCenter, // 5
+                positionCenterLeft,   // 6
+                positionCenterRight   // 7
+            )
             buttons.forEachIndexed { index, button ->
-                if (index == selectedCorner) {
+                if (index == selectedPosition) {
                     button.backgroundTintList = android.content.res.ColorStateList.valueOf(0x334CAF50)
                 } else {
                     button.backgroundTintList = null
                 }
             }
         }
-        updateCornerSelection(prefs.settingsButtonCorner)
+        updatePositionSelection(prefs.settingsButtonCorner)
 
         // Setup listeners
         showStatsSwitch.setOnCheckedChangeListener { _, isChecked ->
@@ -336,34 +346,58 @@ class MainActivity : AppCompatActivity() {
                 .start()
         }
 
-        // Corner position button listeners
+        // Position button listeners (8 directions)
         cornerBottomRight.setOnClickListener {
             prefs.settingsButtonCorner = 0
-            updateCornerSelection(0)
+            updatePositionSelection(0)
             updateSettingsButtonPosition(0)
         }
 
         cornerBottomLeft.setOnClickListener {
             prefs.settingsButtonCorner = 1
-            updateCornerSelection(1)
+            updatePositionSelection(1)
             updateSettingsButtonPosition(1)
         }
 
         cornerTopRight.setOnClickListener {
             prefs.settingsButtonCorner = 2
-            updateCornerSelection(2)
+            updatePositionSelection(2)
             updateSettingsButtonPosition(2)
         }
 
         cornerTopLeft.setOnClickListener {
             prefs.settingsButtonCorner = 3
-            updateCornerSelection(3)
+            updatePositionSelection(3)
             updateSettingsButtonPosition(3)
+        }
+
+        positionTopCenter.setOnClickListener {
+            prefs.settingsButtonCorner = 4
+            updatePositionSelection(4)
+            updateSettingsButtonPosition(4)
+        }
+
+        positionBottomCenter.setOnClickListener {
+            prefs.settingsButtonCorner = 5
+            updatePositionSelection(5)
+            updateSettingsButtonPosition(5)
+        }
+
+        positionCenterLeft.setOnClickListener {
+            prefs.settingsButtonCorner = 6
+            updatePositionSelection(6)
+            updateSettingsButtonPosition(6)
+        }
+
+        positionCenterRight.setOnClickListener {
+            prefs.settingsButtonCorner = 7
+            updatePositionSelection(7)
+            updateSettingsButtonPosition(7)
         }
 
         resetSettingsBtn.setOnClickListener {
             prefs.settingsButtonCorner = 0
-            updateCornerSelection(0)
+            updatePositionSelection(0)
             updateSettingsButtonPosition(0)
         }
 
@@ -384,6 +418,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupSettingsButton() {
+        // Simple click to show settings dialog
+        // Position can be changed via corner buttons in settings
         binding.settingsButton.setOnClickListener {
             showSettingsDialog()
         }
@@ -396,8 +432,9 @@ class MainActivity : AppCompatActivity() {
     /**
      * Use ConstraintSet to position settings button - most reliable method
      * Works correctly with orientation changes
+     * Supports 8 positions: 4 corners + 4 edges
      */
-    private fun updateSettingsButtonPosition(corner: Int) {
+    private fun updateSettingsButtonPosition(position: Int) {
         val constraintLayout = binding.root as ConstraintLayout
         val constraintSet = ConstraintSet()
         constraintSet.clone(constraintLayout)
@@ -411,7 +448,7 @@ class MainActivity : AppCompatActivity() {
         constraintSet.clear(buttonId, ConstraintSet.START)
         constraintSet.clear(buttonId, ConstraintSet.END)
 
-        when (corner) {
+        when (position) {
             0 -> { // Bottom Right (default)
                 constraintSet.connect(buttonId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, marginDp)
                 constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, marginDp)
@@ -427,6 +464,26 @@ class MainActivity : AppCompatActivity() {
             3 -> { // Top Left
                 constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, marginDp)
                 constraintSet.connect(buttonId, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, marginDp)
+            }
+            4 -> { // Top Center
+                constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, marginDp)
+                constraintSet.connect(buttonId, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, 0)
+                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, 0)
+            }
+            5 -> { // Bottom Center
+                constraintSet.connect(buttonId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, marginDp)
+                constraintSet.connect(buttonId, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, 0)
+                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, 0)
+            }
+            6 -> { // Center Left
+                constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, 0)
+                constraintSet.connect(buttonId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, 0)
+                constraintSet.connect(buttonId, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, marginDp)
+            }
+            7 -> { // Center Right
+                constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, 0)
+                constraintSet.connect(buttonId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, 0)
+                constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, marginDp)
             }
             else -> { // Default to bottom right
                 constraintSet.connect(buttonId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, marginDp)

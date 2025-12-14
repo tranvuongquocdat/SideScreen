@@ -109,7 +109,7 @@
                 app:trackHeight="4dp" />
         </LinearLayout>
 
-        <!-- Settings Button Position -->
+        <!-- Settings Button Position - 8 directions -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -127,49 +127,108 @@
                 android:textStyle="bold"
                 android:layout_marginBottom="12dp" />
 
-            <!-- 4 Corner Buttons Grid -->
+            <!-- 8 Position Grid (3x3 without center) -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
 
-                <!-- Top Row -->
+                <!-- Top Row: TopLeft, TopCenter, TopRight -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
-                    android:layout_marginBottom="8dp">
+                    android:layout_marginBottom="6dp">
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/cornerTopLeft"
                         style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                         android:layout_width="0dp"
-                        android:layout_height="48dp"
+                        android:layout_height="44dp"
                         android:layout_weight="1"
-                        android:text="↖ Top Left"
+                        android:text="↖"
                         android:textColor="#FFFFFF"
-                        android:textSize="13sp"
-                        android:layout_marginEnd="4dp"
-                        app:cornerRadius="12dp"
+                        android:textSize="18sp"
+                        android:layout_marginEnd="3dp"
+                        app:cornerRadius="10dp"
                         app:strokeColor="#4CAF50"
-                        app:strokeWidth="2dp" />
+                        app:strokeWidth="1dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/positionTopCenter"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:text="↑"
+                        android:textColor="#FFFFFF"
+                        android:textSize="18sp"
+                        android:layout_marginStart="3dp"
+                        android:layout_marginEnd="3dp"
+                        app:cornerRadius="10dp"
+                        app:strokeColor="#4CAF50"
+                        app:strokeWidth="1dp" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/cornerTopRight"
                         style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                         android:layout_width="0dp"
-                        android:layout_height="48dp"
+                        android:layout_height="44dp"
                         android:layout_weight="1"
-                        android:text="Top Right ↗"
+                        android:text="↗"
                         android:textColor="#FFFFFF"
-                        android:textSize="13sp"
-                        android:layout_marginStart="4dp"
-                        app:cornerRadius="12dp"
+                        android:textSize="18sp"
+                        android:layout_marginStart="3dp"
+                        app:cornerRadius="10dp"
                         app:strokeColor="#4CAF50"
-                        app:strokeWidth="2dp" />
+                        app:strokeWidth="1dp" />
                 </LinearLayout>
 
-                <!-- Bottom Row -->
+                <!-- Middle Row: Left, (empty center), Right -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="6dp">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/positionCenterLeft"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:text="←"
+                        android:textColor="#FFFFFF"
+                        android:textSize="18sp"
+                        android:layout_marginEnd="3dp"
+                        app:cornerRadius="10dp"
+                        app:strokeColor="#4CAF50"
+                        app:strokeWidth="1dp" />
+
+                    <!-- Empty center space -->
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="3dp"
+                        android:layout_marginEnd="3dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/positionCenterRight"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:text="→"
+                        android:textColor="#FFFFFF"
+                        android:textSize="18sp"
+                        android:layout_marginStart="3dp"
+                        app:cornerRadius="10dp"
+                        app:strokeColor="#4CAF50"
+                        app:strokeWidth="1dp" />
+                </LinearLayout>
+
+                <!-- Bottom Row: BottomLeft, BottomCenter, BottomRight -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -179,30 +238,44 @@
                         android:id="@+id/cornerBottomLeft"
                         style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                         android:layout_width="0dp"
-                        android:layout_height="48dp"
+                        android:layout_height="44dp"
                         android:layout_weight="1"
-                        android:text="↙ Bottom Left"
+                        android:text="↙"
                         android:textColor="#FFFFFF"
-                        android:textSize="13sp"
-                        android:layout_marginEnd="4dp"
-                        app:cornerRadius="12dp"
+                        android:textSize="18sp"
+                        android:layout_marginEnd="3dp"
+                        app:cornerRadius="10dp"
                         app:strokeColor="#4CAF50"
-                        app:strokeWidth="2dp" />
+                        app:strokeWidth="1dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/positionBottomCenter"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:text="↓"
+                        android:textColor="#FFFFFF"
+                        android:textSize="18sp"
+                        android:layout_marginStart="3dp"
+                        android:layout_marginEnd="3dp"
+                        app:cornerRadius="10dp"
+                        app:strokeColor="#4CAF50"
+                        app:strokeWidth="1dp" />
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/cornerBottomRight"
                         style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                         android:layout_width="0dp"
-                        android:layout_height="48dp"
+                        android:layout_height="44dp"
                         android:layout_weight="1"
-                        android:text="Bottom Right ↘"
+                        android:text="↘"
                         android:textColor="#FFFFFF"
-                        android:textSize="13sp"
-                        android:layout_marginStart="4dp"
-                        app:cornerRadius="12dp"
+                        android:textSize="18sp"
+                        android:layout_marginStart="3dp"
+                        app:cornerRadius="10dp"
                         app:strokeColor="#4CAF50"
-                        app:strokeWidth="2dp"
-                        app:backgroundTint="#334CAF50" />
+                        app:strokeWidth="1dp" />
                 </LinearLayout>
 
             </LinearLayout>
