@@ -33,7 +33,7 @@ struct GestureThresholds {
     static let tapMaxTime: TimeInterval = 0.3        // Max seconds for tap
     static let scrollMinDistance: CGFloat = 20       // Min pixels to trigger scroll
     static let scrollMinVelocity: CGFloat = 50       // Min pixels/second for scroll
-    static let scrollSensitivity: CGFloat = 2.5      // Scroll multiplier
+    static let scrollSensitivity: CGFloat = 1.0      // Scroll multiplier (reduced from 2.5)
     static let scrollThrottleInterval: TimeInterval = 0.016  // ~60fps throttle
 }
 
@@ -46,6 +46,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var settingsWindow: SettingsWindowController?
     var statusItem: NSStatusItem?
     private var cancellables = Set<AnyCancellable>()
+    private var permissionCheckTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("✅ App launched")
@@ -64,8 +65,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             await checkPermissions()
         }
 
+        // Start permission check timer (auto-refresh every 2 seconds)
+        startPermissionCheckTimer()
+
         // Show settings window
         showSettings()
+    }
+
+    func startPermissionCheckTimer() {
+        // Only auto-check Accessibility permission (Screen Recording is stable)
+        permissionCheckTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            Task {
+                await self?.checkAccessibilityPermission()
+            }
+        }
+    }
+
+    func stopPermissionCheckTimer() {
+        permissionCheckTimer?.invalidate()
+        permissionCheckTimer = nil
     }
 
     func setupSettingsObservers() {
@@ -490,10 +508,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             // Start momentum scrolling if velocity is significant
-            let momentumThreshold: CGFloat = 3.0
+            let momentumThreshold: CGFloat = 2.0
             if abs(lastScrollVelocityX) > momentumThreshold || abs(lastScrollVelocityY) > momentumThreshold {
-                // Amplify velocity for momentum effect
-                let momentumMultiplier: CGFloat = 8.0
+                // Reduced multiplier for smoother momentum
+                let momentumMultiplier: CGFloat = 4.0
                 startMomentumScroll(
                     velocityX: lastScrollVelocityX * momentumMultiplier,
                     velocityY: lastScrollVelocityY * momentumMultiplier,

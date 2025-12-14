@@ -371,23 +371,69 @@ struct SettingsView: View {
                             StatusRow(title: "Screen Recording", status: settings.hasScreenRecordingPermission ? "Granted" : "Not Granted", color: settings.hasScreenRecordingPermission ? .green : .red)
                             StatusRow(title: "Accessibility (Touch)", status: settings.hasAccessibilityPermission ? "Granted" : "Not Granted", color: settings.hasAccessibilityPermission ? .green : .red)
 
-                            if !settings.hasScreenRecordingPermission || !settings.hasAccessibilityPermission {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    if !settings.hasScreenRecordingPermission {
-                                        Button("Grant Screen Recording Permission") {
-                                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
-                                        }
-                                        .buttonStyle(.link)
-                                        .font(.system(size: 11))
+                            // Screen Recording permission warning
+                            if !settings.hasScreenRecordingPermission {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "exclamationmark.triangle.fill")
+                                            .foregroundColor(.orange)
+                                            .font(.system(size: 14))
+                                        Text("Screen Recording permission required")
+                                            .font(.system(size: 12, weight: .medium))
+                                            .foregroundColor(.orange)
                                     }
-                                    if !settings.hasAccessibilityPermission {
-                                        Button("Grant Accessibility Permission (for touch control)") {
-                                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
-                                        }
-                                        .buttonStyle(.link)
+                                    Text("Required to capture and stream the virtual display.")
                                         .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                    Button(action: {
+                                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+                                    }) {
+                                        HStack {
+                                            Image(systemName: "gear")
+                                            Text("Open System Settings")
+                                        }
                                     }
+                                    .buttonStyle(.borderedProminent)
+                                    .controlSize(.small)
                                 }
+                                .padding(10)
+                                .background(Color.orange.opacity(0.1))
+                                .cornerRadius(8)
+                            }
+
+                            // Accessibility permission warning
+                            if !settings.hasAccessibilityPermission {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "hand.tap.fill")
+                                            .foregroundColor(.blue)
+                                            .font(.system(size: 14))
+                                        Text("Accessibility permission required")
+                                            .font(.system(size: 12, weight: .medium))
+                                            .foregroundColor(.blue)
+                                    }
+                                    Text("Required for touch control from your tablet. Without this, you can only view but not interact.")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                    Button(action: {
+                                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                                    }) {
+                                        HStack {
+                                            Image(systemName: "gear")
+                                            Text("Open System Settings")
+                                        }
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .controlSize(.small)
+
+                                    Text("After granting permission, the status will update automatically.")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                        .italic()
+                                }
+                                .padding(10)
+                                .background(Color.blue.opacity(0.1))
+                                .cornerRadius(8)
                             }
                         }
                         .padding(12)
