@@ -2,6 +2,7 @@ import Cocoa
 import ScreenCaptureKit
 import SwiftUI
 import Combine
+import ApplicationServices
 
 @available(macOS 14.0, *)
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -110,6 +111,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func checkPermissions() async {
+        // Check Screen Recording permission
         do {
             try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
             await MainActor.run {
@@ -121,7 +123,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 settings.hasScreenRecordingPermission = false
             }
             print("⚠️  Screen recording permission not granted yet")
-            // Don't show alert on app launch - only when user tries to start server
+        }
+
+        // Check Accessibility permission (required for touch/mouse injection)
+        await checkAccessibilityPermission()
+    }
+
+    func checkAccessibilityPermission() async {
+        let trusted = AXIsProcessTrusted()
+        await MainActor.run {
+            settings.hasAccessibilityPermission = trusted
+        }
+        if trusted {
+            print("✅ Accessibility permission granted")
+        } else {
+            print("⚠️  Accessibility permission not granted - touch control will not work")
+        }
+    }
+
+    @MainActor
+    func promptAccessibilityPermission() {
+        // This will show the system prompt to grant Accessibility permission
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        let trusted = AXIsProcessTrustedWithOptions(options)
+        settings.hasAccessibilityPermission = trusted
+
+        if !trusted {
+            print("⚠️  User needs to grant Accessibility permission in System Settings")
         }
     }
 
@@ -258,34 +286,68 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var lastMousePosition: CGPoint = .zero
     private let eventSource = CGEventSource(stateID: .hidSystemState)
+    private var accessibilityWarningShown = false
 
     func handleTouch(x: Float, y: Float, action: Int) {
-        guard let displayID = virtualDisplayManager?.displayID else { return }
+        print("🖱️ handleTouch called: x=\(x), y=\(y), action=\(action)")
+
+        // Check Accessibility permission before injecting events
+        if !AXIsProcessTrusted() {
+            if !accessibilityWarningShown {
+                accessibilityWarningShown = true
+                print("⚠️  Accessibility permission not granted - touch events will be ignored")
+                print("💡 Grant permission in System Settings > Privacy & Security > Accessibility")
+                // Update UI state
+                Task { @MainActor in
+                    settings.hasAccessibilityPermission = false
+                }
+            }
+            return
+        }
+
+        guard let displayID = virtualDisplayManager?.displayID else {
+            print("❌ handleTouch: displayID is nil")
+            return
+        }
 
         let bounds = CGDisplayBounds(displayID)
+        print("📐 Display bounds: origin=(\(bounds.origin.x), \(bounds.origin.y)), size=(\(bounds.width)x\(bounds.height))")
 
         // Calculate absolute position on the virtual display
         let absoluteX = bounds.origin.x + (CGFloat(x) * bounds.width)
         let absoluteY = bounds.origin.y + (CGFloat(y) * bounds.height)
         let point = CGPoint(x: absoluteX, y: absoluteY)
+        print("🎯 Absolute position: (\(absoluteX), \(absoluteY))")
+
+        let actionName = action == 0 ? "DOWN" : (action == 1 ? "MOVE" : (action == 2 ? "UP" : "UNKNOWN"))
+        print("👆 Injecting mouse event: \(actionName) at \(point)")
 
         switch action {
         case 0: // Touch down - move cursor and click down
             // First move cursor to position using CGEvent (generates events unlike CGWarpMouseCursorPosition)
             if let moveEvent = CGEvent(mouseEventSource: eventSource, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left) {
                 moveEvent.post(tap: .cghidEventTap)
+                print("✅ Posted mouseMoved event")
+            } else {
+                print("❌ Failed to create mouseMoved event")
             }
 
             // Then mouse down
             if let downEvent = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left) {
                 downEvent.setIntegerValueField(.mouseEventClickState, value: 1)
                 downEvent.post(tap: .cghidEventTap)
+                print("✅ Posted leftMouseDown event")
+            } else {
+                print("❌ Failed to create leftMouseDown event")
             }
             lastMousePosition = point
 
         case 1: // Touch move - drag
             if let dragEvent = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDragged, mouseCursorPosition: point, mouseButton: .left) {
                 dragEvent.post(tap: .cghidEventTap)
+                // Don't log every move to avoid spam
+            } else {
+                print("❌ Failed to create leftMouseDragged event")
             }
             lastMousePosition = point
 
@@ -293,9 +355,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if let upEvent = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) {
                 upEvent.setIntegerValueField(.mouseEventClickState, value: 1)
                 upEvent.post(tap: .cghidEventTap)
+                print("✅ Posted leftMouseUp event")
+            } else {
+                print("❌ Failed to create leftMouseUp event")
             }
 
         default:
+            print("⚠️ Unknown action: \(action)")
             return
         }
     }

@@ -626,6 +626,7 @@ class MainActivity : AppCompatActivity() {
             MotionEvent.ACTION_DOWN -> {
                 inputPredictor.reset()
                 inputPredictor.addSample(x, y)
+                log("👆 Touch DOWN: raw=(${event.x}, ${event.y}), normalized=($x, $y)")
                 0
             }
             MotionEvent.ACTION_MOVE -> {
@@ -634,6 +635,7 @@ class MainActivity : AppCompatActivity() {
             }
             MotionEvent.ACTION_UP -> {
                 inputPredictor.reset()
+                log("👆 Touch UP: raw=(${event.x}, ${event.y}), normalized=($x, $y)")
                 2
             }
             else -> return
@@ -647,6 +649,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Send predicted position to reduce perceived input latency
+        if (streamClient == null) {
+            log("❌ streamClient is null, cannot send touch")
+        }
         streamClient?.sendTouch(predictedX, predictedY, action)
     }
 

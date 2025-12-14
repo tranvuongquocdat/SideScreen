@@ -369,13 +369,25 @@ struct SettingsView: View {
                             StatusRow(title: "Virtual Display", status: settings.displayCreated ? "Active" : "Inactive", color: settings.displayCreated ? .green : .secondary)
                             StatusRow(title: "Client Connected", status: settings.clientConnected ? "Yes" : "No", color: settings.clientConnected ? .green : .secondary)
                             StatusRow(title: "Screen Recording", status: settings.hasScreenRecordingPermission ? "Granted" : "Not Granted", color: settings.hasScreenRecordingPermission ? .green : .red)
+                            StatusRow(title: "Accessibility (Touch)", status: settings.hasAccessibilityPermission ? "Granted" : "Not Granted", color: settings.hasAccessibilityPermission ? .green : .red)
 
-                            if !settings.hasScreenRecordingPermission {
-                                Button("Open System Settings") {
-                                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+                            if !settings.hasScreenRecordingPermission || !settings.hasAccessibilityPermission {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    if !settings.hasScreenRecordingPermission {
+                                        Button("Grant Screen Recording Permission") {
+                                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+                                        }
+                                        .buttonStyle(.link)
+                                        .font(.system(size: 11))
+                                    }
+                                    if !settings.hasAccessibilityPermission {
+                                        Button("Grant Accessibility Permission (for touch control)") {
+                                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                                        }
+                                        .buttonStyle(.link)
+                                        .font(.system(size: 11))
+                                    }
                                 }
-                                .buttonStyle(.link)
-                                .font(.system(size: 11))
                             }
                         }
                         .padding(12)
@@ -507,6 +519,7 @@ class DisplaySettings: ObservableObject {
     @Published var displayCreated = false
     @Published var clientConnected = false
     @Published var hasScreenRecordingPermission = false
+    @Published var hasAccessibilityPermission = false
     @Published var isRunning = false
     @Published var currentFPS: Double = 0
     @Published var currentBitrate: Double = 0
