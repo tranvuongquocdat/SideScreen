@@ -4,6 +4,39 @@ import SwiftUI
 import Combine
 import ApplicationServices
 
+// MARK: - Gesture Detection Types
+
+enum GestureType {
+    case tap
+    case drag
+    case scroll
+}
+
+struct TouchState {
+    var startPosition: CGPoint
+    var lastPosition: CGPoint
+    var startTime: Date
+    var gestureType: GestureType? = nil
+    var accumulatedScrollX: CGFloat = 0
+    var accumulatedScrollY: CGFloat = 0
+
+    init(position: CGPoint) {
+        self.startPosition = position
+        self.lastPosition = position
+        self.startTime = Date()
+    }
+}
+
+// MARK: - Gesture Thresholds
+struct GestureThresholds {
+    static let tapMaxDistance: CGFloat = 15          // Max pixels for tap
+    static let tapMaxTime: TimeInterval = 0.3        // Max seconds for tap
+    static let scrollMinDistance: CGFloat = 20       // Min pixels to trigger scroll
+    static let scrollMinVelocity: CGFloat = 50       // Min pixels/second for scroll
+    static let scrollSensitivity: CGFloat = 2.5      // Scroll multiplier
+    static let scrollThrottleInterval: TimeInterval = 0.016  // ~60fps throttle
+}
+
 @available(macOS 14.0, *)
 class AppDelegate: NSObject, NSApplicationDelegate {
     var streamingServer: StreamingServer?
@@ -293,17 +326,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastMousePosition: CGPoint = .zero
     private let eventSource = CGEventSource(stateID: .hidSystemState)
     private var accessibilityWarningShown = false
+    private var touchState: TouchState?
+    private var lastScrollTime: Date = .distantPast
 
     func handleTouch(x: Float, y: Float, action: Int) {
-        print("🖱️ handleTouch called: x=\(x), y=\(y), action=\(action)")
-
         // Check Accessibility permission before injecting events
         if !AXIsProcessTrusted() {
             if !accessibilityWarningShown {
                 accessibilityWarningShown = true
                 print("⚠️  Accessibility permission not granted - touch events will be ignored")
                 print("💡 Grant permission in System Settings > Privacy & Security > Accessibility")
-                // Update UI state
                 Task { @MainActor in
                     settings.hasAccessibilityPermission = false
                 }
@@ -317,59 +349,171 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let bounds = CGDisplayBounds(displayID)
-        print("📐 Display bounds: origin=(\(bounds.origin.x), \(bounds.origin.y)), size=(\(bounds.width)x\(bounds.height))")
 
         // Calculate absolute position on the virtual display
         let absoluteX = bounds.origin.x + (CGFloat(x) * bounds.width)
         let absoluteY = bounds.origin.y + (CGFloat(y) * bounds.height)
         let point = CGPoint(x: absoluteX, y: absoluteY)
-        print("🎯 Absolute position: (\(absoluteX), \(absoluteY))")
-
-        let actionName = action == 0 ? "DOWN" : (action == 1 ? "MOVE" : (action == 2 ? "UP" : "UNKNOWN"))
-        print("👆 Injecting mouse event: \(actionName) at \(point)")
 
         switch action {
-        case 0: // Touch down - move cursor and click down
-            // First move cursor to position using CGEvent (generates events unlike CGWarpMouseCursorPosition)
-            if let moveEvent = CGEvent(mouseEventSource: eventSource, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left) {
-                moveEvent.post(tap: .cghidEventTap)
-                print("✅ Posted mouseMoved event")
-            } else {
-                print("❌ Failed to create mouseMoved event")
-            }
+        case 0: // Touch down - start tracking
+            handleTouchDown(at: point)
 
-            // Then mouse down
-            if let downEvent = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left) {
-                downEvent.setIntegerValueField(.mouseEventClickState, value: 1)
-                downEvent.post(tap: .cghidEventTap)
-                print("✅ Posted leftMouseDown event")
-            } else {
-                print("❌ Failed to create leftMouseDown event")
-            }
-            lastMousePosition = point
+        case 1: // Touch move - detect gesture type and act accordingly
+            handleTouchMove(to: point)
 
-        case 1: // Touch move - drag
-            if let dragEvent = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDragged, mouseCursorPosition: point, mouseButton: .left) {
-                dragEvent.post(tap: .cghidEventTap)
-                // Don't log every move to avoid spam
-            } else {
-                print("❌ Failed to create leftMouseDragged event")
-            }
-            lastMousePosition = point
-
-        case 2: // Touch up - release click
-            if let upEvent = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) {
-                upEvent.setIntegerValueField(.mouseEventClickState, value: 1)
-                upEvent.post(tap: .cghidEventTap)
-                print("✅ Posted leftMouseUp event")
-            } else {
-                print("❌ Failed to create leftMouseUp event")
-            }
+        case 2: // Touch up - finalize gesture
+            handleTouchUp(at: point)
 
         default:
             print("⚠️ Unknown action: \(action)")
+        }
+    }
+
+    // MARK: - Gesture Handling
+
+    private func handleTouchDown(at point: CGPoint) {
+        // Initialize touch state
+        touchState = TouchState(position: point)
+        lastMousePosition = point
+
+        // Move cursor to position
+        if let moveEvent = CGEvent(mouseEventSource: eventSource, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left) {
+            moveEvent.post(tap: .cghidEventTap)
+        }
+
+        print("👇 Touch DOWN at \(point)")
+    }
+
+    private func handleTouchMove(to point: CGPoint) {
+        guard var state = touchState else { return }
+
+        let deltaX = point.x - state.lastPosition.x
+        let deltaY = point.y - state.lastPosition.y
+        let totalDistance = hypot(point.x - state.startPosition.x, point.y - state.startPosition.y)
+        let elapsed = Date().timeIntervalSince(state.startTime)
+        let velocity = elapsed > 0 ? totalDistance / CGFloat(elapsed) : 0
+
+        // Determine gesture type if not yet determined
+        if state.gestureType == nil && totalDistance > GestureThresholds.scrollMinDistance {
+            // Check velocity to determine if scroll or drag
+            if velocity > GestureThresholds.scrollMinVelocity {
+                state.gestureType = .scroll
+                print("📜 Gesture detected: SCROLL (velocity: \(Int(velocity)) px/s)")
+            } else {
+                state.gestureType = .drag
+                print("✋ Gesture detected: DRAG")
+                // Start drag - send mouseDown
+                if let downEvent = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDown, mouseCursorPosition: state.startPosition, mouseButton: .left) {
+                    downEvent.setIntegerValueField(.mouseEventClickState, value: 1)
+                    downEvent.post(tap: .cghidEventTap)
+                }
+            }
+        }
+
+        // Act based on gesture type
+        switch state.gestureType {
+        case .scroll:
+            // Accumulate scroll delta
+            state.accumulatedScrollX += deltaX * GestureThresholds.scrollSensitivity
+            state.accumulatedScrollY += deltaY * GestureThresholds.scrollSensitivity
+
+            // Throttle scroll events
+            let now = Date()
+            if now.timeIntervalSince(lastScrollTime) >= GestureThresholds.scrollThrottleInterval {
+                injectScrollEvent(deltaX: state.accumulatedScrollX, deltaY: state.accumulatedScrollY, at: point)
+                state.accumulatedScrollX = 0
+                state.accumulatedScrollY = 0
+                lastScrollTime = now
+            }
+
+        case .drag:
+            // Send drag event
+            if let dragEvent = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDragged, mouseCursorPosition: point, mouseButton: .left) {
+                dragEvent.post(tap: .cghidEventTap)
+            }
+
+        case .tap, .none:
+            // Still undetermined or tap - just track position
+            break
+        }
+
+        state.lastPosition = point
+        touchState = state
+        lastMousePosition = point
+    }
+
+    private func handleTouchUp(at point: CGPoint) {
+        guard let state = touchState else { return }
+
+        let totalDistance = hypot(point.x - state.startPosition.x, point.y - state.startPosition.y)
+        let elapsed = Date().timeIntervalSince(state.startTime)
+
+        // Finalize gesture type
+        let finalGesture = state.gestureType ?? (
+            totalDistance < GestureThresholds.tapMaxDistance && elapsed < GestureThresholds.tapMaxTime
+            ? .tap : .drag
+        )
+
+        switch finalGesture {
+        case .tap:
+            // Perform click
+            print("👆 TAP at \(point)")
+            performClick(at: point)
+
+        case .drag:
+            // End drag - release mouse
+            print("✋ DRAG ended at \(point)")
+            if let upEvent = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) {
+                upEvent.setIntegerValueField(.mouseEventClickState, value: 1)
+                upEvent.post(tap: .cghidEventTap)
+            }
+
+        case .scroll:
+            // Scroll ended - send any remaining accumulated scroll
+            if abs(state.accumulatedScrollX) > 0.5 || abs(state.accumulatedScrollY) > 0.5 {
+                injectScrollEvent(deltaX: state.accumulatedScrollX, deltaY: state.accumulatedScrollY, at: point)
+            }
+            print("📜 SCROLL ended")
+        }
+
+        touchState = nil
+    }
+
+    private func performClick(at point: CGPoint) {
+        // Mouse down
+        if let downEvent = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left) {
+            downEvent.setIntegerValueField(.mouseEventClickState, value: 1)
+            downEvent.post(tap: .cghidEventTap)
+        }
+
+        // Mouse up
+        if let upEvent = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) {
+            upEvent.setIntegerValueField(.mouseEventClickState, value: 1)
+            upEvent.post(tap: .cghidEventTap)
+        }
+    }
+
+    private func injectScrollEvent(deltaX: CGFloat, deltaY: CGFloat, at position: CGPoint) {
+        // Note: macOS natural scrolling - content moves with finger direction
+        // Negate delta for traditional scrolling behavior (scroll up = content goes up)
+        let scrollY = Int32(-deltaY)
+        let scrollX = Int32(-deltaX)
+
+        guard let scrollEvent = CGEvent(
+            scrollWheelEvent2Source: eventSource,
+            units: .pixel,
+            wheelCount: 2,
+            wheel1: scrollY,
+            wheel2: scrollX,
+            wheel3: 0
+        ) else {
+            print("❌ Failed to create scroll event")
             return
         }
+
+        scrollEvent.location = position
+        scrollEvent.post(tap: CGEventTapLocation.cghidEventTap)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
