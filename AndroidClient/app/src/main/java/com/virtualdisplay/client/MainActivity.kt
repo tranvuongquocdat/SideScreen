@@ -13,6 +13,7 @@ import android.view.WindowManager
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.slider.Slider
 import com.google.android.material.switchmaterial.SwitchMaterial
 import com.virtualdisplay.client.databinding.ActivityMainBinding
@@ -60,7 +61,7 @@ class MainActivity : AppCompatActivity() {
         setupSurface()
         setupUI()
         setupDraggableOverlay()
-        setupDraggableSettingsButton()
+        setupSettingsButton()
         restoreOverlayPosition()
         restoreSettingsButtonPosition()
     }
@@ -177,6 +178,15 @@ class MainActivity : AppCompatActivity() {
     private fun updateOverlayVisibility(show: Boolean) {
         if (streamClient != null && show) {
             binding.statusBar.visibility = View.VISIBLE
+            // Restore position when showing
+            val x = prefs.overlayX
+            val y = prefs.overlayY
+            if (x >= 0 && y >= 0) {
+                binding.statusBar.post {
+                    binding.statusBar.x = x
+                    binding.statusBar.y = y
+                }
+            }
         } else {
             binding.statusBar.visibility = View.GONE
         }
@@ -198,10 +208,29 @@ class MainActivity : AppCompatActivity() {
         val disconnectButton = view.findViewById<View>(R.id.disconnectSettingsButton)
         val closeButton = view.findViewById<View>(R.id.closeButton)
 
+        // Corner position buttons
+        val cornerTopLeft = view.findViewById<MaterialButton>(R.id.cornerTopLeft)
+        val cornerTopRight = view.findViewById<MaterialButton>(R.id.cornerTopRight)
+        val cornerBottomLeft = view.findViewById<MaterialButton>(R.id.cornerBottomLeft)
+        val cornerBottomRight = view.findViewById<MaterialButton>(R.id.cornerBottomRight)
+
         // Load current settings
         showStatsSwitch.isChecked = prefs.showStatsOverlay
         opacitySlider.value = prefs.overlayOpacity
         opacityValue.text = "${(prefs.overlayOpacity * 100).toInt()}%"
+
+        // Highlight current corner selection
+        fun updateCornerSelection(selectedCorner: Int) {
+            val buttons = listOf(cornerBottomRight, cornerBottomLeft, cornerTopRight, cornerTopLeft)
+            buttons.forEachIndexed { index, button ->
+                if (index == selectedCorner) {
+                    button.backgroundTintList = android.content.res.ColorStateList.valueOf(0x334CAF50)
+                } else {
+                    button.backgroundTintList = null
+                }
+            }
+        }
+        updateCornerSelection(prefs.settingsButtonCorner)
 
         // Setup listeners
         showStatsSwitch.setOnCheckedChangeListener { _, isChecked ->
@@ -226,16 +255,35 @@ class MainActivity : AppCompatActivity() {
                 .start()
         }
 
+        // Corner position button listeners
+        cornerBottomRight.setOnClickListener {
+            prefs.settingsButtonCorner = 0
+            updateCornerSelection(0)
+            updateSettingsButtonPosition(0)
+        }
+
+        cornerBottomLeft.setOnClickListener {
+            prefs.settingsButtonCorner = 1
+            updateCornerSelection(1)
+            updateSettingsButtonPosition(1)
+        }
+
+        cornerTopRight.setOnClickListener {
+            prefs.settingsButtonCorner = 2
+            updateCornerSelection(2)
+            updateSettingsButtonPosition(2)
+        }
+
+        cornerTopLeft.setOnClickListener {
+            prefs.settingsButtonCorner = 3
+            updateCornerSelection(3)
+            updateSettingsButtonPosition(3)
+        }
+
         resetSettingsBtn.setOnClickListener {
-            prefs.settingsButtonX = -1f
-            prefs.settingsButtonY = -1f
-            val rightEdgeX = binding.root.width - binding.settingsButton.width.toFloat() - 24f
-            val bottomY = binding.root.height - binding.settingsButton.height.toFloat() - 24f
-            binding.settingsButton.animate()
-                .x(rightEdgeX)
-                .y(bottomY)
-                .setDuration(300)
-                .start()
+            prefs.settingsButtonCorner = 0
+            updateCornerSelection(0)
+            updateSettingsButtonPosition(0)
         }
 
         disconnectButton.setOnClickListener {
@@ -254,87 +302,53 @@ class MainActivity : AppCompatActivity() {
         binding.settingsButton.alpha = opacity
     }
 
-    @SuppressLint("ClickableViewAccessibility")
-    private fun setupDraggableSettingsButton() {
-        var startX = 0f
-        var startY = 0f
-        var hasMoved = false
-
-        binding.settingsButton.setOnTouchListener { view, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    settingsDx = view.x - event.rawX
-                    settingsDy = view.y - event.rawY
-                    startX = event.rawX
-                    startY = event.rawY
-                    hasMoved = false
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val dy = Math.abs(event.rawY - startY)
-
-                    // Only allow vertical dragging (along right edge)
-                    if (dy > 10) {
-                        hasMoved = true
-
-                        // Calculate new Y position only (keep X fixed at right edge)
-                        var newY = event.rawY + settingsDy
-
-                        // Get screen bounds
-                        val parent = view.parent as View
-                        val maxY = parent.height - view.height.toFloat()
-
-                        // Constrain to screen bounds vertically
-                        newY = newY.coerceIn(0f, maxY)
-
-                        // Keep X at right edge
-                        val rightEdgeX = parent.width - view.width.toFloat() - 24f
-
-                        view.animate()
-                            .x(rightEdgeX)
-                            .y(newY)
-                            .setDuration(0)
-                            .start()
-                    }
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    if (hasMoved) {
-                        // Save position after drag
-                        prefs.settingsButtonX = view.x
-                        prefs.settingsButtonY = view.y
-                    } else {
-                        // If not moved, treat as click
-                        showSettingsDialog()
-                    }
-                    true
-                }
-                else -> false
-            }
+    private fun setupSettingsButton() {
+        binding.settingsButton.setOnClickListener {
+            showSettingsDialog()
         }
     }
 
     private fun restoreSettingsButtonPosition() {
-        val y = prefs.settingsButtonY
-
         binding.settingsButton.post {
-            // Always position at right edge
-            val rightEdgeX = binding.root.width - binding.settingsButton.width.toFloat() - 24f
-
-            // Use saved Y position if valid, otherwise use default bottom position
-            val posY = if (y >= 0) {
-                val maxY = binding.root.height - binding.settingsButton.height.toFloat()
-                y.coerceIn(0f, maxY)
-            } else {
-                binding.root.height - binding.settingsButton.height.toFloat() - 24f
-            }
-
-            binding.settingsButton.x = rightEdgeX
-            binding.settingsButton.y = posY
-
-            log("⚙️ Restored settings button position: x=$rightEdgeX, y=$posY")
-            log("⚙️ Screen size: ${binding.root.width}x${binding.root.height}")
+            updateSettingsButtonPosition(prefs.settingsButtonCorner)
         }
+    }
+
+    private fun updateSettingsButtonPosition(corner: Int) {
+        val margin = 24f
+        val x: Float
+        val y: Float
+
+        when (corner) {
+            0 -> { // Bottom Right (default)
+                x = binding.root.width - binding.settingsButton.width.toFloat() - margin
+                y = binding.root.height - binding.settingsButton.height.toFloat() - margin
+            }
+            1 -> { // Bottom Left
+                x = margin
+                y = binding.root.height - binding.settingsButton.height.toFloat() - margin
+            }
+            2 -> { // Top Right
+                x = binding.root.width - binding.settingsButton.width.toFloat() - margin
+                y = margin
+            }
+            3 -> { // Top Left
+                x = margin
+                y = margin
+            }
+            else -> { // Default to bottom right
+                x = binding.root.width - binding.settingsButton.width.toFloat() - margin
+                y = binding.root.height - binding.settingsButton.height.toFloat() - margin
+            }
+        }
+
+        binding.settingsButton.animate()
+            .x(x)
+            .y(y)
+            .setDuration(200)
+            .start()
+
+        log("⚙️ Settings button positioned at corner $corner: x=$x, y=$y")
     }
 
     private fun initializeDecoder(holder: SurfaceHolder) {
@@ -371,9 +385,8 @@ class MainActivity : AppCompatActivity() {
                         if (connected) {
                             binding.settingsPanel.visibility = View.GONE
                             binding.settingsButton.visibility = View.VISIBLE
+                            restoreSettingsButtonPosition()
                             log("⚙️ Settings button set to VISIBLE")
-                            log("⚙️ Button position: x=${binding.settingsButton.x}, y=${binding.settingsButton.y}")
-                            log("⚙️ Button size: w=${binding.settingsButton.width}, h=${binding.settingsButton.height}")
                             updateOverlayVisibility(prefs.showStatsOverlay)
                         } else {
                             binding.settingsPanel.visibility = View.VISIBLE

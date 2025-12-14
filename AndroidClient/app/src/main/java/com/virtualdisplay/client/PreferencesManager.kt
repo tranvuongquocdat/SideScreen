@@ -29,4 +29,9 @@ class PreferencesManager(context: Context) {
     var settingsButtonY: Float
         get() = prefs.getFloat("settings_y", -1f)
         set(value) = prefs.edit().putFloat("settings_y", value).apply()
+
+    // Corner position: 0=bottom-right, 1=bottom-left, 2=top-right, 3=top-left
+    var settingsButtonCorner: Int
+        get() = prefs.getInt("settings_corner", 0)
+        set(value) = prefs.edit().putInt("settings_corner", value).apply()
 }

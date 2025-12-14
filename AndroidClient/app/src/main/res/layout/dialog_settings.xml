@@ -109,6 +109,106 @@
                 app:trackHeight="4dp" />
         </LinearLayout>
 
+        <!-- Settings Button Position -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/settings_item_bg"
+            android:padding="16dp"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Settings Button Position"
+                android:textColor="#FFFFFF"
+                android:textSize="17sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="12dp" />
+
+            <!-- 4 Corner Buttons Grid -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <!-- Top Row -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="8dp">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/cornerTopLeft"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:text="↖ Top Left"
+                        android:textColor="#FFFFFF"
+                        android:textSize="13sp"
+                        android:layout_marginEnd="4dp"
+                        app:cornerRadius="12dp"
+                        app:strokeColor="#4CAF50"
+                        app:strokeWidth="2dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/cornerTopRight"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:text="Top Right ↗"
+                        android:textColor="#FFFFFF"
+                        android:textSize="13sp"
+                        android:layout_marginStart="4dp"
+                        app:cornerRadius="12dp"
+                        app:strokeColor="#4CAF50"
+                        app:strokeWidth="2dp" />
+                </LinearLayout>
+
+                <!-- Bottom Row -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/cornerBottomLeft"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:text="↙ Bottom Left"
+                        android:textColor="#FFFFFF"
+                        android:textSize="13sp"
+                        android:layout_marginEnd="4dp"
+                        app:cornerRadius="12dp"
+                        app:strokeColor="#4CAF50"
+                        app:strokeWidth="2dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/cornerBottomRight"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:text="Bottom Right ↘"
+                        android:textColor="#FFFFFF"
+                        android:textSize="13sp"
+                        android:layout_marginStart="4dp"
+                        app:cornerRadius="12dp"
+                        app:strokeColor="#4CAF50"
+                        app:strokeWidth="2dp"
+                        app:backgroundTint="#334CAF50" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </LinearLayout>
+
         <!-- Action Buttons -->
         <LinearLayout
             android:layout_width="match_parent"
