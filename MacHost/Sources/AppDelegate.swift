@@ -62,6 +62,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 )
             }
             .store(in: &cancellables)
+
+        // Observer cho rotation changes - send to connected client immediately
+        settings.$rotation
+            .dropFirst()
+            .sink { [weak self] rotation in
+                guard let self = self, self.settings.isRunning else { return }
+                print("🔄 Rotation changed to \(rotation)°")
+                self.streamingServer?.updateRotation(rotation)
+            }
+            .store(in: &cancellables)
     }
 
     func setupMenuBar() {

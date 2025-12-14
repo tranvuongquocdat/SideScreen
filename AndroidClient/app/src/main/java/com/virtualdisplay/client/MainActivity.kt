@@ -51,6 +51,9 @@ class MainActivity : AppCompatActivity() {
 
         prefs = PreferencesManager(this)
 
+        // Allow rotation based on device sensor when not connected
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+
         // Keep screen on
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -475,6 +478,9 @@ class MainActivity : AppCompatActivity() {
                             // Exit fullscreen mode when disconnected
                             disableFullscreenMode()
 
+                            // Reset to follow device sensor when disconnected
+                            resetOrientationToSensor()
+
                             binding.settingsPanel.visibility = View.VISIBLE
                             binding.settingsButton.visibility = View.GONE
                             binding.statusBar.visibility = View.GONE
@@ -599,6 +605,13 @@ class MainActivity : AppCompatActivity() {
             270 -> "Portrait (flipped)"
             else -> "Landscape"
         }}")
+    }
+
+    /**
+     * Reset orientation to follow device sensor (when disconnected)
+     */
+    private fun resetOrientationToSensor() {
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
     }
 
     private fun log(message: String) {

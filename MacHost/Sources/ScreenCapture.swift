@@ -90,10 +90,10 @@ class ScreenCapture {
     }
 
     func startStreaming(to server: StreamingServer?, bitrateMbps: Int = 20, quality: String = "medium", gamingBoost: Bool = false, frameRate: Int = 60) {
+        // Note: setDisplaySize is called in AppDelegate before this, with rotation
+        // Don't call it here to avoid overriding rotation to 0
         let width = display?.width ?? 1920
         let height = display?.height ?? 1080
-
-        server?.setDisplaySize(width: width, height: height)
 
         encoder = VideoEncoder(width: width, height: height, bitrateMbps: bitrateMbps, quality: quality, gamingBoost: gamingBoost, frameRate: frameRate)
         encoder?.onEncodedFrame = { [weak server] data in

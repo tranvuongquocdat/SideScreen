@@ -79,7 +79,13 @@ class StreamingServer {
         self.rotation = rotation
     }
 
-    private func sendDisplaySize() {
+    /// Update rotation and send to connected client
+    func updateRotation(_ rotation: Int) {
+        self.rotation = rotation
+        sendDisplaySize() // Re-send display config with new rotation
+    }
+
+    func sendDisplaySize() {
         guard let connection = connection else { return }
 
         var data = Data()
