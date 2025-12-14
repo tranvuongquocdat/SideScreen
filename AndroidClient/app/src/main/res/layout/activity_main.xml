@@ -255,6 +255,16 @@
                     android:textSize="15sp" />
             </LinearLayout>
 
+            <!-- USB Setup Helper -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="If connection fails, make sure USB debugging is enabled\nand run: adb reverse tcp:8888 tcp:8888"
+                android:textColor="#888888"
+                android:textSize="11sp"
+                android:lineSpacingExtra="2dp"
+                android:layout_marginTop="16dp" />
+
             <!-- Hidden disconnect button reference (needed by code) -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/disconnectButton"

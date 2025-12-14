@@ -85,10 +85,19 @@ struct SettingsView: View {
                                         .font(.system(size: 11, weight: .medium))
                                 }
 
-                                Slider(value: Binding(
-                                    get: { Double(settings.refreshRate) },
-                                    set: { settings.refreshRate = Int($0) }
-                                ), in: 30...60, step: 10)
+                                Picker("", selection: $settings.refreshRate) {
+                                    Text("30 Hz").tag(30)
+                                    Text("60 Hz (Balanced)").tag(60)
+                                    Text("90 Hz (Smooth)").tag(90)
+                                    Text("120 Hz (Ultra)").tag(120)
+                                }
+                                .pickerStyle(.segmented)
+
+                                if settings.refreshRate >= 90 {
+                                    Text("High refresh rate for competitive gaming")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.green)
+                                }
                             }
 
                             // HiDPI
@@ -154,7 +163,14 @@ struct SettingsView: View {
                                         Image(systemName: "checkmark.circle.fill")
                                             .foregroundColor(.green)
                                             .font(.system(size: 10))
-                                        Text("High bitrate (50 Mbps)")
+                                        Text("High bitrate (1000 Mbps)")
+                                            .font(.system(size: 11))
+                                    }
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(.green)
+                                            .font(.system(size: 10))
+                                        Text("120 Hz refresh rate")
                                             .font(.system(size: 11))
                                     }
                                     HStack(spacing: 4) {
@@ -203,11 +219,15 @@ struct SettingsView: View {
                                 Slider(value: Binding(
                                     get: { Double(settings.bitrate) },
                                     set: { settings.bitrate = Int($0) }
-                                ), in: 5...80, step: 5)
+                                ), in: 20...5000, step: 50)
                                 .disabled(settings.gamingBoost)
 
+                                Text("USB 3.1 Gen 2: up to 5 Gbps (5000 Mbps) bandwidth")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+
                                 if settings.gamingBoost {
-                                    Text("Bitrate locked at 50 Mbps in Gaming Boost mode")
+                                    Text("Bitrate locked at 1000 Mbps in Gaming Boost mode")
                                         .font(.system(size: 10))
                                         .foregroundColor(.orange)
                                 }
@@ -346,7 +366,7 @@ class DisplaySettings: ObservableObject {
     @Published var resolution = "1920x1200"
     @Published var refreshRate = 60
     @Published var hiDPI = false
-    @Published var bitrate = 20
+    @Published var bitrate = 500
     @Published var quality = "medium"
     @Published var gamingBoost = false
     @Published var displayCreated = false
@@ -361,12 +381,17 @@ class DisplaySettings: ObservableObject {
 
     // Computed property for effective bitrate
     var effectiveBitrate: Int {
-        return gamingBoost ? 50 : bitrate
+        return gamingBoost ? 1000 : bitrate
     }
 
     // Computed property for effective quality
     var effectiveQuality: String {
         return gamingBoost ? "low" : quality
+    }
+
+    // Computed property for effective refresh rate
+    var effectiveRefreshRate: Int {
+        return gamingBoost ? 120 : refreshRate
     }
 
     func toggleServer() {
@@ -377,7 +402,7 @@ class DisplaySettings: ObservableObject {
         resolution = "1920x1200"
         refreshRate = 60
         hiDPI = false
-        bitrate = 20
+        bitrate = 500
         quality = "medium"
         gamingBoost = false
         port = 8888
