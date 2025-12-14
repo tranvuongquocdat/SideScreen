@@ -10,13 +10,15 @@ class VideoEncoder {
     private var bitrateMbps: Int = 20
     private var quality: String = "medium"
     private var gamingBoost: Bool = false
+    private var frameRate: Int = 60
 
-    init(width: Int, height: Int, bitrateMbps: Int = 20, quality: String = "medium", gamingBoost: Bool = false) {
+    init(width: Int, height: Int, bitrateMbps: Int = 20, quality: String = "medium", gamingBoost: Bool = false, frameRate: Int = 60) {
         self.width = width
         self.height = height
         self.bitrateMbps = gamingBoost ? 50 : bitrateMbps
         self.quality = gamingBoost ? "low" : quality
         self.gamingBoost = gamingBoost
+        self.frameRate = frameRate
         setupCompressionSession()
     }
 
@@ -64,9 +66,9 @@ class VideoEncoder {
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: bitrateBps as CFNumber)
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_DataRateLimits, value: [bitrateBps, 1] as CFArray)
 
-        // Frame rate settings
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: 60 as CFNumber)
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: 120 as CFNumber)
+        // Frame rate settings - dynamic based on user setting
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: frameRate as CFNumber)
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: (frameRate * 2) as CFNumber)
 
         // Critical for low latency
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse)
@@ -94,7 +96,7 @@ class VideoEncoder {
         VTCompressionSessionPrepareToEncodeFrames(session)
 
         let mode = gamingBoost ? "🎮 GAMING BOOST" : quality.uppercased()
-        print("✅ VideoToolbox encoder configured (H.265, \(bitrateMbps)Mbps, 60fps, \(mode))")
+        print("✅ VideoToolbox encoder configured (H.265, \(bitrateMbps)Mbps, \(frameRate)fps, \(mode))")
     }
 
     func encode(sampleBuffer: CMSampleBuffer) {

@@ -176,13 +176,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             print("📺 Display ID: \(displayID)")
             screenCapture = try await ScreenCapture()
-            try await screenCapture?.setupForVirtualDisplay(displayID)
+            try await screenCapture?.setupForVirtualDisplay(displayID, refreshRate: settings.effectiveRefreshRate)
             print("✅ Screen capture setup complete")
 
             // Setup server
             print("🔨 Setting up streaming server...")
             streamingServer = StreamingServer(port: settings.port)
-            streamingServer?.setDisplaySize(width: size.width, height: size.height)
+            streamingServer?.setDisplaySize(width: size.width, height: size.height, rotation: settings.rotation)
             streamingServer?.onClientConnected = { [weak self] in
                 Task { @MainActor in
                     self?.settings.clientConnected = true
@@ -207,7 +207,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 to: streamingServer,
                 bitrateMbps: settings.effectiveBitrate,
                 quality: settings.effectiveQuality,
-                gamingBoost: settings.gamingBoost
+                gamingBoost: settings.gamingBoost,
+                frameRate: settings.effectiveRefreshRate
             )
 
             await MainActor.run {

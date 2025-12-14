@@ -23,12 +23,32 @@ class VideoDecoder(private val surface: Surface, private val display: Display? =
     private val displayRefreshRate = display?.refreshRate ?: 60f
     private val frameIntervalNs = (1_000_000_000.0 / displayRefreshRate).toLong()
 
+    // Dynamic resolution support
+    private var currentWidth = 1920
+    private var currentHeight = 1200
+
     var onFrameRendered: ((Long) -> Unit)? = null
     var onFrameStats: ((fps: Double, variance: Double) -> Unit)? = null
 
     init {
         setupDecoder()
         pinThreadToPerformanceCores()
+    }
+
+    /**
+     * Update resolution when server sends new display config
+     * Will recreate decoder if resolution changed
+     */
+    fun updateResolution(width: Int, height: Int) {
+        if (width != currentWidth || height != currentHeight) {
+            Log.d(TAG, "📐 Resolution changed: ${currentWidth}x${currentHeight} -> ${width}x${height}")
+            currentWidth = width
+            currentHeight = height
+            // Recreate decoder with new resolution
+            release()
+            setupDecoder()
+            pinThreadToPerformanceCores()
+        }
     }
 
     /**
@@ -61,7 +81,7 @@ class VideoDecoder(private val surface: Surface, private val display: Display? =
         try {
             decoder = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_HEVC)
 
-            val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_HEVC, 1920, 1200)
+            val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_HEVC, currentWidth, currentHeight)
 
             // Critical low-latency settings
             format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
@@ -80,7 +100,7 @@ class VideoDecoder(private val surface: Surface, private val display: Display? =
 
             decoder?.start()
 
-            Log.d(TAG, "✅ MediaCodec decoder started (H.265, ${displayRefreshRate}fps, ultra-low latency)")
+            Log.d(TAG, "✅ MediaCodec decoder started (H.265, ${currentWidth}x${currentHeight}, ${displayRefreshRate}fps)")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Failed to setup decoder", e)
             throw e

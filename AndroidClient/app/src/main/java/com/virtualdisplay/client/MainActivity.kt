@@ -3,6 +3,7 @@ package com.virtualdisplay.client
 import android.annotation.SuppressLint
 import android.app.Dialog
 import android.content.Context
+import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
@@ -29,6 +30,7 @@ class MainActivity : AppCompatActivity() {
     private var streamClient: StreamClient? = null
     private var displayWidth = 1920
     private var displayHeight = 1080
+    private var displayRotation = 0  // 0, 90, 180, 270 degrees
     private var wakeLock: PowerManager.WakeLock? = null
 
     // For dragging stats overlay
@@ -480,13 +482,20 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                streamClient?.onDisplaySize = { width, height ->
+                streamClient?.onDisplaySize = { width, height, rotation ->
                     displayWidth = width
                     displayHeight = height
+                    displayRotation = rotation
+
+                    // Update decoder resolution
+                    videoDecoder?.updateResolution(width, height)
+
                     runOnUiThread {
                         binding.resolutionText.text = "${width}x${height}"
+                        // Apply rotation to SurfaceView
+                        applyRotation(rotation)
                     }
-                    log("Display: ${width}x${height}")
+                    log("Display: ${width}x${height} @ ${rotation}°")
                 }
 
                 streamClient?.onStats = { fps, mbps ->
@@ -532,6 +541,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleTouch(view: View, event: MotionEvent) {
+        // Since we use requestedOrientation, touch coordinates are already in the correct space
+        // No need to transform - Android handles this automatically
         val x = event.x / view.width.toFloat()
         val y = event.y / view.height.toFloat()
 
@@ -561,6 +572,33 @@ class MainActivity : AppCompatActivity() {
 
         // Send predicted position to reduce perceived input latency
         streamClient?.sendTouch(predictedX, predictedY, action)
+    }
+
+    /**
+     * Apply rotation by changing the Activity's screen orientation
+     * This provides proper fullscreen portrait/landscape support
+     */
+    private fun applyRotation(rotation: Int) {
+        requestedOrientation = when (rotation) {
+            90 -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            180 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+            270 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+            else -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE // 0°
+        }
+
+        // Reset SurfaceView transform (orientation change handles rotation)
+        binding.surfaceView.apply {
+            this.rotation = 0f
+            scaleX = 1f
+            scaleY = 1f
+        }
+
+        log("🔄 Orientation: ${when(rotation) {
+            90 -> "Portrait"
+            180 -> "Landscape (flipped)"
+            270 -> "Portrait (flipped)"
+            else -> "Landscape"
+        }}")
     }
 
     private fun log(message: String) {

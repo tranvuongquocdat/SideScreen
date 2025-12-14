@@ -15,6 +15,7 @@ class StreamingServer {
     private var lastStatsTime = Date()
     private var displayWidth: Int = 1920
     private var displayHeight: Int = 1080
+    private var rotation: Int = 0
 
     init(port: UInt16) {
         self.port = port
@@ -72,20 +73,23 @@ class StreamingServer {
         connection?.start(queue: .main)
     }
 
-    func setDisplaySize(width: Int, height: Int) {
+    func setDisplaySize(width: Int, height: Int, rotation: Int = 0) {
         displayWidth = width
         displayHeight = height
+        self.rotation = rotation
     }
 
     private func sendDisplaySize() {
         guard let connection = connection else { return }
 
         var data = Data()
-        data.append(1) // Type: Display size
+        data.append(1) // Type: Display size + rotation
         data.append(contentsOf: withUnsafeBytes(of: Int32(displayWidth).bigEndian) { Data($0) })
         data.append(contentsOf: withUnsafeBytes(of: Int32(displayHeight).bigEndian) { Data($0) })
+        data.append(contentsOf: withUnsafeBytes(of: Int32(rotation).bigEndian) { Data($0) })
 
         connection.send(content: data, completion: .contentProcessed { _ in })
+        print("📐 Sent display config: \(displayWidth)x\(displayHeight) @ \(rotation)°")
     }
 
     private func startReceivingTouch() {

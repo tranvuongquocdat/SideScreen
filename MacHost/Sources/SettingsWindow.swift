@@ -58,20 +58,123 @@ struct SettingsView: View {
                             Text("Display Configuration")
                                 .font(.system(size: 13, weight: .semibold))
 
-                            // Resolution
+                            // Resolution (macOS-style scrollable list)
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("Resolution")
+                                HStack {
+                                    Text("Resolution")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    Toggle("Show all", isOn: $settings.showAllResolutions)
+                                        .toggleStyle(.switch)
+                                        .controlSize(.mini)
+                                }
+
+                                // Scrollable resolution list like macOS Display Settings
+                                ScrollView {
+                                    VStack(spacing: 0) {
+                                        let resolutions = settings.showAllResolutions
+                                            ? DisplaySettings.allResolutions
+                                            : DisplaySettings.commonResolutions
+
+                                        ForEach(resolutions, id: \.self) { res in
+                                            Button(action: { settings.resolution = res }) {
+                                                HStack {
+                                                    Text(res.replacingOccurrences(of: "x", with: " × "))
+                                                        .font(.system(size: 12))
+                                                    Spacer()
+                                                }
+                                                .padding(.horizontal, 12)
+                                                .padding(.vertical, 6)
+                                                .background(settings.resolution == res ? Color.accentColor : Color.clear)
+                                                .foregroundColor(settings.resolution == res ? .white : .primary)
+                                            }
+                                            .buttonStyle(.plain)
+
+                                            if res != resolutions.last {
+                                                Divider().padding(.leading, 12)
+                                            }
+                                        }
+                                    }
+                                }
+                                .frame(height: 150)
+                                .background(Color(NSColor.controlBackgroundColor))
+                                .cornerRadius(6)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color(NSColor.separatorColor), lineWidth: 1)
+                                )
+
+                                // Custom resolution input
+                                if settings.showAllResolutions {
+                                    HStack(spacing: 8) {
+                                        TextField("W", value: $settings.customWidth, format: .number)
+                                            .textFieldStyle(.roundedBorder)
+                                            .frame(width: 60)
+                                        Text("×")
+                                            .foregroundColor(.secondary)
+                                        TextField("H", value: $settings.customHeight, format: .number)
+                                            .textFieldStyle(.roundedBorder)
+                                            .frame(width: 60)
+                                        Button("Apply") {
+                                            settings.applyCustomResolution()
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                    }
+                                }
+                            }
+
+                            // Rotation (visual 4-corner selector)
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Rotation")
                                     .font(.system(size: 11))
                                     .foregroundColor(.secondary)
 
-                                Picker("", selection: $settings.resolution) {
-                                    Text("1600 × 1000").tag("1600x1000")
-                                    Text("1920 × 1080").tag("1920x1080")
-                                    Text("1920 × 1200").tag("1920x1200")
-                                    Text("2560 × 1440").tag("2560x1440")
-                                    Text("2560 × 1600").tag("2560x1600")
+                                HStack(spacing: 12) {
+                                    // Visual display preview with rotation buttons
+                                    ZStack {
+                                        // Display frame
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .stroke(Color.secondary, lineWidth: 1)
+                                            .frame(width: 80, height: 50)
+                                            .rotationEffect(.degrees(Double(settings.rotation)))
+
+                                        // Rotation indicator
+                                        Text(settings.rotation == 90 || settings.rotation == 270 ? "Portrait" : "Landscape")
+                                            .font(.system(size: 8))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .frame(width: 100, height: 80)
+
+                                    // Rotation buttons grid
+                                    VStack(spacing: 6) {
+                                        HStack(spacing: 6) {
+                                            RotationButton(degrees: 270, label: "↺ 270°", isSelected: settings.rotation == 270) {
+                                                settings.rotation = 270
+                                            }
+                                            RotationButton(degrees: 0, label: "0°", isSelected: settings.rotation == 0) {
+                                                settings.rotation = 0
+                                            }
+                                            RotationButton(degrees: 90, label: "90° ↻", isSelected: settings.rotation == 90) {
+                                                settings.rotation = 90
+                                            }
+                                        }
+                                        HStack(spacing: 6) {
+                                            Spacer()
+                                            RotationButton(degrees: 180, label: "180°", isSelected: settings.rotation == 180) {
+                                                settings.rotation = 180
+                                            }
+                                            Spacer()
+                                        }
+                                    }
                                 }
-                                .pickerStyle(.segmented)
+
+                                if settings.rotation == 90 || settings.rotation == 270 {
+                                    Text("Display will be in portrait mode")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.blue)
+                                }
                             }
 
                             // Refresh Rate
@@ -340,7 +443,7 @@ struct SettingsView: View {
             }
             .padding(20)
         }
-        .frame(width: 500, height: 700)
+        .frame(width: 500, height: 820)
     }
 }
 
@@ -362,6 +465,38 @@ struct StatusRow: View {
 }
 
 @available(macOS 14.0, *)
+struct RotationButton: View {
+    let degrees: Int
+    let label: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 2) {
+                // Mini display icon
+                RoundedRectangle(cornerRadius: 2)
+                    .stroke(isSelected ? Color.accentColor : Color.secondary, lineWidth: 1)
+                    .frame(width: degrees == 90 || degrees == 270 ? 16 : 24, height: degrees == 90 || degrees == 270 ? 24 : 16)
+
+                Text(label)
+                    .font(.system(size: 9))
+                    .foregroundColor(isSelected ? .accentColor : .secondary)
+            }
+            .frame(width: 60, height: 45)
+            .contentShape(Rectangle()) // Makes entire area clickable
+            .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
+            .cornerRadius(6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.borderless) // Better than .plain for macOS
+    }
+}
+
+@available(macOS 14.0, *)
 class DisplaySettings: ObservableObject {
     @Published var resolution = "1920x1200"
     @Published var refreshRate = 60
@@ -376,8 +511,32 @@ class DisplaySettings: ObservableObject {
     @Published var currentFPS: Double = 0
     @Published var currentBitrate: Double = 0
     @Published var port: UInt16 = 8888
+    @Published var rotation = 0  // 0, 90, 180, 270 degrees
+    @Published var showAllResolutions = false
+    @Published var customWidth = 1920
+    @Published var customHeight = 1200
 
     var onToggleServer: (() -> Void)?
+
+    // Common resolutions (default view)
+    static let commonResolutions = [
+        "1600x1000", "1920x1080", "1920x1200",
+        "2560x1440", "2560x1600"
+    ]
+
+    // Extended resolution list (like macOS Display Settings)
+    static let allResolutions = [
+        // 16:10 ratios
+        "1280x800", "1440x900", "1680x1050", "1920x1200", "2560x1600",
+        // 16:9 ratios
+        "1280x720", "1366x768", "1600x900", "1920x1080", "2560x1440", "3840x2160",
+        // 4:3 ratios
+        "1024x768", "1280x960", "1600x1200",
+        // 3:2 ratios (Surface, Pixel tablets)
+        "1920x1280", "2160x1440", "2736x1824",
+        // Common tablet ratios
+        "2000x1200", "2224x1668", "2388x1668", "2732x2048", "2800x1752"
+    ]
 
     // Computed property for effective bitrate
     var effectiveBitrate: Int {
@@ -406,11 +565,27 @@ class DisplaySettings: ObservableObject {
         quality = "medium"
         gamingBoost = false
         port = 8888
+        rotation = 0
+        showAllResolutions = false
+        customWidth = 1920
+        customHeight = 1200
     }
 
     var resolutionSize: (width: Int, height: Int) {
         let parts = resolution.split(separator: "x")
-        return (Int(parts[0]) ?? 1920, Int(parts[1]) ?? 1200)
+        let baseWidth = Int(parts[0]) ?? 1920
+        let baseHeight = Int(parts[1]) ?? 1200
+        // Swap dimensions for portrait orientations (90° or 270°)
+        if rotation == 90 || rotation == 270 {
+            return (baseHeight, baseWidth)
+        }
+        return (baseWidth, baseHeight)
+    }
+
+    func applyCustomResolution() {
+        if customWidth >= 640 && customWidth <= 7680 && customHeight >= 480 && customHeight <= 4320 {
+            resolution = "\(customWidth)x\(customHeight)"
+        }
     }
 }
 
@@ -418,7 +593,7 @@ class DisplaySettings: ObservableObject {
 class SettingsWindowController: NSWindowController, NSWindowDelegate {
     convenience init(settings: DisplaySettings) {
         let window = ConstrainedWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 500, height: 700),
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 820),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false

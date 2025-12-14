@@ -10,6 +10,7 @@ class ScreenCapture {
     private var encoder: VideoEncoder?
     private var display: SCDisplay?
     private var virtualDisplayID: CGDirectDisplayID?
+    private var refreshRate: Int = 60
 
     var displayWidth: Int { display?.width ?? 1920 }
     var displayHeight: Int { display?.height ?? 1080 }
@@ -19,9 +20,12 @@ class ScreenCapture {
     }
 
     /// Setup screen capture for a specific virtual display
-    /// - Parameter displayID: The CGDirectDisplayID of the virtual display to capture
-    func setupForVirtualDisplay(_ displayID: CGDirectDisplayID) async throws {
+    /// - Parameters:
+    ///   - displayID: The CGDirectDisplayID of the virtual display to capture
+    ///   - refreshRate: The refresh rate in Hz (30, 60, 90, 120)
+    func setupForVirtualDisplay(_ displayID: CGDirectDisplayID, refreshRate: Int = 60) async throws {
         self.virtualDisplayID = displayID
+        self.refreshRate = refreshRate
         try await setupDisplay()
         try await setupStream()
     }
@@ -55,8 +59,8 @@ class ScreenCapture {
         config.width = display.width
         config.height = display.height
 
-        // Set to exactly 60fps (1/60 = 16.67ms per frame)
-        config.minimumFrameInterval = CMTime(value: 1, timescale: 60)
+        // Set frame interval based on refresh rate setting
+        config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(refreshRate))
 
         // Pixel format optimized for H.265 encoding
         config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
@@ -82,16 +86,16 @@ class ScreenCapture {
         // Use high priority queue for minimal latency
         try stream?.addStreamOutput(streamOutput!, type: .screen, sampleHandlerQueue: .global(qos: .userInteractive))
 
-        print("✅ Stream configured: \(config.width)x\(config.height) @ 60fps (low-latency mode)")
+        print("✅ Stream configured: \(config.width)x\(config.height) @ \(refreshRate)fps (low-latency mode)")
     }
 
-    func startStreaming(to server: StreamingServer?, bitrateMbps: Int = 20, quality: String = "medium", gamingBoost: Bool = false) {
+    func startStreaming(to server: StreamingServer?, bitrateMbps: Int = 20, quality: String = "medium", gamingBoost: Bool = false, frameRate: Int = 60) {
         let width = display?.width ?? 1920
         let height = display?.height ?? 1080
 
         server?.setDisplaySize(width: width, height: height)
 
-        encoder = VideoEncoder(width: width, height: height, bitrateMbps: bitrateMbps, quality: quality, gamingBoost: gamingBoost)
+        encoder = VideoEncoder(width: width, height: height, bitrateMbps: bitrateMbps, quality: quality, gamingBoost: gamingBoost, frameRate: frameRate)
         encoder?.onEncodedFrame = { [weak server] data in
             server?.sendFrame(data)
         }

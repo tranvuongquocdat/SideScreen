@@ -25,7 +25,7 @@ class StreamClient(
 
     var onFrameReceived: ((ByteArray) -> Unit)? = null
     var onConnectionStatus: ((Boolean) -> Unit)? = null
-    var onDisplaySize: ((Int, Int) -> Unit)? = null
+    var onDisplaySize: ((Int, Int, Int) -> Unit)? = null  // width, height, rotation
     var onStats: ((Double, Double) -> Unit)? = null
 
     private var bytesReceived = 0L
@@ -84,11 +84,12 @@ class StreamClient(
                         onFrameReceived?.invoke(frameData)
                         updateStats(frameSize)
                     }
-                    1 -> { // Display size
+                    1 -> { // Display size + rotation
                         val width = input.readInt()
                         val height = input.readInt()
-                        onDisplaySize?.invoke(width, height)
-                        Log.d(TAG, "Display size: ${width}x${height}")
+                        val rotation = input.readInt()
+                        onDisplaySize?.invoke(width, height, rotation)
+                        Log.d(TAG, "Display config: ${width}x${height} @ ${rotation}°")
                     }
                 }
             }
