@@ -158,7 +158,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Virtual Display"
+                android:text="Side Screen"
                 android:textColor="#FFFFFF"
                 android:textSize="32sp"
                 android:textStyle="bold"
@@ -169,81 +169,81 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Connect to your Mac"
+                android:text="Your second display for macOS"
                 android:textColor="#999999"
                 android:textSize="15sp"
                 android:gravity="center"
                 android:layout_marginBottom="40dp" />
 
-            <!-- Connection Form -->
-            <com.google.android.material.textfield.TextInputLayout
+            <!-- Simple Instructions -->
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-                app:boxStrokeColor="#FFFFFF"
-                app:hintTextColor="#AAAAAA"
-                android:layout_marginBottom="16dp">
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/hostInput"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:hint="Host Address (use 127.0.0.1 for USB)"
-                    android:text="127.0.0.1"
-                    android:textColor="#FFFFFF"
-                    android:textColorHint="#888888"
-                    android:inputType="text" />
-            </com.google.android.material.textfield.TextInputLayout>
+                android:orientation="vertical"
+                android:padding="16dp"
+                android:background="@drawable/instruction_bg"
+                android:layout_marginBottom="24dp">
 
-            <com.google.android.material.textfield.TextInputLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-                app:boxStrokeColor="#FFFFFF"
-                app:hintTextColor="#AAAAAA"
-                android:layout_marginBottom="32dp">
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/portInput"
+                <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:hint="Port"
-                    android:text="8888"
+                    android:text="How to connect"
                     android:textColor="#FFFFFF"
-                    android:textColorHint="#888888"
-                    android:inputType="number" />
-            </com.google.android.material.textfield.TextInputLayout>
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="12dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="1. Connect tablet to Mac via USB cable"
+                    android:textColor="#BBBBBB"
+                    android:textSize="13sp"
+                    android:layout_marginBottom="6dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="2. Start Side Screen on Mac and click Start"
+                    android:textColor="#BBBBBB"
+                    android:textSize="13sp"
+                    android:layout_marginBottom="6dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="3. Tap Connect below"
+                    android:textColor="#BBBBBB"
+                    android:textSize="13sp" />
+
+            </LinearLayout>
 
             <!-- Connect Button -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/connectButton"
                 android:layout_width="match_parent"
                 android:layout_height="64dp"
-                android:text="CONNECT"
+                android:text="Connect"
                 android:textSize="18sp"
                 android:textStyle="bold"
-                android:letterSpacing="0.1"
                 app:cornerRadius="20dp"
-                app:backgroundTint="#4CAF50"
-                android:layout_marginBottom="24dp" />
-
-            <!-- Status Section -->
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="#33FFFFFF"
+                app:backgroundTint="#007AFF"
                 android:layout_marginBottom="20dp" />
 
+            <!-- Status Section -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:gravity="center_vertical">
+                android:gravity="center_vertical"
+                android:layout_marginBottom="16dp">
 
                 <View
                     android:id="@+id/statusIndicator"
-                    android:layout_width="12dp"
-                    android:layout_height="12dp"
+                    android:layout_width="10dp"
+                    android:layout_height="10dp"
                     android:background="@drawable/status_indicator"
-                    android:layout_marginEnd="12dp" />
+                    android:layout_marginEnd="10dp" />
 
                 <TextView
                     android:id="@+id/statusText"
@@ -251,19 +251,65 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="Ready to connect"
-                    android:textColor="#FFFFFF"
-                    android:textSize="15sp" />
+                    android:textColor="#AAAAAA"
+                    android:textSize="14sp" />
             </LinearLayout>
 
-            <!-- USB Setup Helper -->
-            <TextView
+            <!-- Advanced Settings (collapsed by default) -->
+            <LinearLayout
+                android:id="@+id/advancedSettings"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="If connection fails, make sure USB debugging is enabled\nand run: adb reverse tcp:8888 tcp:8888"
-                android:textColor="#888888"
-                android:textSize="11sp"
-                android:lineSpacingExtra="2dp"
-                android:layout_marginTop="16dp" />
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                    app:boxStrokeColor="#FFFFFF"
+                    app:hintTextColor="#AAAAAA"
+                    android:layout_marginBottom="12dp">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/hostInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="Host"
+                        android:text="127.0.0.1"
+                        android:textColor="#FFFFFF"
+                        android:textColorHint="#888888"
+                        android:inputType="text" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                    app:boxStrokeColor="#FFFFFF"
+                    app:hintTextColor="#AAAAAA">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/portInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="Port"
+                        android:text="8888"
+                        android:textColor="#FFFFFF"
+                        android:textColorHint="#888888"
+                        android:inputType="number" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+            </LinearLayout>
+
+            <!-- Show Advanced link -->
+            <TextView
+                android:id="@+id/showAdvanced"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Advanced Settings"
+                android:textColor="#007AFF"
+                android:textSize="13sp"
+                android:gravity="center"
+                android:padding="8dp" />
 
             <!-- Hidden disconnect button reference (needed by code) -->
             <com.google.android.material.button.MaterialButton

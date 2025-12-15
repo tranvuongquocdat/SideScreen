@@ -27,14 +27,14 @@ echo "  ✓ macOS app built"
 
 # Create macOS .app bundle
 echo "📦 Creating macOS .app bundle..."
-APP_NAME="VirtualDisplay.app"
+APP_NAME="SideScreen.app"
 APP_DIR="$APP_NAME/Contents"
 rm -rf "$APP_NAME"
 mkdir -p "$APP_DIR/MacOS"
 mkdir -p "$APP_DIR/Resources"
 
 # Copy executable
-cp MacHost/.build/release/VirtualDisplayHost "$APP_DIR/MacOS/VirtualDisplay"
+cp MacHost/.build/release/VirtualDisplayHost "$APP_DIR/MacOS/SideScreen"
 
 # Create Info.plist
 cat > "$APP_DIR/Info.plist" << 'PLIST'
@@ -43,17 +43,17 @@ cat > "$APP_DIR/Info.plist" << 'PLIST'
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>Virtual Display</string>
+    <string>Side Screen</string>
     <key>CFBundleDisplayName</key>
-    <string>Virtual Display</string>
+    <string>Side Screen</string>
     <key>CFBundleIdentifier</key>
-    <string>com.virtualdisplay.host</string>
+    <string>com.sidescreen.host</string>
     <key>CFBundleVersion</key>
     <string>1.0</string>
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
     <key>CFBundleExecutable</key>
-    <string>VirtualDisplay</string>
+    <string>SideScreen</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>
@@ -103,10 +103,10 @@ echo "✅ Installation complete!"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "To start streaming:"
-echo "  1. Start Mac app: open VirtualDisplay.app"
+echo "  1. Start Mac app: open SideScreen.app"
 echo "     (or run: MacHost/.build/release/VirtualDisplayHost)"
-echo "  2. Open 'Virtual Display' app on Android"
-echo "  3. Tap CONNECT button"
+echo "  2. Open 'Side Screen' app on Android"
+echo "  3. Tap Connect"
 echo ""
 echo "💡 Troubleshooting:"
 echo "  • Connection fails: ./scripts/setup-usb.sh"

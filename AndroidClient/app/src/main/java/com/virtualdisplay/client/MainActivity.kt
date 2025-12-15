@@ -84,7 +84,7 @@ class MainActivity : AppCompatActivity() {
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = powerManager.newWakeLock(
                 PowerManager.PARTIAL_WAKE_LOCK,
-                "VirtualDisplay::PerformanceMode"
+                "SideScreen::PerformanceMode"
             )
             wakeLock?.acquire()
 
@@ -156,12 +156,20 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            updateStatus("Connecting to $host:$port...")
+            updateStatus("Connecting...")
             connect(host, port)
         }
 
         binding.disconnectButton.setOnClickListener {
             disconnect()
+        }
+
+        // Advanced settings toggle
+        var advancedVisible = false
+        binding.showAdvanced.setOnClickListener {
+            advancedVisible = !advancedVisible
+            binding.advancedSettings.visibility = if (advancedVisible) View.VISIBLE else View.GONE
+            binding.showAdvanced.text = if (advancedVisible) "Hide Advanced Settings" else "Advanced Settings"
         }
 
         // Initial status

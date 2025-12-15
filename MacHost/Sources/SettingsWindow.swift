@@ -10,16 +10,26 @@ struct SettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Header
-            HStack {
-                Image(systemName: "display.2")
-                    .font(.system(size: 32))
-                    .foregroundColor(.blue)
+            HStack(spacing: 14) {
+                // App icon
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(LinearGradient(
+                            colors: [Color.blue, Color.blue.opacity(0.7)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "rectangle.on.rectangle")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(.white)
+                }
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Virtual Display")
-                        .font(.system(size: 24, weight: .semibold))
-                    Text("Configure your second screen")
-                        .font(.system(size: 13))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Side Screen")
+                        .font(.system(size: 20, weight: .semibold))
+                    Text("Your second display for macOS")
+                        .font(.system(size: 12))
                         .foregroundColor(.secondary)
                 }
 
@@ -30,23 +40,25 @@ struct SettingsView: View {
                     showResetConfirmation = true
                 }) {
                     Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 14))
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
                 }
                 .buttonStyle(.borderless)
-                .help("Reset window position and settings")
+                .help("Reset settings")
                 .alert("Reset Settings", isPresented: $showResetConfirmation) {
                     Button("Cancel", role: .cancel) { }
                     Button("Reset", role: .destructive) {
                         settings.resetToDefaults()
-                        if let window = NSApp.windows.first(where: { $0.title == "Virtual Display Settings" }) {
+                        if let window = NSApp.windows.first(where: { $0.title == "Side Screen" }) {
                             window.center()
                         }
                     }
                 } message: {
-                    Text("This will reset all settings to default values and center the window.")
+                    Text("This will reset all settings to default values.")
                 }
             }
-            .padding(20)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
 
             Divider()
 
@@ -58,7 +70,7 @@ struct SettingsView: View {
                             Text("Display Configuration")
                                 .font(.system(size: 13, weight: .semibold))
 
-                            // Resolution (macOS-style scrollable list)
+                            // Resolution (grouped by aspect ratio)
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
                                     Text("Resolution")
@@ -70,38 +82,47 @@ struct SettingsView: View {
                                         .controlSize(.mini)
                                 }
 
-                                // Scrollable resolution list like macOS Display Settings
+                                // Grouped resolution list
                                 ScrollView {
-                                    VStack(spacing: 0) {
-                                        let resolutions = settings.showAllResolutions
-                                            ? DisplaySettings.allResolutions
-                                            : DisplaySettings.commonResolutions
-
-                                        ForEach(resolutions, id: \.self) { res in
-                                            Button(action: { settings.resolution = res }) {
-                                                HStack {
-                                                    Text(res.replacingOccurrences(of: "x", with: " × "))
-                                                        .font(.system(size: 12))
-                                                    Spacer()
+                                    VStack(alignment: .leading, spacing: 0) {
+                                        if settings.showAllResolutions {
+                                            // Show grouped by aspect ratio
+                                            ForEach(DisplaySettings.resolutionGroups) { group in
+                                                // Group header
+                                                HStack(spacing: 6) {
+                                                    Text(group.name)
+                                                        .font(.system(size: 11, weight: .semibold))
+                                                    Text(group.ratio)
+                                                        .font(.system(size: 10))
+                                                        .foregroundColor(.secondary)
                                                 }
                                                 .padding(.horizontal, 12)
                                                 .padding(.vertical, 6)
-                                                .background(settings.resolution == res ? Color.accentColor : Color.clear)
-                                                .foregroundColor(settings.resolution == res ? .white : .primary)
-                                            }
-                                            .buttonStyle(.plain)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                .background(Color(NSColor.windowBackgroundColor))
 
-                                            if res != resolutions.last {
-                                                Divider().padding(.leading, 12)
+                                                // Resolutions in group
+                                                ForEach(group.resolutions, id: \.self) { res in
+                                                    ResolutionRow(resolution: res, isSelected: settings.resolution == res) {
+                                                        settings.resolution = res
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            // Show common resolutions only
+                                            ForEach(DisplaySettings.commonResolutions, id: \.self) { res in
+                                                ResolutionRow(resolution: res, isSelected: settings.resolution == res) {
+                                                    settings.resolution = res
+                                                }
                                             }
                                         }
                                     }
                                 }
-                                .frame(height: 150)
+                                .frame(height: 180)
                                 .background(Color(NSColor.controlBackgroundColor))
-                                .cornerRadius(6)
+                                .cornerRadius(8)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 6)
+                                    RoundedRectangle(cornerRadius: 8)
                                         .stroke(Color(NSColor.separatorColor), lineWidth: 1)
                                 )
 
@@ -110,12 +131,12 @@ struct SettingsView: View {
                                     HStack(spacing: 8) {
                                         TextField("W", value: $settings.customWidth, format: .number)
                                             .textFieldStyle(.roundedBorder)
-                                            .frame(width: 60)
+                                            .frame(width: 70)
                                         Text("×")
                                             .foregroundColor(.secondary)
                                         TextField("H", value: $settings.customHeight, format: .number)
                                             .textFieldStyle(.roundedBorder)
-                                            .frame(width: 60)
+                                            .frame(width: 70)
                                         Button("Apply") {
                                             settings.applyCustomResolution()
                                         }
@@ -309,30 +330,59 @@ struct SettingsView: View {
                                 .font(.system(size: 13, weight: .semibold))
 
                             // Bitrate
-                            VStack(alignment: .leading, spacing: 8) {
+                            VStack(alignment: .leading, spacing: 10) {
                                 HStack {
                                     Text("Bitrate")
                                         .font(.system(size: 11))
                                         .foregroundColor(.secondary)
                                     Spacer()
                                     Text("\(settings.effectiveBitrate) Mbps")
-                                        .font(.system(size: 11, weight: .medium))
+                                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                        .foregroundColor(.accentColor)
                                 }
 
-                                Slider(value: Binding(
-                                    get: { Double(settings.bitrate) },
-                                    set: { settings.bitrate = Int($0) }
-                                ), in: 20...5000, step: 50)
-                                .disabled(settings.gamingBoost)
+                                // Bitrate preset buttons
+                                HStack(spacing: 6) {
+                                    BitrateButton(label: "100", value: 100, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
+                                        settings.bitrate = 100
+                                    }
+                                    BitrateButton(label: "300", value: 300, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
+                                        settings.bitrate = 300
+                                    }
+                                    BitrateButton(label: "500", value: 500, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
+                                        settings.bitrate = 500
+                                    }
+                                    BitrateButton(label: "1000", value: 1000, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
+                                        settings.bitrate = 1000
+                                    }
+                                    BitrateButton(label: "2000", value: 2000, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
+                                        settings.bitrate = 2000
+                                    }
+                                }
 
-                                Text("USB 3.1 Gen 2: up to 5 Gbps (5000 Mbps) bandwidth")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.secondary)
+                                // Fine-tune slider
+                                HStack(spacing: 8) {
+                                    Text("20")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(.secondary)
+                                    Slider(value: Binding(
+                                        get: { Double(settings.bitrate) },
+                                        set: { settings.bitrate = Int($0) }
+                                    ), in: 20...5000, step: 10)
+                                    .disabled(settings.gamingBoost)
+                                    Text("5000")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(.secondary)
+                                }
 
                                 if settings.gamingBoost {
-                                    Text("Bitrate locked at 1000 Mbps in Gaming Boost mode")
-                                        .font(.system(size: 10))
-                                        .foregroundColor(.orange)
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "bolt.fill")
+                                            .font(.system(size: 10))
+                                        Text("Locked at 1000 Mbps in Gaming Boost")
+                                            .font(.system(size: 10))
+                                    }
+                                    .foregroundColor(.orange)
                                 }
                             }
 
@@ -403,37 +453,45 @@ struct SettingsView: View {
 
                             // Accessibility permission warning
                             if !settings.hasAccessibilityPermission {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    HStack(spacing: 6) {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    HStack(spacing: 8) {
                                         Image(systemName: "hand.tap.fill")
                                             .foregroundColor(.blue)
-                                            .font(.system(size: 14))
-                                        Text("Accessibility permission required")
-                                            .font(.system(size: 12, weight: .medium))
-                                            .foregroundColor(.blue)
+                                            .font(.system(size: 18))
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Enable Touch Control")
+                                                .font(.system(size: 13, weight: .semibold))
+                                            Text("Control your Mac from your tablet")
+                                                .font(.system(size: 11))
+                                                .foregroundColor(.secondary)
+                                        }
                                     }
-                                    Text("Required for touch control from your tablet. Without this, you can only view but not interact.")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
+
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        Label("Open System Settings → Privacy & Security", systemImage: "1.circle.fill")
+                                            .font(.system(size: 11))
+                                        Label("Select Accessibility in the left sidebar", systemImage: "2.circle.fill")
+                                            .font(.system(size: 11))
+                                        Label("Turn on Side Screen", systemImage: "3.circle.fill")
+                                            .font(.system(size: 11))
+                                    }
+                                    .foregroundColor(.secondary)
+
                                     Button(action: {
                                         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
                                     }) {
                                         HStack {
                                             Image(systemName: "gear")
-                                            Text("Open System Settings")
+                                            Text("Open Settings")
                                         }
+                                        .frame(maxWidth: .infinity)
                                     }
                                     .buttonStyle(.borderedProminent)
-                                    .controlSize(.small)
-
-                                    Text("After granting permission, the status will update automatically.")
-                                        .font(.system(size: 10))
-                                        .foregroundColor(.secondary)
-                                        .italic()
+                                    .controlSize(.regular)
                                 }
-                                .padding(10)
-                                .background(Color.blue.opacity(0.1))
-                                .cornerRadius(8)
+                                .padding(12)
+                                .background(Color.blue.opacity(0.08))
+                                .cornerRadius(10)
                             }
 
                         }
@@ -479,30 +537,42 @@ struct SettingsView: View {
             Divider()
 
             // Footer
-            HStack {
-                Button(settings.isRunning ? "Stop Server" : "Start Server") {
-                    settings.toggleServer()
+            HStack(spacing: 12) {
+                Button(action: { settings.toggleServer() }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: settings.isRunning ? "stop.fill" : "play.fill")
+                            .font(.system(size: 12))
+                        Text(settings.isRunning ? "Stop" : "Start")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .frame(width: 90)
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(settings.isRunning ? .red : .accentColor)
                 .controlSize(.large)
                 .disabled(!settings.hasScreenRecordingPermission)
 
-                Spacer()
-
                 if settings.isRunning {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 6) {
                         Circle()
                             .fill(Color.green)
                             .frame(width: 8, height: 8)
                         Text("Running on port \(settings.port)")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
+                            .font(.system(size: 12))
+                            .foregroundColor(.primary)
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.green.opacity(0.1))
+                    .cornerRadius(8)
                 }
+
+                Spacer()
             }
-            .padding(20)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
         }
-        .frame(width: 500, height: 820)
+        .frame(width: 480, height: 780)
     }
 }
 
@@ -520,6 +590,61 @@ struct StatusRow: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(color)
         }
+    }
+}
+
+struct ResolutionRow: View {
+    let resolution: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Text(resolution.replacingOccurrences(of: "x", with: " × "))
+                    .font(.system(size: 12))
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .background(isSelected ? Color.accentColor : Color.clear)
+            .foregroundColor(isSelected ? .white : .primary)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct BitrateButton: View {
+    let label: String
+    let value: Int
+    let currentValue: Int
+    let disabled: Bool
+    let action: () -> Void
+
+    var isSelected: Bool { currentValue == value }
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .background(isSelected ? Color.accentColor : Color(NSColor.controlBackgroundColor))
+                .foregroundColor(isSelected ? .white : (disabled ? .secondary : .primary))
+                .cornerRadius(6)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(isSelected ? Color.clear : Color(NSColor.separatorColor), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .opacity(disabled ? 0.5 : 1)
     }
 }
 
@@ -626,25 +751,44 @@ class DisplaySettings: ObservableObject {
         defaults.set(value, forKey: keyPrefix + key)
     }
 
-    // Common resolutions (default view)
-    static let commonResolutions = [
-        "1600x1000", "1920x1080", "1920x1200",
-        "2560x1440", "2560x1600"
+    // Resolution groups by aspect ratio
+    struct ResolutionGroup: Identifiable {
+        let id = UUID()
+        let name: String
+        let ratio: String
+        let resolutions: [String]
+    }
+
+    static let resolutionGroups: [ResolutionGroup] = [
+        ResolutionGroup(name: "16:10", ratio: "Widescreen", resolutions: [
+            "1280x800", "1440x900", "1680x1050", "1920x1200", "2560x1600"
+        ]),
+        ResolutionGroup(name: "16:9", ratio: "HD/4K", resolutions: [
+            "1280x720", "1366x768", "1600x900", "1920x1080", "2560x1440", "3840x2160"
+        ]),
+        ResolutionGroup(name: "4:3", ratio: "Classic", resolutions: [
+            "1024x768", "1280x960", "1600x1200"
+        ]),
+        ResolutionGroup(name: "3:2", ratio: "Surface/Pixel", resolutions: [
+            "1920x1280", "2160x1440", "2736x1824"
+        ]),
+        ResolutionGroup(name: "5:3", ratio: "Tablet Wide", resolutions: [
+            "2000x1200", "2560x1536", "2800x1680"
+        ]),
+        ResolutionGroup(name: "4:3", ratio: "iPad", resolutions: [
+            "2048x1536", "2224x1668", "2388x1668", "2732x2048"
+        ])
     ]
 
-    // Extended resolution list (like macOS Display Settings)
-    static let allResolutions = [
-        // 16:10 ratios
-        "1280x800", "1440x900", "1680x1050", "1920x1200", "2560x1600",
-        // 16:9 ratios
-        "1280x720", "1366x768", "1600x900", "1920x1080", "2560x1440", "3840x2160",
-        // 4:3 ratios
-        "1024x768", "1280x960", "1600x1200",
-        // 3:2 ratios (Surface, Pixel tablets)
-        "1920x1280", "2160x1440", "2736x1824",
-        // Common tablet ratios
-        "2000x1200", "2224x1668", "2388x1668", "2732x2048", "2800x1752"
+    // Common resolutions (default view)
+    static let commonResolutions = [
+        "1920x1080", "1920x1200", "2560x1440", "2560x1600"
     ]
+
+    // All resolutions flat list
+    static var allResolutions: [String] {
+        resolutionGroups.flatMap { $0.resolutions }
+    }
 
     // Computed property for effective bitrate
     var effectiveBitrate: Int {
@@ -712,13 +856,13 @@ class DisplaySettings: ObservableObject {
 class SettingsWindowController: NSWindowController, NSWindowDelegate {
     convenience init(settings: DisplaySettings) {
         let window = ConstrainedWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 500, height: 820),
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 780),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
         )
 
-        window.title = "Virtual Display Settings"
+        window.title = "Side Screen"
         window.center()
         window.contentView = NSHostingView(rootView: SettingsView(settings: settings))
         window.isReleasedWhenClosed = false
