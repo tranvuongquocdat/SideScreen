@@ -26,7 +26,7 @@ struct TouchState {
 struct GestureThresholds {
     static let tapMaxDistance: CGFloat = 15          // Max pixels for tap (tight for precision)
     static let tapMaxTime: TimeInterval = 0.25       // Max seconds for tap
-    static let scrollSensitivity: CGFloat = 2.5      // Scroll multiplier
+    static let scrollSensitivity: CGFloat = 1.2      // Scroll multiplier (lower = slower)
 }
 
 @available(macOS 14.0, *)
