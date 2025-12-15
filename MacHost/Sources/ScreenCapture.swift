@@ -68,8 +68,9 @@ class ScreenCapture {
         // Display settings
         config.showsCursor = true
 
-        // Reduce queue depth for lower latency (trade memory for speed)
-        config.queueDepth = 3
+        // Queue depth: balance between latency and stability
+        // 6 frames = 100ms buffer at 60fps - enough to handle encoding delays
+        config.queueDepth = 6
 
         // No audio
         config.capturesAudio = false
@@ -96,8 +97,8 @@ class ScreenCapture {
         let height = display?.height ?? 1080
 
         encoder = VideoEncoder(width: width, height: height, bitrateMbps: bitrateMbps, quality: quality, gamingBoost: gamingBoost, frameRate: frameRate)
-        encoder?.onEncodedFrame = { [weak server] data in
-            server?.sendFrame(data)
+        encoder?.onEncodedFrame = { [weak server] data, timestamp in
+            server?.sendFrame(data, timestamp: timestamp)
         }
 
         streamOutput?.onFrameReceived = { [weak self] sampleBuffer in

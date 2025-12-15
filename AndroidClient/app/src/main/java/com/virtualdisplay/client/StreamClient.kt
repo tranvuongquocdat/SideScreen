@@ -23,7 +23,8 @@ class StreamClient(
     private var outputStream: java.io.DataOutputStream? = null
     private var isConnected = false
 
-    var onFrameReceived: ((ByteArray) -> Unit)? = null
+    // Callback now includes timestamp for frame age tracking
+    var onFrameReceived: ((ByteArray, Long) -> Unit)? = null
     var onConnectionStatus: ((Boolean) -> Unit)? = null
     var onDisplaySize: ((Int, Int, Int) -> Unit)? = null  // width, height, rotation
     var onStats: ((Double, Double) -> Unit)? = null
@@ -72,6 +73,9 @@ class StreamClient(
 
                 when (type.toInt()) {
                     0 -> { // Video frame
+                        // Capture timestamp as early as possible
+                        val receiveTimestamp = System.nanoTime()
+
                         val frameSize = input.readInt()
 
                         if (frameSize <= 0 || frameSize > MAX_FRAME_SIZE) {
@@ -81,7 +85,9 @@ class StreamClient(
 
                         val frameData = ByteArray(frameSize)
                         input.readFully(frameData)
-                        onFrameReceived?.invoke(frameData)
+
+                        // Pass timestamp to decoder for frame age tracking
+                        onFrameReceived?.invoke(frameData, receiveTimestamp)
                         updateStats(frameSize)
                     }
                     1 -> { // Display size + rotation

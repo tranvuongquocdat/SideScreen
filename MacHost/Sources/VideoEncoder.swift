@@ -4,13 +4,17 @@ import CoreMedia
 
 class VideoEncoder {
     private var compressionSession: VTCompressionSession?
-    var onEncodedFrame: ((Data) -> Void)?
+    var onEncodedFrame: ((Data, UInt64) -> Void)?  // Now includes timestamp
     private var width: Int
     private var height: Int
     private var bitrateMbps: Int = 20
     private var quality: String = "medium"
     private var gamingBoost: Bool = false
     private var frameRate: Int = 60
+
+    // Pre-allocated buffer for frame data (reduces allocations)
+    private var frameBuffer = Data(capacity: 512 * 1024)  // 512KB initial
+    private static let startCode: [UInt8] = [0, 0, 0, 1]
 
     init(width: Int, height: Int, bitrateMbps: Int = 20, quality: String = "medium", gamingBoost: Bool = false, frameRate: Int = 60) {
         self.width = width
@@ -27,8 +31,9 @@ class VideoEncoder {
         self.quality = gamingBoost ? "low" : quality
         self.gamingBoost = gamingBoost
 
-        // Recreate compression session with new settings
+        // Drain pending frames before invalidation
         if let session = compressionSession {
+            VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)
             VTCompressionSessionInvalidate(session)
         }
         setupCompressionSession()
@@ -61,37 +66,41 @@ class VideoEncoder {
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_RealTime, value: kCFBooleanTrue)
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ProfileLevel, value: kVTProfileLevel_HEVC_Main_AutoLevel)
 
-        // Dynamic bitrate based on settings
+        // Dynamic bitrate - remove strict rate limiting for smoother streaming
         let bitrateBps = bitrateMbps * 1_000_000
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: bitrateBps as CFNumber)
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_DataRateLimits, value: [bitrateBps, 1] as CFArray)
+        // Removed DataRateLimits - was causing bursty traffic and buffer stalls
 
-        // Frame rate settings - dynamic based on user setting
+        // Frame rate settings
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: frameRate as CFNumber)
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: (frameRate * 2) as CFNumber)
 
-        // Critical for low latency
+        // Shorter keyframe interval for better error recovery (0.5 sec instead of 2 sec)
+        let keyframeInterval = max(frameRate / 2, 15)  // At least every 0.5 sec
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: keyframeInterval as CFNumber)
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, value: 0.5 as CFNumber)
+
+        // Critical for low latency - NO frame reordering (no B-frames)
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse)
 
-        // Gaming boost: even more aggressive low-latency settings
-        if gamingBoost {
-            VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxFrameDelayCount, value: 0 as CFNumber) // Zero delay!
-            VTSessionSetProperty(session, key: kVTCompressionPropertyKey_Quality, value: 0.5 as CFNumber) // Lower quality for speed
-        } else {
-            VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxFrameDelayCount, value: 1 as CFNumber)
+        // ALWAYS zero frame delay for real-time streaming (not just gaming boost)
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxFrameDelayCount, value: 0 as CFNumber)
 
-            // Quality based on preset
-            let qualityValue: Float = switch quality {
+        // Quality based on preset
+        let qualityValue: Float
+        if gamingBoost {
+            qualityValue = 0.5  // Lower quality for speed
+        } else {
+            qualityValue = switch quality {
                 case "low": 0.5
                 case "medium": 0.7
                 case "high": 0.85
                 default: 0.7
             }
-            VTSessionSetProperty(session, key: kVTCompressionPropertyKey_Quality, value: qualityValue as CFNumber)
         }
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_Quality, value: qualityValue as CFNumber)
 
-        // Enable multi-threaded encoding
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxH264SliceBytes, value: 1400 as CFNumber)
+        // Enable constant bitrate mode for predictable streaming
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ConstantBitRate, value: kCFBooleanTrue)
 
         VTCompressionSessionPrepareToEncodeFrames(session)
 
@@ -121,10 +130,14 @@ class VideoEncoder {
 
     deinit {
         if let session = compressionSession {
+            VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)
             VTCompressionSessionInvalidate(session)
         }
     }
 }
+
+// Static start code to avoid repeated allocations
+private let nalStartCode: [UInt8] = [0, 0, 0, 1]
 
 private let encodingOutputCallback: VTCompressionOutputCallback = { (outputCallbackRefCon, sourceFrameRefCon, status, infoFlags, sampleBuffer) in
     guard status == noErr,
@@ -134,6 +147,9 @@ private let encodingOutputCallback: VTCompressionOutputCallback = { (outputCallb
     }
 
     let encoder = Unmanaged<VideoEncoder>.fromOpaque(refcon).takeUnretainedValue()
+
+    // Get timestamp for frame age tracking
+    let timestamp = DispatchTime.now().uptimeNanoseconds
 
     // Extract encoded data
     guard let dataBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return }
@@ -159,8 +175,9 @@ private let encodingOutputCallback: VTCompressionOutputCallback = { (outputCallb
     let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[CFString: Any]]
     let isKeyframe = !(attachments?.first?[kCMSampleAttachmentKey_NotSync] as? Bool ?? false)
 
-    // Prepend SPS/PPS for keyframes
-    var frameData = Data()
+    // Pre-allocate estimated size to reduce reallocations
+    let estimatedSize = totalLength + (isKeyframe ? 256 : 0) + 32
+    var frameData = Data(capacity: estimatedSize)
 
     if isKeyframe {
         if let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer) {
@@ -174,8 +191,7 @@ private let encodingOutputCallback: VTCompressionOutputCallback = { (outputCallb
                 CMVideoFormatDescriptionGetHEVCParameterSetAtIndex(formatDescription, parameterSetIndex: i, parameterSetPointerOut: &parameterSetPointer, parameterSetSizeOut: &parameterSetSize, parameterSetCountOut: nil, nalUnitHeaderLengthOut: nil)
 
                 if let pointer = parameterSetPointer {
-                    // Add start code
-                    frameData.append(contentsOf: [0, 0, 0, 1])
+                    frameData.append(contentsOf: nalStartCode)
                     frameData.append(pointer, count: parameterSetSize)
                 }
             }
@@ -191,14 +207,12 @@ private let encodingOutputCallback: VTCompressionOutputCallback = { (outputCallb
         nalLength = UInt32(bigEndian: nalLength)
         offset += 4
 
-        // Add start code
-        frameData.append(contentsOf: [0, 0, 0, 1])
-
-        // Add NAL unit data
+        // Add start code and NAL unit data
+        frameData.append(contentsOf: nalStartCode)
         let nalPointer = UnsafeRawPointer(dataPointer.advanced(by: offset))
         frameData.append(nalPointer.assumingMemoryBound(to: UInt8.self), count: Int(nalLength))
         offset += Int(nalLength)
     }
 
-    encoder.onEncodedFrame?(frameData)
+    encoder.onEncodedFrame?(frameData, timestamp)
 }

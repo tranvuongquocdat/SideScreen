@@ -6,6 +6,7 @@ class StreamingServer {
     private var listener: NWListener?
     private var connection: NWConnection?
     var onClientConnected: (() -> Void)?
+    var onClientDisconnected: (() -> Void)?
     var onTouchEvent: ((Float, Float, Int) -> Void)?
     var onStats: ((Double, Double) -> Void)?
 
@@ -13,20 +14,33 @@ class StreamingServer {
     private let receiveQueue = DispatchQueue(label: "receiveQueue", qos: .userInteractive)
     private var bytesSent: UInt64 = 0
     private var frameCount: UInt64 = 0
-    private var lastStatsTime = Date()
+    private var droppedFrames: UInt64 = 0
+    private var lastStatsTime = DispatchTime.now()
     private var displayWidth = 1920
     private var displayHeight = 1080
     private var rotation = 0
     private var isReceiving = false
+    private var isStopped = false
+
+    // Frame dropping for latency control
+    private let maxFrameAge: UInt64 = 50_000_000  // 50ms in nanoseconds - drop older frames
+    private var canSendNextFrame = true  // Simple backpressure
 
     init(port: UInt16) {
         self.port = port
     }
 
     func start() {
+        isStopped = false
         do {
             let params = NWParameters.tcp
             params.allowLocalEndpointReuse = true
+
+            // Optimize TCP for low-latency streaming
+            if let tcpOptions = params.defaultProtocolStack.transportProtocol as? NWProtocolTCP.Options {
+                tcpOptions.noDelay = true  // Disable Nagle's algorithm
+                tcpOptions.enableFastOpen = true
+            }
 
             listener = try NWListener(using: params, on: NWEndpoint.Port(integerLiteral: port))
 
@@ -54,8 +68,16 @@ class StreamingServer {
 
     private func handleConnection(_ newConnection: NWConnection) {
         print("🔌 New connection incoming...")
-        connection?.cancel()
+
+        // Clean up old connection properly
+        if let oldConnection = connection {
+            isReceiving = false
+            oldConnection.cancel()
+        }
+
         connection = newConnection
+        canSendNextFrame = true
+        droppedFrames = 0
 
         connection?.stateUpdateHandler = { [weak self] state in
             print("🔌 Connection state: \(state)")
@@ -67,8 +89,10 @@ class StreamingServer {
                 self?.startReceivingTouch()
             case .failed(let error):
                 print("❌ Connection failed: \(error)")
+                self?.onClientDisconnected?()
             case .cancelled:
                 print("⚠️  Connection cancelled")
+                self?.onClientDisconnected?()
             default:
                 break
             }
@@ -108,21 +132,23 @@ class StreamingServer {
             return
         }
         isReceiving = true
-        print("👆 Starting touch receive loop on dedicated queue...")
+        print("👆 Starting touch receive loop...")
+
+        // Use loop-based pattern instead of recursion to prevent stack overflow
         receiveQueue.async { [weak self] in
-            self?.receiveNextTouch()
+            self?.touchReceiveLoop()
         }
     }
 
-    private func receiveNextTouch() {
-        guard let connection = connection else {
+    private func touchReceiveLoop() {
+        guard let connection = connection, isReceiving, !isStopped else {
             isReceiving = false
             return
         }
 
         // Touch: 13 bytes (1 type + 4 x + 4 y + 4 action)
         connection.receive(minimumIncompleteLength: 1, maximumLength: 13) { [weak self] data, _, isComplete, error in
-            guard let self = self else { return }
+            guard let self = self, self.isReceiving, !self.isStopped else { return }
 
             if error != nil || isComplete {
                 self.isReceiving = false
@@ -134,32 +160,57 @@ class StreamingServer {
                 let y = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 5, as: Float.self) }
                 let action = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 9, as: Int32.self) }
 
+                // Dispatch to main thread for event handling
                 DispatchQueue.main.async {
                     self.onTouchEvent?(x, y, Int(action))
                 }
             }
 
+            // Continue loop (non-recursive)
             self.receiveQueue.async {
-                self.receiveNextTouch()
+                self.touchReceiveLoop()
             }
         }
     }
 
-    func sendFrame(_ data: Data) {
-        guard let connection = connection else { return }
+    func sendFrame(_ data: Data, timestamp: UInt64) {
+        guard let connection = connection, !isStopped else { return }
+
+        // Drop old frames to prevent latency buildup
+        let now = DispatchTime.now().uptimeNanoseconds
+        let frameAge = now - timestamp
+        if frameAge > maxFrameAge {
+            droppedFrames += 1
+            return  // Skip this frame - it's too old
+        }
+
+        // Simple backpressure: skip if previous send not complete
+        guard canSendNextFrame else {
+            droppedFrames += 1
+            return
+        }
 
         frameQueue.async { [weak self] in
-            // Pre-allocate packet buffer for better performance
+            guard let self = self else { return }
+
+            // Pre-allocate packet buffer
             var packet = Data(capacity: data.count + 5)
             packet.append(0) // Type: Video frame
             var frameSize = Int32(data.count).bigEndian
-            packet.append(Data(bytes: &frameSize, count: 4))
+            withUnsafeBytes(of: &frameSize) { packet.append(contentsOf: $0) }
             packet.append(data)
 
-            // Use .idempotent for fire-and-forget sending (lowest latency)
-            connection.send(content: packet, completion: .idempotent)
+            self.canSendNextFrame = false
 
-            self?.updateStats(bytes: data.count)
+            // Send with completion handler for backpressure
+            connection.send(content: packet, completion: .contentProcessed { [weak self] error in
+                self?.canSendNextFrame = true
+                if error != nil {
+                    self?.droppedFrames += 1
+                }
+            })
+
+            self.updateStats(bytes: data.count)
         }
     }
 
@@ -167,22 +218,36 @@ class StreamingServer {
         bytesSent += UInt64(bytes)
         frameCount += 1
 
-        let now = Date()
-        let elapsed = now.timeIntervalSince(lastStatsTime)
+        let now = DispatchTime.now()
+        let elapsed = Double(now.uptimeNanoseconds - lastStatsTime.uptimeNanoseconds) / 1_000_000_000
 
-        if elapsed >= 2.0 { // Print stats every 2 seconds
+        if elapsed >= 1.0 {  // Update stats every 1 second for more responsive display
             let mbps = Double(bytesSent * 8) / elapsed / 1_000_000
             let fps = Double(frameCount) / elapsed
-            onStats?(fps, mbps) // print("📊 Stats: \(String(format: "%.2f", fps)) fps, \(String(format: "%.2f", mbps)) Mbps")
+            onStats?(fps, mbps)
+
+            if droppedFrames > 0 {
+                print("⚠️ Dropped \(droppedFrames) frames in last interval")
+            }
 
             bytesSent = 0
             frameCount = 0
+            droppedFrames = 0
             lastStatsTime = now
         }
     }
 
     func stop() {
+        isStopped = true
+        isReceiving = false
+
+        // Wait for pending operations before cancelling
+        frameQueue.sync {}
+        receiveQueue.sync {}
+
         connection?.cancel()
         listener?.cancel()
+        connection = nil
+        listener = nil
     }
 }

@@ -4,29 +4,31 @@ import SwiftUI
 import Combine
 import ApplicationServices
 
-// MARK: - Simple Touch State
+// MARK: - Simple Touch State (optimized to use nanoseconds instead of Date)
 struct TouchState {
     var startPosition: CGPoint
     var lastPosition: CGPoint
-    var startTime: Date
-    var lastMoveTime: Date
-    var isTap: Bool = true  // Assume tap until proven otherwise
+    var startTime: UInt64  // nanoseconds
+    var lastMoveTime: UInt64  // nanoseconds
+    var isTap: Bool = true
     var lastDeltaX: CGFloat = 0
     var lastDeltaY: CGFloat = 0
 
     init(position: CGPoint) {
+        let now = DispatchTime.now().uptimeNanoseconds
         self.startPosition = position
         self.lastPosition = position
-        self.startTime = Date()
-        self.lastMoveTime = Date()
+        self.startTime = now
+        self.lastMoveTime = now
     }
 }
 
 // MARK: - Simple Thresholds
 struct GestureThresholds {
-    static let tapMaxDistance: CGFloat = 15          // Max pixels for tap (tight for precision)
-    static let tapMaxTime: TimeInterval = 0.25       // Max seconds for tap
-    static let scrollSensitivity: CGFloat = 1.2      // Scroll multiplier (lower = slower)
+    static let tapMaxDistance: CGFloat = 15
+    static let tapMaxTime: UInt64 = 250_000_000  // 250ms in nanoseconds
+    static let scrollSensitivity: CGFloat = 1.2
+    static let minTouchInterval: UInt64 = 8_000_000  // ~120Hz throttle (8ms in nanoseconds)
 }
 
 @available(macOS 14.0, *)
@@ -57,25 +59,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             await checkPermissions()
         }
 
-        // Start permission check timer (auto-refresh every 2 seconds)
-        startPermissionCheckTimer()
-
         // Show settings window
         showSettings()
     }
 
-    func startPermissionCheckTimer() {
-        // Only auto-check Accessibility permission (Screen Recording is stable)
-        permissionCheckTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            Task {
-                await self?.checkAccessibilityPermission()
-            }
+    /// Check permissions on demand (called when settings window opens or manually)
+    func refreshPermissions() {
+        Task {
+            await checkPermissions()
         }
-    }
-
-    func stopPermissionCheckTimer() {
-        permissionCheckTimer?.invalidate()
-        permissionCheckTimer = nil
     }
 
     func setupSettingsObservers() {
@@ -422,8 +414,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let eventSource = CGEventSource(stateID: .hidSystemState)
     private var accessibilityWarningShown = false
     private var touchState: TouchState?
+    private var lastTouchTime: UInt64 = 0  // For throttling
 
-    // Momentum scrolling
+    // Momentum scrolling - use CVDisplayLink for smoother animation
     private var momentumTimer: Timer?
     private var momentumVelocityX: CGFloat = 0
     private var momentumVelocityY: CGFloat = 0
@@ -482,6 +475,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func handleTouchMove(to point: CGPoint) {
         guard var state = touchState else { return }
 
+        let now = DispatchTime.now().uptimeNanoseconds
+
+        // Throttle touch move events to ~120Hz max
+        if now - lastTouchTime < GestureThresholds.minTouchInterval {
+            return
+        }
+        lastTouchTime = now
+
         let deltaX = point.x - state.lastPosition.x
         let deltaY = point.y - state.lastPosition.y
         let totalDistance = hypot(point.x - state.startPosition.x, point.y - state.startPosition.y)
@@ -493,17 +494,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // If not a tap anymore, treat as scroll
         if !state.isTap {
-            // Scale deltas for scroll
             let scrollDeltaX = deltaX * GestureThresholds.scrollSensitivity
             let scrollDeltaY = deltaY * GestureThresholds.scrollSensitivity
 
-            // Send scroll event immediately (no accumulation, no throttling)
             injectScrollEvent(deltaX: scrollDeltaX, deltaY: scrollDeltaY, at: point)
 
-            // Track last delta and time for momentum calculation
-            let now = Date()
-            let timeDelta = now.timeIntervalSince(state.lastMoveTime)
-            if timeDelta > 0 && timeDelta < 0.1 {  // Only track if reasonable time gap
+            // Track last delta for momentum (using nanoseconds)
+            let timeDelta = now - state.lastMoveTime
+            if timeDelta > 0 && timeDelta < 100_000_000 {  // Within 100ms
                 state.lastDeltaX = scrollDeltaX
                 state.lastDeltaY = scrollDeltaY
             }
@@ -518,28 +516,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func handleTouchUp(at point: CGPoint) {
         guard let state = touchState else { return }
 
-        let elapsed = Date().timeIntervalSince(state.startTime)
+        let now = DispatchTime.now().uptimeNanoseconds
+        let elapsed = now - state.startTime
 
         // Simple logic: if still a tap (didn't move much) AND quick enough = click
         if state.isTap && elapsed < GestureThresholds.tapMaxTime {
-            print("👆 TAP at \(point)")
             performClick(at: point)
         } else if !state.isTap {
             // Was scrolling - check if we should start momentum
-            let timeSinceLastMove = Date().timeIntervalSince(state.lastMoveTime)
+            let timeSinceLastMove = now - state.lastMoveTime
 
             // Only start momentum if finger was recently moving (within 50ms)
-            if timeSinceLastMove < 0.05 {
+            if timeSinceLastMove < 50_000_000 {
                 let momentumThreshold: CGFloat = 2.0
                 if abs(state.lastDeltaX) > momentumThreshold || abs(state.lastDeltaY) > momentumThreshold {
-                    // Amplify last delta for momentum - use the raw delta values
                     let momentumMultiplier: CGFloat = 6.0
                     startMomentumScroll(
                         velocityX: state.lastDeltaX * momentumMultiplier,
                         velocityY: state.lastDeltaY * momentumMultiplier,
                         at: point
                     )
-                    print("📜 Momentum started (vX: \(Int(state.lastDeltaX * momentumMultiplier)), vY: \(Int(state.lastDeltaY * momentumMultiplier)))")
                 }
             }
         }
@@ -624,7 +620,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // Stop momentum scrolling
+        stopMomentumScroll()
+
+        // Stop server and cleanup
         stopServer()
+
+        // Cancel all combine subscriptions
+        cancellables.removeAll()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

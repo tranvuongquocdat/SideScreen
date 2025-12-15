@@ -529,8 +529,8 @@ class MainActivity : AppCompatActivity() {
                 log("Connecting to $host:$port...")
 
                 streamClient = StreamClient(host, port)
-                streamClient?.onFrameReceived = { frameData ->
-                    videoDecoder?.decode(frameData)
+                streamClient?.onFrameReceived = { frameData, timestamp ->
+                    videoDecoder?.decode(frameData, timestamp)
                 }
 
                 streamClient?.onConnectionStatus = { connected ->

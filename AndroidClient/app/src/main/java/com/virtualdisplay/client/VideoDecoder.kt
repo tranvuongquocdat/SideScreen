@@ -13,6 +13,7 @@ import java.nio.ByteBuffer
 class VideoDecoder(private val surface: Surface, private val display: Display? = null) {
     private var decoder: MediaCodec? = null
     private var frameCount = 0L
+    private var droppedFrames = 0L
     private var lastStatsTime = System.currentTimeMillis()
 
     // Frame timing for consistency tracking
@@ -26,6 +27,9 @@ class VideoDecoder(private val surface: Surface, private val display: Display? =
     // Dynamic resolution support
     private var currentWidth = 1920
     private var currentHeight = 1200
+
+    // Frame age limit for dropping old frames (50ms in nanoseconds)
+    private val maxFrameAgeNs = 50_000_000L
 
     var onFrameRendered: ((Long) -> Unit)? = null
     var onFrameStats: ((fps: Double, variance: Double) -> Unit)? = null
@@ -107,58 +111,63 @@ class VideoDecoder(private val surface: Surface, private val display: Display? =
         }
     }
 
-    fun decode(frameData: ByteArray) {
+    fun decode(frameData: ByteArray, frameTimestamp: Long = System.nanoTime()) {
         val decoder = this.decoder ?: return
 
         try {
-            // Reduced timeout for lower latency (1ms instead of 5000ms)
-            val inputBufferIndex = decoder.dequeueInputBuffer(1000)
-            if (inputBufferIndex >= 0) {
-                val inputBuffer = decoder.getInputBuffer(inputBufferIndex)
-                inputBuffer?.clear()
-                inputBuffer?.put(frameData)
-
-                decoder.queueInputBuffer(
-                    inputBufferIndex,
-                    0,
-                    frameData.size,
-                    System.nanoTime() / 1000,
-                    0
-                )
+            // Check frame age - drop old frames to prevent latency buildup
+            val now = System.nanoTime()
+            val frameAge = now - frameTimestamp
+            if (frameAge > maxFrameAgeNs) {
+                droppedFrames++
+                return  // Skip this old frame
             }
 
-            // Process all available output frames immediately
+            // Increased timeout to 5ms for reliability (was 1ms - too aggressive)
+            val inputBufferIndex = decoder.dequeueInputBuffer(5000)
+            if (inputBufferIndex < 0) {
+                droppedFrames++
+                return  // No input buffer available
+            }
+
+            val inputBuffer = decoder.getInputBuffer(inputBufferIndex)
+            inputBuffer?.clear()
+            inputBuffer?.put(frameData)
+
+            decoder.queueInputBuffer(
+                inputBufferIndex,
+                0,
+                frameData.size,
+                frameTimestamp / 1000,  // Use actual frame timestamp
+                0
+            )
+
+            // Process output - handle format change BEFORE the main loop
             val bufferInfo = MediaCodec.BufferInfo()
             var outputBufferIndex = decoder.dequeueOutputBuffer(bufferInfo, 0)
 
-            while (outputBufferIndex >= 0) {
-                // Calculate next vsync timestamp for smooth presentation
-                val now = System.nanoTime()
-                val timeSinceLastFrame = if (lastFrameTime > 0) now - lastFrameTime else frameIntervalNs
-
-                // Align to next vsync interval
-                val vsyncsElapsed = (now / frameIntervalNs)
-                val nextVsync = (vsyncsElapsed + 1) * frameIntervalNs
-
-                // Release buffer at next vsync for consistent frame pacing
-                decoder.releaseOutputBuffer(outputBufferIndex, nextVsync)
-
-                // Track frame timing for statistics
-                trackFrameTiming(now)
-                lastFrameTime = now
-
-                updateStats()
+            // Handle format change first
+            if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                val newFormat = decoder.outputFormat
+                Log.d(TAG, "Format changed: $newFormat")
                 outputBufferIndex = decoder.dequeueOutputBuffer(bufferInfo, 0)
             }
 
-            when (outputBufferIndex) {
-                MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
-                    val newFormat = decoder.outputFormat
-                    Log.d(TAG, "Format changed: $newFormat")
-                }
-                MediaCodec.INFO_TRY_AGAIN_LATER -> {
-                    // No output available yet
-                }
+            // Process all available output frames
+            while (outputBufferIndex >= 0) {
+                val outputTime = System.nanoTime()
+
+                // Align to next vsync interval for smooth presentation
+                val vsyncsElapsed = (outputTime / frameIntervalNs)
+                val nextVsync = (vsyncsElapsed + 1) * frameIntervalNs
+
+                decoder.releaseOutputBuffer(outputBufferIndex, nextVsync)
+
+                trackFrameTiming(outputTime)
+                lastFrameTime = outputTime
+                updateStats()
+
+                outputBufferIndex = decoder.dequeueOutputBuffer(bufferInfo, 0)
             }
 
         } catch (e: Exception) {
@@ -198,11 +207,16 @@ class VideoDecoder(private val surface: Surface, private val display: Display? =
         val now = System.currentTimeMillis()
         val elapsed = now - lastStatsTime
 
-        if (elapsed >= 2000) { // Log every 2 seconds
+        if (elapsed >= 1000) {  // Log every 1 second for more responsive stats
             val fps = (frameCount * 1000.0) / elapsed
-            Log.d(TAG, "📊 Decoder stats: ${String.format("%.1f", fps)} fps")
+            if (droppedFrames > 0) {
+                Log.d(TAG, "📊 Decoder: ${String.format("%.1f", fps)} fps, dropped: $droppedFrames")
+            } else {
+                Log.d(TAG, "📊 Decoder: ${String.format("%.1f", fps)} fps")
+            }
 
             frameCount = 0
+            droppedFrames = 0
             lastStatsTime = now
         }
     }
