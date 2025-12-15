@@ -4,7 +4,7 @@ import CoreMedia
 
 class VideoEncoder {
     private var compressionSession: VTCompressionSession?
-    var onEncodedFrame: ((Data, UInt64) -> Void)?  // Now includes timestamp
+    var onEncodedFrame: ((Data, UInt64, Bool) -> Void)?  // data, timestamp, isKeyframe
     private var width: Int
     private var height: Int
     private var bitrateMbps: Int = 20
@@ -74,10 +74,11 @@ class VideoEncoder {
         // Frame rate settings
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: frameRate as CFNumber)
 
-        // Shorter keyframe interval for better error recovery (0.5 sec instead of 2 sec)
-        let keyframeInterval = max(frameRate / 2, 15)  // At least every 0.5 sec
+        // Very short keyframe interval for fast scene change recovery (0.1 sec)
+        // This prevents blocky artifacts when scene changes rapidly
+        let keyframeInterval = max(frameRate / 10, 6)  // ~0.1 sec (6 frames at 60fps)
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: keyframeInterval as CFNumber)
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, value: 0.5 as CFNumber)
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, value: 0.1 as CFNumber)
 
         // Critical for low latency - NO frame reordering (no B-frames)
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse)
@@ -99,8 +100,9 @@ class VideoEncoder {
         }
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_Quality, value: qualityValue as CFNumber)
 
-        // Enable constant bitrate mode for predictable streaming
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ConstantBitRate, value: kCFBooleanTrue)
+        // Use VBR (variable bitrate) instead of CBR for burst capacity during fast scene changes
+        // CBR causes over-quantization (blocky artifacts) when scene complexity spikes
+        // Removed: kVTCompressionPropertyKey_ConstantBitRate
 
         VTCompressionSessionPrepareToEncodeFrames(session)
 
@@ -214,5 +216,5 @@ private let encodingOutputCallback: VTCompressionOutputCallback = { (outputCallb
         offset += Int(nalLength)
     }
 
-    encoder.onEncodedFrame?(frameData, timestamp)
+    encoder.onEncodedFrame?(frameData, timestamp, isKeyframe)
 }

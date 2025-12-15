@@ -97,8 +97,8 @@ class ScreenCapture {
         let height = display?.height ?? 1080
 
         encoder = VideoEncoder(width: width, height: height, bitrateMbps: bitrateMbps, quality: quality, gamingBoost: gamingBoost, frameRate: frameRate)
-        encoder?.onEncodedFrame = { [weak server] data, timestamp in
-            server?.sendFrame(data, timestamp: timestamp)
+        encoder?.onEncodedFrame = { [weak server] data, timestamp, isKeyframe in
+            server?.sendFrame(data, timestamp: timestamp, isKeyframe: isKeyframe)
         }
 
         streamOutput?.onFrameReceived = { [weak self] sampleBuffer in

@@ -62,8 +62,9 @@ class VideoDecoder(private val surface: Surface, private val display: Display? =
     private fun pinThreadToPerformanceCores() {
         try {
             val tid = Process.myTid()
-            // Set thread priority to urgent display for minimal latency
-            Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_DISPLAY)
+            // Use DISPLAY priority (less aggressive than URGENT_DISPLAY)
+            // URGENT_DISPLAY can starve system launcher and cause lag
+            Process.setThreadPriority(Process.THREAD_PRIORITY_DISPLAY)
 
             // Try to set CPU affinity to performance cores (4-7 on Dimensity 8300)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {

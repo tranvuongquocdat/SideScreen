@@ -13,6 +13,7 @@ import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class StreamClient(
     private val host: String,
@@ -34,12 +35,14 @@ class StreamClient(
     private var lastStatsTime = System.currentTimeMillis()
 
     // High-priority thread for touch events to minimize latency
+    // Use THREAD_PRIORITY_DISPLAY instead of URGENT_DISPLAY to avoid starving system processes
     private val touchExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable).apply {
             name = "TouchThread"
             priority = Thread.MAX_PRIORITY
-            // Set to urgent display priority
-            Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_DISPLAY)
+            // Use DISPLAY priority (less aggressive than URGENT_DISPLAY)
+            // URGENT_DISPLAY can starve system launcher and cause lag
+            Process.setThreadPriority(Process.THREAD_PRIORITY_DISPLAY)
         }
     }
     private val touchDispatcher = touchExecutor.asCoroutineDispatcher()
@@ -164,7 +167,19 @@ class StreamClient(
             outputStream?.close()
             inputStream?.close()
             socket?.close()
+
+            // Properly shutdown executor with timeout to prevent orphaned threads
             touchExecutor.shutdown()
+            try {
+                if (!touchExecutor.awaitTermination(500, TimeUnit.MILLISECONDS)) {
+                    touchExecutor.shutdownNow()
+                    // Wait a bit more for forced shutdown
+                    touchExecutor.awaitTermination(200, TimeUnit.MILLISECONDS)
+                }
+            } catch (e: InterruptedException) {
+                touchExecutor.shutdownNow()
+                Thread.currentThread().interrupt()
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error during cleanup", e)
         }

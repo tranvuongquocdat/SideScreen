@@ -173,21 +173,25 @@ class StreamingServer {
         }
     }
 
-    func sendFrame(_ data: Data, timestamp: UInt64) {
+    func sendFrame(_ data: Data, timestamp: UInt64, isKeyframe: Bool = false) {
         guard let connection = connection, !isStopped else { return }
 
-        // Drop old frames to prevent latency buildup
-        let now = DispatchTime.now().uptimeNanoseconds
-        let frameAge = now - timestamp
-        if frameAge > maxFrameAge {
-            droppedFrames += 1
-            return  // Skip this frame - it's too old
-        }
+        // GOP-aware frame dropping: NEVER drop keyframes
+        // Dropping a keyframe causes decoder to lose reference, resulting in blocky artifacts
+        if !isKeyframe {
+            // Only apply age/backpressure checks to P-frames
+            let now = DispatchTime.now().uptimeNanoseconds
+            let frameAge = now - timestamp
+            if frameAge > maxFrameAge {
+                droppedFrames += 1
+                return  // Skip this P-frame - it's too old
+            }
 
-        // Simple backpressure: skip if previous send not complete
-        guard canSendNextFrame else {
-            droppedFrames += 1
-            return
+            // Simple backpressure: skip P-frames if previous send not complete
+            guard canSendNextFrame else {
+                droppedFrames += 1
+                return
+            }
         }
 
         frameQueue.async { [weak self] in

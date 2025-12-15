@@ -6,12 +6,15 @@ import android.content.Context
 import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.View
 import android.view.Window
+import android.view.WindowInsets
+import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -96,24 +99,36 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * Enable fullscreen immersive mode (only when connected)
+     * Uses modern WindowInsets API on Android R+ for better system compatibility
      */
-    @Suppress("DEPRECATION")
     private fun enableFullscreenMode() {
-        window.decorView.systemUiVisibility = (
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-            or View.SYSTEM_UI_FLAG_FULLSCREEN
-            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.insetsController?.let { controller ->
+                controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                or View.SYSTEM_UI_FLAG_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            )
+        }
     }
 
     /**
      * Disable fullscreen mode (when disconnected)
      */
-    @Suppress("DEPRECATION")
     private fun disableFullscreenMode() {
-        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.insetsController?.show(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+        }
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -515,9 +530,15 @@ class MainActivity : AppCompatActivity() {
     private fun initializeDecoder(holder: SurfaceHolder) {
         try {
             // Pass display for vsync-aligned frame presentation
-            val display = windowManager.defaultDisplay
-            videoDecoder = VideoDecoder(holder.surface, display)
-            log("✅ Decoder initialized (${display.refreshRate}Hz display)")
+            // Use modern API on Android R+, fallback to deprecated for older versions
+            val displayObj = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                display  // Activity.getDisplay() - modern API
+            } else {
+                @Suppress("DEPRECATION")
+                windowManager.defaultDisplay
+            }
+            videoDecoder = VideoDecoder(holder.surface, displayObj)
+            log("✅ Decoder initialized (${displayObj?.refreshRate ?: 60f}Hz display)")
         } catch (e: Exception) {
             log("❌ Failed to initialize decoder: ${e.message}")
         }
@@ -621,6 +642,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun cleanup() {
         try {
+            // Reset sustained performance mode FIRST (affects system-wide power management)
+            try {
+                window.setSustainedPerformanceMode(false)
+            } catch (e: Exception) {
+                // Ignore if not supported
+            }
+
             disconnect()
             videoDecoder?.release()
             videoDecoder = null
@@ -637,6 +665,29 @@ class MainActivity : AppCompatActivity() {
             log("🎮 Performance mode DISABLED")
         } catch (e: Exception) {
             log("⚠️ Cleanup error: ${e.message}")
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Partial cleanup - reset system-affecting settings when app goes to background
+        // This prevents launcher lag when app is in background
+        try {
+            window.setSustainedPerformanceMode(false)
+        } catch (e: Exception) {
+            // Ignore if not supported
+        }
+    }
+
+    override fun onRestart() {
+        super.onRestart()
+        // Re-enable performance mode when returning to app
+        if (streamClient != null) {
+            try {
+                window.setSustainedPerformanceMode(true)
+            } catch (e: Exception) {
+                // Ignore if not supported
+            }
         }
     }
 
