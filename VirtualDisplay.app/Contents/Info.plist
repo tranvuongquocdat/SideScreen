@@ -2,27 +2,25 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleExecutable</key>
-    <string>VirtualDisplayHost</string>
+    <key>CFBundleName</key>
+    <string>Virtual Display</string>
+    <key>CFBundleDisplayName</key>
+    <string>Virtual Display</string>
     <key>CFBundleIdentifier</key>
     <string>com.virtualdisplay.host</string>
-    <key>CFBundleName</key>
-    <string>Virtual Display Host</string>
-    <key>CFBundleDisplayName</key>
-    <string>Virtual Display Host</string>
     <key>CFBundleVersion</key>
     <string>1.0</string>
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
+    <key>CFBundleExecutable</key>
+    <string>VirtualDisplay</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
-    <key>LSUIElement</key>
-    <false/>
     <key>NSHighResolutionCapable</key>
     <true/>
-    <key>NSSupportsAutomaticGraphicsSwitching</key>
-    <true/>
+    <key>LSUIElement</key>
+    <false/>
 </dict>
 </plist>

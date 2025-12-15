@@ -43,6 +43,7 @@ class MainActivity : AppCompatActivity() {
     // Input prediction for low-latency gaming
     private val inputPredictor = InputPredictor()
 
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -74,18 +75,23 @@ class MainActivity : AppCompatActivity() {
      */
     @SuppressLint("WakelockTimeout")
     private fun enablePerformanceMode() {
-        // Request sustained performance mode (Android 7.0+)
-        window.setSustainedPerformanceMode(true)
+        try {
+            // Request sustained performance mode (Android 7.0+)
+            window.setSustainedPerformanceMode(true)
 
-        // Acquire wake lock to prevent CPU slowdown
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = powerManager.newWakeLock(
-            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
-            "VirtualDisplay::PerformanceMode"
-        )
-        wakeLock?.acquire()
+            // Use PARTIAL_WAKE_LOCK instead of deprecated SCREEN_BRIGHT_WAKE_LOCK
+            // Screen is already kept on via FLAG_KEEP_SCREEN_ON
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = powerManager.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "VirtualDisplay::PerformanceMode"
+            )
+            wakeLock?.acquire()
 
-        log("🎮 Performance mode ENABLED - CPU/GPU at max clocks")
+            log("🎮 Performance mode ENABLED")
+        } catch (e: Exception) {
+            log("⚠️ Performance mode failed: ${e.message}")
+        }
     }
 
     /**
@@ -606,53 +612,56 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun cleanup() {
-        disconnect()
-        videoDecoder?.release()
-        videoDecoder = null
+        try {
+            disconnect()
+            videoDecoder?.release()
+            videoDecoder = null
 
-        // Release wake lock
-        wakeLock?.release()
-        wakeLock = null
-        log("🎮 Performance mode DISABLED")
+            // Release wake lock safely
+            try {
+                if (wakeLock?.isHeld == true) {
+                    wakeLock?.release()
+                }
+            } catch (e: Exception) {
+                // Ignore wake lock release errors
+            }
+            wakeLock = null
+            log("🎮 Performance mode DISABLED")
+        } catch (e: Exception) {
+            log("⚠️ Cleanup error: ${e.message}")
+        }
     }
 
     private fun handleTouch(view: View, event: MotionEvent) {
-        // Since we use requestedOrientation, touch coordinates are already in the correct space
-        // No need to transform - Android handles this automatically
+        // Simple touch handling - no pinch/long press complexity
         val x = event.x / view.width.toFloat()
         val y = event.y / view.height.toFloat()
 
-        val action = when (event.action) {
+        when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 inputPredictor.reset()
                 inputPredictor.addSample(x, y)
-                log("👆 Touch DOWN: raw=(${event.x}, ${event.y}), normalized=($x, $y)")
-                0
+                log("👆 Touch DOWN: ($x, $y)")
+                streamClient?.sendTouch(x, y, 0)
             }
+
             MotionEvent.ACTION_MOVE -> {
                 inputPredictor.addSample(x, y)
-                1
+                val (predictedX, predictedY) = inputPredictor.predictPosition(12f)
+                streamClient?.sendTouch(predictedX, predictedY, 1)
             }
+
             MotionEvent.ACTION_UP -> {
                 inputPredictor.reset()
-                log("👆 Touch UP: raw=(${event.x}, ${event.y}), normalized=($x, $y)")
-                2
+                log("👆 Touch UP: ($x, $y)")
+                streamClient?.sendTouch(x, y, 2)
             }
-            else -> return
-        }
 
-        // Use predicted position for faster response (predict 12ms ahead - typical glass-to-glass latency)
-        val (predictedX, predictedY) = if (action == 1) {
-            inputPredictor.predictPosition(12f)
-        } else {
-            Pair(x, y)
+            MotionEvent.ACTION_CANCEL -> {
+                inputPredictor.reset()
+                log("👆 Touch CANCEL")
+            }
         }
-
-        // Send predicted position to reduce perceived input latency
-        if (streamClient == null) {
-            log("❌ streamClient is null, cannot send touch")
-        }
-        streamClient?.sendTouch(predictedX, predictedY, action)
     }
 
     /**

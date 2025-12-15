@@ -4,37 +4,29 @@ import SwiftUI
 import Combine
 import ApplicationServices
 
-// MARK: - Gesture Detection Types
-
-enum GestureType {
-    case tap
-    case drag
-    case scroll
-}
-
+// MARK: - Simple Touch State
 struct TouchState {
     var startPosition: CGPoint
     var lastPosition: CGPoint
     var startTime: Date
-    var gestureType: GestureType? = nil
-    var accumulatedScrollX: CGFloat = 0
-    var accumulatedScrollY: CGFloat = 0
+    var lastMoveTime: Date
+    var isTap: Bool = true  // Assume tap until proven otherwise
+    var lastDeltaX: CGFloat = 0
+    var lastDeltaY: CGFloat = 0
 
     init(position: CGPoint) {
         self.startPosition = position
         self.lastPosition = position
         self.startTime = Date()
+        self.lastMoveTime = Date()
     }
 }
 
-// MARK: - Gesture Thresholds
+// MARK: - Simple Thresholds
 struct GestureThresholds {
-    static let tapMaxDistance: CGFloat = 15          // Max pixels for tap
-    static let tapMaxTime: TimeInterval = 0.3        // Max seconds for tap
-    static let scrollMinDistance: CGFloat = 20       // Min pixels to trigger scroll
-    static let scrollMinVelocity: CGFloat = 50       // Min pixels/second for scroll
-    static let scrollSensitivity: CGFloat = 1.0      // Scroll multiplier (reduced from 2.5)
-    static let scrollThrottleInterval: TimeInterval = 0.016  // ~60fps throttle
+    static let tapMaxDistance: CGFloat = 15          // Max pixels for tap (tight for precision)
+    static let tapMaxTime: TimeInterval = 0.25       // Max seconds for tap
+    static let scrollSensitivity: CGFloat = 2.5      // Scroll multiplier
 }
 
 @available(macOS 14.0, *)
@@ -204,6 +196,88 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Setup ADB reverse port forwarding for USB connection
+    func setupADBReverse() {
+        let port = settings.port
+        print("🔌 Setting up ADB reverse for port \(port)...")
+
+        // Run adb reverse in background
+        DispatchQueue.global(qos: .utility).async {
+            // Try common adb paths
+            let adbPaths = [
+                "/usr/local/bin/adb",
+                "/opt/homebrew/bin/adb",
+                "~/Library/Android/sdk/platform-tools/adb",
+                "/Users/\(NSUserName())/Library/Android/sdk/platform-tools/adb"
+            ]
+
+            var adbPath: String? = nil
+            for path in adbPaths {
+                let expandedPath = NSString(string: path).expandingTildeInPath
+                if FileManager.default.fileExists(atPath: expandedPath) {
+                    adbPath = expandedPath
+                    break
+                }
+            }
+
+            // Also try 'which adb' to find it in PATH
+            if adbPath == nil {
+                let whichProcess = Process()
+                whichProcess.executableURL = URL(fileURLWithPath: "/usr/bin/which")
+                whichProcess.arguments = ["adb"]
+                let whichPipe = Pipe()
+                whichProcess.standardOutput = whichPipe
+                whichProcess.standardError = FileHandle.nullDevice
+
+                do {
+                    try whichProcess.run()
+                    whichProcess.waitUntilExit()
+                    let data = whichPipe.fileHandleForReading.readDataToEndOfFile()
+                    if let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !path.isEmpty {
+                        adbPath = path
+                    }
+                } catch {
+                    // Ignore
+                }
+            }
+
+            guard let finalAdbPath = adbPath else {
+                print("⚠️  ADB not found - USB connection may not work")
+                print("💡 Install Android SDK or run manually: adb reverse tcp:\(port) tcp:\(port)")
+                return
+            }
+
+            print("📱 Found ADB at: \(finalAdbPath)")
+
+            // Run adb reverse
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: finalAdbPath)
+            process.arguments = ["reverse", "tcp:\(port)", "tcp:\(port)"]
+
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = pipe
+
+            do {
+                try process.run()
+                process.waitUntilExit()
+
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let output = String(data: data, encoding: .utf8) ?? ""
+
+                if process.terminationStatus == 0 {
+                    print("✅ ADB reverse setup successful: tcp:\(port) -> tcp:\(port)")
+                } else {
+                    print("⚠️  ADB reverse failed: \(output)")
+                    print("💡 Make sure Android device is connected via USB with debugging enabled")
+                }
+            } catch {
+                print("⚠️  Failed to run ADB: \(error.localizedDescription)")
+            }
+        }
+    }
+
     @MainActor
     func showPermissionAlert() {
         let alert = NSAlert()
@@ -224,6 +298,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             await showPermissionAlert()
             return
         }
+
+        // Try to setup ADB reverse for USB connection
+        setupADBReverse()
 
         do {
             // Create virtual display
@@ -345,15 +422,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let eventSource = CGEventSource(stateID: .hidSystemState)
     private var accessibilityWarningShown = false
     private var touchState: TouchState?
-    private var lastScrollTime: Date = .distantPast
 
     // Momentum scrolling
     private var momentumTimer: Timer?
     private var momentumVelocityX: CGFloat = 0
     private var momentumVelocityY: CGFloat = 0
     private var lastMomentumPosition: CGPoint = .zero
-    private var lastScrollVelocityX: CGFloat = 0
-    private var lastScrollVelocityY: CGFloat = 0
 
     func handleTouch(x: Float, y: Float, action: Int) {
         // Check Accessibility permission before injecting events
@@ -382,24 +456,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let point = CGPoint(x: absoluteX, y: absoluteY)
 
         switch action {
-        case 0: // Touch down - start tracking
-            handleTouchDown(at: point)
-
-        case 1: // Touch move - detect gesture type and act accordingly
-            handleTouchMove(to: point)
-
-        case 2: // Touch up - finalize gesture
-            handleTouchUp(at: point)
-
-        default:
-            print("⚠️ Unknown action: \(action)")
+        case 0: handleTouchDown(at: point)
+        case 1: handleTouchMove(to: point)
+        case 2: handleTouchUp(at: point)
+        default: break
         }
     }
 
-    // MARK: - Gesture Handling
+    // MARK: - Simple Gesture Handling
 
     private func handleTouchDown(at point: CGPoint) {
-        // Initialize touch state
+        // Stop any ongoing momentum scroll
+        stopMomentumScroll()
+
+        // Initialize touch state - assume tap until proven otherwise
         touchState = TouchState(position: point)
         lastMousePosition = point
 
@@ -407,8 +477,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let moveEvent = CGEvent(mouseEventSource: eventSource, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left) {
             moveEvent.post(tap: .cghidEventTap)
         }
-
-        print("👇 Touch DOWN at \(point)")
     }
 
     private func handleTouchMove(to point: CGPoint) {
@@ -417,57 +485,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let deltaX = point.x - state.lastPosition.x
         let deltaY = point.y - state.lastPosition.y
         let totalDistance = hypot(point.x - state.startPosition.x, point.y - state.startPosition.y)
-        let elapsed = Date().timeIntervalSince(state.startTime)
-        let velocity = elapsed > 0 ? totalDistance / CGFloat(elapsed) : 0
 
-        // Determine gesture type if not yet determined
-        if state.gestureType == nil && totalDistance > GestureThresholds.scrollMinDistance {
-            // Check velocity to determine if scroll or drag
-            if velocity > GestureThresholds.scrollMinVelocity {
-                state.gestureType = .scroll
-                stopMomentumScroll()  // Cancel any existing momentum
-                NSCursor.hide()  // Hide cursor during scroll
-                print("📜 Gesture detected: SCROLL (velocity: \(Int(velocity)) px/s)")
-            } else {
-                state.gestureType = .drag
-                print("✋ Gesture detected: DRAG")
-                // Start drag - send mouseDown
-                if let downEvent = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDown, mouseCursorPosition: state.startPosition, mouseButton: .left) {
-                    downEvent.setIntegerValueField(.mouseEventClickState, value: 1)
-                    downEvent.post(tap: .cghidEventTap)
-                }
-            }
+        // Check if movement exceeds tap threshold
+        if totalDistance > GestureThresholds.tapMaxDistance {
+            state.isTap = false
         }
 
-        // Act based on gesture type
-        switch state.gestureType {
-        case .scroll:
-            // Accumulate scroll delta
-            state.accumulatedScrollX += deltaX * GestureThresholds.scrollSensitivity
-            state.accumulatedScrollY += deltaY * GestureThresholds.scrollSensitivity
+        // If not a tap anymore, treat as scroll
+        if !state.isTap {
+            // Scale deltas for scroll
+            let scrollDeltaX = deltaX * GestureThresholds.scrollSensitivity
+            let scrollDeltaY = deltaY * GestureThresholds.scrollSensitivity
 
-            // Track velocity for momentum (use per-frame delta)
-            lastScrollVelocityX = deltaX * GestureThresholds.scrollSensitivity
-            lastScrollVelocityY = deltaY * GestureThresholds.scrollSensitivity
+            // Send scroll event immediately (no accumulation, no throttling)
+            injectScrollEvent(deltaX: scrollDeltaX, deltaY: scrollDeltaY, at: point)
 
-            // Throttle scroll events
+            // Track last delta and time for momentum calculation
             let now = Date()
-            if now.timeIntervalSince(lastScrollTime) >= GestureThresholds.scrollThrottleInterval {
-                injectScrollEvent(deltaX: state.accumulatedScrollX, deltaY: state.accumulatedScrollY, at: point)
-                state.accumulatedScrollX = 0
-                state.accumulatedScrollY = 0
-                lastScrollTime = now
+            let timeDelta = now.timeIntervalSince(state.lastMoveTime)
+            if timeDelta > 0 && timeDelta < 0.1 {  // Only track if reasonable time gap
+                state.lastDeltaX = scrollDeltaX
+                state.lastDeltaY = scrollDeltaY
             }
-
-        case .drag:
-            // Send drag event
-            if let dragEvent = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDragged, mouseCursorPosition: point, mouseButton: .left) {
-                dragEvent.post(tap: .cghidEventTap)
-            }
-
-        case .tap, .none:
-            // Still undetermined or tap - just track position
-            break
+            state.lastMoveTime = now
         }
 
         state.lastPosition = point
@@ -478,54 +518,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func handleTouchUp(at point: CGPoint) {
         guard let state = touchState else { return }
 
-        let totalDistance = hypot(point.x - state.startPosition.x, point.y - state.startPosition.y)
         let elapsed = Date().timeIntervalSince(state.startTime)
 
-        // Finalize gesture type
-        let finalGesture = state.gestureType ?? (
-            totalDistance < GestureThresholds.tapMaxDistance && elapsed < GestureThresholds.tapMaxTime
-            ? .tap : .drag
-        )
-
-        switch finalGesture {
-        case .tap:
-            // Perform click
+        // Simple logic: if still a tap (didn't move much) AND quick enough = click
+        if state.isTap && elapsed < GestureThresholds.tapMaxTime {
             print("👆 TAP at \(point)")
             performClick(at: point)
+        } else if !state.isTap {
+            // Was scrolling - check if we should start momentum
+            let timeSinceLastMove = Date().timeIntervalSince(state.lastMoveTime)
 
-        case .drag:
-            // End drag - release mouse
-            print("✋ DRAG ended at \(point)")
-            if let upEvent = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) {
-                upEvent.setIntegerValueField(.mouseEventClickState, value: 1)
-                upEvent.post(tap: .cghidEventTap)
+            // Only start momentum if finger was recently moving (within 50ms)
+            if timeSinceLastMove < 0.05 {
+                let momentumThreshold: CGFloat = 2.0
+                if abs(state.lastDeltaX) > momentumThreshold || abs(state.lastDeltaY) > momentumThreshold {
+                    // Amplify last delta for momentum - use the raw delta values
+                    let momentumMultiplier: CGFloat = 6.0
+                    startMomentumScroll(
+                        velocityX: state.lastDeltaX * momentumMultiplier,
+                        velocityY: state.lastDeltaY * momentumMultiplier,
+                        at: point
+                    )
+                    print("📜 Momentum started (vX: \(Int(state.lastDeltaX * momentumMultiplier)), vY: \(Int(state.lastDeltaY * momentumMultiplier)))")
+                }
             }
-
-        case .scroll:
-            // Scroll ended - send any remaining accumulated scroll
-            if abs(state.accumulatedScrollX) > 0.5 || abs(state.accumulatedScrollY) > 0.5 {
-                injectScrollEvent(deltaX: state.accumulatedScrollX, deltaY: state.accumulatedScrollY, at: point)
-            }
-
-            // Start momentum scrolling if velocity is significant
-            let momentumThreshold: CGFloat = 2.0
-            if abs(lastScrollVelocityX) > momentumThreshold || abs(lastScrollVelocityY) > momentumThreshold {
-                // Reduced multiplier for smoother momentum
-                let momentumMultiplier: CGFloat = 4.0
-                startMomentumScroll(
-                    velocityX: lastScrollVelocityX * momentumMultiplier,
-                    velocityY: lastScrollVelocityY * momentumMultiplier,
-                    at: point
-                )
-                print("📜 SCROLL ended - starting momentum (vX: \(Int(lastScrollVelocityX)), vY: \(Int(lastScrollVelocityY)))")
-            } else {
-                NSCursor.unhide()  // No momentum, show cursor immediately
-                print("📜 SCROLL ended")
-            }
-
-            // Reset velocity tracking
-            lastScrollVelocityX = 0
-            lastScrollVelocityY = 0
         }
 
         touchState = nil

@@ -435,6 +435,7 @@ struct SettingsView: View {
                                 .background(Color.blue.opacity(0.1))
                                 .cornerRadius(8)
                             }
+
                         }
                         .padding(12)
                     }

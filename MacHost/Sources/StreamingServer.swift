@@ -7,16 +7,16 @@ class StreamingServer {
     private var connection: NWConnection?
     var onClientConnected: (() -> Void)?
     var onTouchEvent: ((Float, Float, Int) -> Void)?
-
     var onStats: ((Double, Double) -> Void)?
-    private var frameQueue = DispatchQueue(label: "com.virtualDisplay.frameQueue", qos: .userInteractive)
-    private let receiveQueue = DispatchQueue(label: "com.virtualDisplay.receiveQueue", qos: .userInteractive)
+
+    private let frameQueue = DispatchQueue(label: "frameQueue", qos: .userInteractive)
+    private let receiveQueue = DispatchQueue(label: "receiveQueue", qos: .userInteractive)
     private var bytesSent: UInt64 = 0
     private var frameCount: UInt64 = 0
     private var lastStatsTime = Date()
-    private var displayWidth: Int = 1920
-    private var displayHeight: Int = 1080
-    private var rotation: Int = 0
+    private var displayWidth = 1920
+    private var displayHeight = 1080
+    private var rotation = 0
     private var isReceiving = false
 
     init(port: UInt16) {
@@ -116,60 +116,29 @@ class StreamingServer {
 
     private func receiveNextTouch() {
         guard let connection = connection else {
-            print("❌ receiveNextTouch: connection is nil")
             isReceiving = false
             return
         }
 
-        // Read full touch message at once (13 bytes: 1 type + 4 x + 4 y + 4 action)
-        connection.receive(minimumIncompleteLength: 13, maximumLength: 13) { [weak self] data, _, isComplete, error in
-            guard let self = self else {
-                print("❌ receiveNextTouch: self is nil")
-                return
-            }
+        // Touch: 13 bytes (1 type + 4 x + 4 y + 4 action)
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 13) { [weak self] data, _, isComplete, error in
+            guard let self = self else { return }
 
-            if let error = error {
-                print("❌ receiveNextTouch error: \(error)")
-                // Don't continue on error - connection may be broken
+            if error != nil || isComplete {
                 self.isReceiving = false
                 return
             }
 
-            if isComplete {
-                print("⚠️ receiveNextTouch: connection closed by peer")
-                self.isReceiving = false
-                return
-            }
-
-            guard let data = data, data.count == 13 else {
-                print("⚠️ receiveNextTouch: incomplete data (\(data?.count ?? 0) bytes), continuing...")
-                self.receiveQueue.async {
-                    self.receiveNextTouch()
-                }
-                return
-            }
-
-            let messageType = data[0]
-
-            if messageType == 2 { // Touch event
-                // Parse touch data (Little Endian from Android)
-                // Use loadUnaligned to avoid alignment issues with Data.dropFirst()
+            if let data = data, data.count >= 13, data[0] == 2 {
                 let x = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 1, as: Float.self) }
                 let y = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 5, as: Float.self) }
                 let action = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 9, as: Int32.self) }
 
-                let actionName = action == 0 ? "DOWN" : (action == 1 ? "MOVE" : "UP")
-                print("👆 Touch received: x=\(String(format: "%.3f", x)), y=\(String(format: "%.3f", y)), action=\(actionName)")
-
-                // Dispatch touch handling to main queue for UI operations
                 DispatchQueue.main.async {
                     self.onTouchEvent?(x, y, Int(action))
                 }
-            } else {
-                print("⚠️ Unknown message type: \(messageType)")
             }
 
-            // Continue receiving on dedicated queue
             self.receiveQueue.async {
                 self.receiveNextTouch()
             }
