@@ -807,7 +807,7 @@ class DisplaySettings: ObservableObject {
         self.resolution = defaults.string(forKey: keyPrefix + "resolution") ?? "1920x1200"
         self.refreshRate = defaults.object(forKey: keyPrefix + "refreshRate") as? Int ?? 120  // Default: highest FPS
         self.hiDPI = defaults.bool(forKey: keyPrefix + "hiDPI")
-        self.bitrate = defaults.object(forKey: keyPrefix + "bitrate") as? Int ?? 2000  // Default: high bitrate
+        self.bitrate = defaults.object(forKey: keyPrefix + "bitrate") as? Int ?? 1000  // Default: 1000 Mbps
         self.quality = defaults.string(forKey: keyPrefix + "quality") ?? "ultralow"  // Default: fastest encoding
         self.gamingBoost = defaults.bool(forKey: keyPrefix + "gamingBoost")
         self.port = UInt16(defaults.object(forKey: keyPrefix + "port") as? Int ?? 8888)
@@ -886,7 +886,7 @@ class DisplaySettings: ObservableObject {
         resolution = "1920x1200"
         refreshRate = 120  // Default: highest FPS
         hiDPI = false
-        bitrate = 2000  // Default: high bitrate
+        bitrate = 1000  // Default: 1000 Mbps
         quality = "ultralow"  // Default: fastest encoding
         gamingBoost = false
         port = 8888

@@ -229,6 +229,10 @@ a:hover {
     transition: all var(--transition-normal);
 }
 
+[data-theme="dark"] #header {
+    background: rgba(13, 13, 13, 0.8);
+}
+
 #header.scrolled {
     border-bottom-color: var(--color-border);
 }
