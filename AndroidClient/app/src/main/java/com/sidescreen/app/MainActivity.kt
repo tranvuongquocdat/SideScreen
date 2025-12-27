@@ -624,8 +624,12 @@ class MainActivity : AppCompatActivity() {
                             binding.settingsButton.visibility = View.GONE
                             binding.statusBar.visibility = View.GONE
 
-                            // Restart checklist updates when disconnected
-                            startChecklistUpdates()
+                            // Restart checklist updates after short delay (wait for old connection to fully close)
+                            checklistHandler.removeCallbacksAndMessages(null) // Clear any pending callbacks
+                            checklistHandler.postDelayed({
+                                log("📋 Restarting checklist updates")
+                                startChecklistUpdates()
+                            }, 500)
                         }
                     }
                 }
@@ -814,6 +818,11 @@ class MainActivity : AppCompatActivity() {
     // ==================== Connection Checklist ====================
 
     private fun startChecklistUpdates() {
+        // Stop any existing runnable first to prevent duplicates
+        checklistRunnable?.let {
+            checklistHandler.removeCallbacks(it)
+        }
+
         checklistRunnable = object : Runnable {
             override fun run() {
                 updateChecklist()
@@ -824,7 +833,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun stopChecklistUpdates() {
-        checklistRunnable?.let { checklistHandler.removeCallbacks(it) }
+        checklistRunnable?.let {
+            checklistHandler.removeCallbacks(it)
+            checklistRunnable = null
+        }
     }
 
     private fun updateChecklist() {
