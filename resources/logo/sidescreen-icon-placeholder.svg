@@ -1,0 +1,25 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="512" height="512" rx="115" fill="url(#gradient)"/>
+
+  <!-- Main display (Mac) -->
+  <rect x="80" y="140" width="200" height="140" rx="12" fill="white" fill-opacity="0.95"/>
+  <rect x="90" y="150" width="180" height="100" rx="6" fill="#1D1D1F"/>
+  <rect x="140" y="260" width="80" height="8" rx="4" fill="white" fill-opacity="0.6"/>
+
+  <!-- Secondary display (Tablet) -->
+  <rect x="232" y="180" width="200" height="140" rx="12" fill="white" fill-opacity="0.85"/>
+  <rect x="242" y="190" width="180" height="120" rx="6" fill="#1D1D1F"/>
+
+  <!-- Connection indicator -->
+  <circle cx="256" cy="380" r="24" fill="white" fill-opacity="0.2"/>
+  <path d="M244 380 L256 368 L268 380 L256 392 Z" fill="white"/>
+
+  <!-- Gradient definition -->
+  <defs>
+    <linearGradient id="gradient" x1="0" y1="0" x2="512" y2="512">
+      <stop offset="0%" stop-color="#007AFF"/>
+      <stop offset="100%" stop-color="#5856D6"/>
+    </linearGradient>
+  </defs>
+</svg>

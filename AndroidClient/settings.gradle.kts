@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "VirtualDisplayClient"
+rootProject.name = "SideScreen"
 include(":app")

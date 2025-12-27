@@ -7,7 +7,7 @@
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="Virtual Display"
+        android:label="Tab Virtual Display"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true">
 

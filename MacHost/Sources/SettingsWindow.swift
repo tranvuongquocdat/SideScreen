@@ -1,243 +1,292 @@
 import Cocoa
 import SwiftUI
 
+// MARK: - Frosted GroupBox Component
+
+@available(macOS 14.0, *)
+struct FrostedGroupBox<Content: View>: View {
+    let title: String
+    var icon: String? = nil
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                if let icon = icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.accentColor)
+                }
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            content
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.ultraThinMaterial)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+        }
+    }
+}
+
+// MARK: - Visual Effect Blur
+
+@available(macOS 14.0, *)
+struct VisualEffectBlur: NSViewRepresentable {
+    var material: NSVisualEffectView.Material
+    var blendingMode: NSVisualEffectView.BlendingMode
+    var state: NSVisualEffectView.State = .active
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = blendingMode
+        view.state = state
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.material = material
+        nsView.blendingMode = blendingMode
+        nsView.state = state
+    }
+}
+
+// MARK: - Settings View
+
 @available(macOS 14.0, *)
 struct SettingsView: View {
     @ObservedObject var settings: DisplaySettings
     @State private var showPermissionAlert = false
     @State private var showResetConfirmation = false
+    @State private var headerHovered = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack(spacing: 14) {
-                // App icon
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(LinearGradient(
-                            colors: [Color.blue, Color.blue.opacity(0.7)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ))
-                        .frame(width: 44, height: 44)
-                    Image(systemName: "rectangle.on.rectangle")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(.white)
-                }
+        ZStack {
+            VisualEffectBlur(material: .sidebar, blendingMode: .behindWindow)
+                .ignoresSafeArea()
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Side Screen")
-                        .font(.system(size: 20, weight: .semibold))
-                    Text("Your second display for macOS")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                }
+            VStack(spacing: 0) {
+                // Header with frosted glass
+                HStack(spacing: 14) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(LinearGradient(
+                                colors: [Color.accentColor, Color.accentColor.opacity(0.7)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ))
+                            .frame(width: 48, height: 48)
+                            .shadow(color: Color.accentColor.opacity(0.3), radius: 8, y: 4)
 
-                Spacer()
-
-                // Reset button
-                Button(action: {
-                    showResetConfirmation = true
-                }) {
-                    Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.borderless)
-                .help("Reset settings")
-                .alert("Reset Settings", isPresented: $showResetConfirmation) {
-                    Button("Cancel", role: .cancel) { }
-                    Button("Reset", role: .destructive) {
-                        settings.resetToDefaults()
-                        if let window = NSApp.windows.first(where: { $0.title == "Side Screen" }) {
-                            window.center()
-                        }
+                        Image(systemName: "rectangle.on.rectangle")
+                            .font(.system(size: 22, weight: .medium))
+                            .foregroundColor(.white)
                     }
-                } message: {
-                    Text("This will reset all settings to default values.")
+                    .scaleEffect(headerHovered ? 1.05 : 1)
+                    .animation(.spring(response: 0.3), value: headerHovered)
+                    .onHover { headerHovered = $0 }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Tab Virtual Display")
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                        Text("Turn your tablet into a second display")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+
+                    Button(action: { showResetConfirmation = true }) {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                            .frame(width: 28, height: 28)
+                            .background {
+                                Circle().fill(.ultraThinMaterial)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .help("Reset settings")
+                    .alert("Reset Settings", isPresented: $showResetConfirmation) {
+                        Button("Cancel", role: .cancel) { }
+                        Button("Reset", role: .destructive) {
+                            settings.resetToDefaults()
+                            if let window = NSApp.windows.first(where: { $0.title == "Tab Virtual Display" }) {
+                                window.center()
+                            }
+                        }
+                    } message: {
+                        Text("This will reset all settings to default values.")
+                    }
                 }
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 18)
+                .background(.ultraThinMaterial)
 
-            Divider()
+                Rectangle()
+                    .fill(Color.primary.opacity(0.06))
+                    .frame(height: 1)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    // Display Configuration
-                    GroupBox {
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("Display Configuration")
-                                .font(.system(size: 13, weight: .semibold))
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        // Display Configuration
+                        FrostedGroupBox(title: "Display Configuration", icon: "display") {
+                            VStack(alignment: .leading, spacing: 16) {
+                                // Resolution
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack {
+                                        Text("Resolution")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.secondary)
+                                        Spacer()
+                                        Toggle("Show all", isOn: $settings.showAllResolutions)
+                                            .toggleStyle(.switch)
+                                            .controlSize(.mini)
+                                    }
 
-                            // Resolution (grouped by aspect ratio)
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text("Resolution")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
-                                    Spacer()
-                                    Toggle("Show all", isOn: $settings.showAllResolutions)
-                                        .toggleStyle(.switch)
-                                        .controlSize(.mini)
-                                }
+                                    ScrollView {
+                                        VStack(alignment: .leading, spacing: 0) {
+                                            if settings.showAllResolutions {
+                                                ForEach(DisplaySettings.resolutionGroups) { group in
+                                                    HStack(spacing: 6) {
+                                                        Text(group.name)
+                                                            .font(.system(size: 11, weight: .semibold))
+                                                        Text(group.ratio)
+                                                            .font(.system(size: 10))
+                                                            .foregroundColor(.secondary)
+                                                    }
+                                                    .padding(.horizontal, 12)
+                                                    .padding(.vertical, 6)
+                                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                                    .background(Color.primary.opacity(0.03))
 
-                                // Grouped resolution list
-                                ScrollView {
-                                    VStack(alignment: .leading, spacing: 0) {
-                                        if settings.showAllResolutions {
-                                            // Show grouped by aspect ratio
-                                            ForEach(DisplaySettings.resolutionGroups) { group in
-                                                // Group header
-                                                HStack(spacing: 6) {
-                                                    Text(group.name)
-                                                        .font(.system(size: 11, weight: .semibold))
-                                                    Text(group.ratio)
-                                                        .font(.system(size: 10))
-                                                        .foregroundColor(.secondary)
+                                                    ForEach(group.resolutions, id: \.self) { res in
+                                                        ResolutionRow(resolution: res, isSelected: settings.resolution == res) {
+                                                            settings.resolution = res
+                                                        }
+                                                    }
                                                 }
-                                                .padding(.horizontal, 12)
-                                                .padding(.vertical, 6)
-                                                .frame(maxWidth: .infinity, alignment: .leading)
-                                                .background(Color(NSColor.windowBackgroundColor))
-
-                                                // Resolutions in group
-                                                ForEach(group.resolutions, id: \.self) { res in
+                                            } else {
+                                                ForEach(DisplaySettings.commonResolutions, id: \.self) { res in
                                                     ResolutionRow(resolution: res, isSelected: settings.resolution == res) {
                                                         settings.resolution = res
                                                     }
                                                 }
                                             }
-                                        } else {
-                                            // Show common resolutions only
-                                            ForEach(DisplaySettings.commonResolutions, id: \.self) { res in
-                                                ResolutionRow(resolution: res, isSelected: settings.resolution == res) {
-                                                    settings.resolution = res
-                                                }
-                                            }
                                         }
                                     }
-                                }
-                                .frame(height: 180)
-                                .background(Color(NSColor.controlBackgroundColor))
-                                .cornerRadius(8)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(Color(NSColor.separatorColor), lineWidth: 1)
-                                )
+                                    .frame(height: 180)
+                                    .background(.ultraThinMaterial)
+                                    .cornerRadius(8)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+                                    )
 
-                                // Custom resolution input
-                                if settings.showAllResolutions {
-                                    HStack(spacing: 8) {
-                                        TextField("W", value: $settings.customWidth, format: .number)
-                                            .textFieldStyle(.roundedBorder)
-                                            .frame(width: 70)
-                                        Text("×")
-                                            .foregroundColor(.secondary)
-                                        TextField("H", value: $settings.customHeight, format: .number)
-                                            .textFieldStyle(.roundedBorder)
-                                            .frame(width: 70)
-                                        Button("Apply") {
-                                            settings.applyCustomResolution()
-                                        }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
-                                    }
-                                }
-                            }
-
-                            // Rotation (visual 4-corner selector)
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Rotation")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-
-                                HStack(spacing: 12) {
-                                    // Visual display preview with rotation buttons
-                                    ZStack {
-                                        // Display frame
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .stroke(Color.secondary, lineWidth: 1)
-                                            .frame(width: 80, height: 50)
-                                            .rotationEffect(.degrees(Double(settings.rotation)))
-
-                                        // Rotation indicator
-                                        Text(settings.rotation == 90 || settings.rotation == 270 ? "Portrait" : "Landscape")
-                                            .font(.system(size: 8))
-                                            .foregroundColor(.secondary)
-                                    }
-                                    .frame(width: 100, height: 80)
-
-                                    // Rotation buttons grid
-                                    VStack(spacing: 6) {
-                                        HStack(spacing: 6) {
-                                            RotationButton(degrees: 270, label: "↺ 270°", isSelected: settings.rotation == 270) {
-                                                settings.rotation = 270
+                                    if settings.showAllResolutions {
+                                        HStack(spacing: 8) {
+                                            TextField("W", value: $settings.customWidth, format: .number)
+                                                .textFieldStyle(.roundedBorder)
+                                                .frame(width: 70)
+                                            Text("x")
+                                                .foregroundColor(.secondary)
+                                            TextField("H", value: $settings.customHeight, format: .number)
+                                                .textFieldStyle(.roundedBorder)
+                                                .frame(width: 70)
+                                            Button("Apply") {
+                                                settings.applyCustomResolution()
                                             }
-                                            RotationButton(degrees: 0, label: "0°", isSelected: settings.rotation == 0) {
-                                                settings.rotation = 0
-                                            }
-                                            RotationButton(degrees: 90, label: "90° ↻", isSelected: settings.rotation == 90) {
-                                                settings.rotation = 90
-                                            }
-                                        }
-                                        HStack(spacing: 6) {
-                                            Spacer()
-                                            RotationButton(degrees: 180, label: "180°", isSelected: settings.rotation == 180) {
-                                                settings.rotation = 180
-                                            }
-                                            Spacer()
+                                            .buttonStyle(.bordered)
+                                            .controlSize(.small)
                                         }
                                     }
                                 }
 
-                                if settings.rotation == 90 || settings.rotation == 270 {
-                                    Text("Display will be in portrait mode")
-                                        .font(.system(size: 10))
-                                        .foregroundColor(.blue)
-                                }
-                            }
-
-                            // Refresh Rate
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text("Refresh Rate")
+                                // Rotation
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Rotation")
                                         .font(.system(size: 11))
                                         .foregroundColor(.secondary)
-                                    Spacer()
-                                    Text("\(settings.refreshRate) Hz")
-                                        .font(.system(size: 11, weight: .medium))
+
+                                    HStack(spacing: 12) {
+                                        ZStack {
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .stroke(Color.accentColor.opacity(0.5), lineWidth: 1)
+                                                .frame(width: 80, height: 50)
+                                                .rotationEffect(.degrees(Double(settings.rotation)))
+
+                                            Text(settings.rotation == 90 || settings.rotation == 270 ? "Portrait" : "Landscape")
+                                                .font(.system(size: 8))
+                                                .foregroundColor(.secondary)
+                                        }
+                                        .frame(width: 100, height: 80)
+
+                                        VStack(spacing: 6) {
+                                            HStack(spacing: 6) {
+                                                RotationButton(degrees: 270, label: "270", isSelected: settings.rotation == 270) {
+                                                    settings.rotation = 270
+                                                }
+                                                RotationButton(degrees: 0, label: "0", isSelected: settings.rotation == 0) {
+                                                    settings.rotation = 0
+                                                }
+                                                RotationButton(degrees: 90, label: "90", isSelected: settings.rotation == 90) {
+                                                    settings.rotation = 90
+                                                }
+                                            }
+                                            HStack(spacing: 6) {
+                                                Spacer()
+                                                RotationButton(degrees: 180, label: "180", isSelected: settings.rotation == 180) {
+                                                    settings.rotation = 180
+                                                }
+                                                Spacer()
+                                            }
+                                        }
+                                    }
+
+                                    if settings.rotation == 90 || settings.rotation == 270 {
+                                        Text("Display will be in portrait mode")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.accentColor)
+                                    }
                                 }
 
-                                Picker("", selection: $settings.refreshRate) {
-                                    Text("30 Hz").tag(30)
-                                    Text("60 Hz (Balanced)").tag(60)
-                                    Text("90 Hz (Smooth)").tag(90)
-                                    Text("120 Hz (Ultra)").tag(120)
-                                }
-                                .pickerStyle(.segmented)
+                                // Refresh Rate
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack {
+                                        Text("Refresh Rate")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.secondary)
+                                        Spacer()
+                                        Text("\(settings.refreshRate) Hz")
+                                            .font(.system(size: 11, weight: .medium))
+                                    }
 
-                                if settings.refreshRate >= 90 {
-                                    Text("High refresh rate for competitive gaming")
-                                        .font(.system(size: 10))
-                                        .foregroundColor(.green)
+                                    Picker("", selection: $settings.refreshRate) {
+                                        Text("30").tag(30)
+                                        Text("60").tag(60)
+                                        Text("90").tag(90)
+                                        Text("120").tag(120)
+                                    }
+                                    .pickerStyle(.segmented)
+
+                                    if settings.refreshRate >= 90 {
+                                        Text("High refresh rate for smooth experience")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.green)
+                                    }
                                 }
                             }
-
-                            // HiDPI
-                            Toggle("Enable HiDPI (Retina)", isOn: $settings.hiDPI)
-                                .font(.system(size: 12))
                         }
-                        .padding(12)
-                    }
 
-                    // Network Settings
-                    GroupBox {
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("Network Settings")
-                                .font(.system(size: 13, weight: .semibold))
-
-                            // Port
+                        // Network Settings
+                        FrostedGroupBox(title: "Network Settings", icon: "network") {
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
                                     Text("Server Port")
@@ -261,250 +310,202 @@ struct SettingsView: View {
                                 }
                             }
                         }
-                        .padding(12)
-                    }
 
-                    // Gaming Boost Mode
-                    GroupBox {
-                        VStack(alignment: .leading, spacing: 16) {
-                            HStack {
-                                Image(systemName: settings.gamingBoost ? "bolt.fill" : "bolt.slash.fill")
-                                    .foregroundColor(settings.gamingBoost ? .orange : .secondary)
-                                    .font(.system(size: 16))
-
-                                Text("Gaming Boost")
-                                    .font(.system(size: 13, weight: .semibold))
-
-                                Spacer()
-
-                                Toggle("", isOn: $settings.gamingBoost)
-                                    .labelsHidden()
-                            }
-
-                            if settings.gamingBoost {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundColor(.green)
-                                            .font(.system(size: 10))
-                                        Text("High bitrate (1000 Mbps)")
-                                            .font(.system(size: 11))
-                                    }
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundColor(.green)
-                                            .font(.system(size: 10))
-                                        Text("120 Hz refresh rate")
-                                            .font(.system(size: 11))
-                                    }
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundColor(.green)
-                                            .font(.system(size: 10))
-                                        Text("Ultra-low latency encoding")
-                                            .font(.system(size: 11))
-                                    }
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundColor(.green)
-                                            .font(.system(size: 10))
-                                        Text("Optimized for FPS games")
-                                            .font(.system(size: 11))
-                                    }
-                                }
-                                .padding(.leading, 20)
-                                .foregroundColor(.secondary)
-                            } else {
-                                Text("Enable for competitive gaming with minimal input lag")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .padding(12)
-                    }
-
-                    // Streaming Settings
-                    GroupBox {
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("Streaming Settings")
-                                .font(.system(size: 13, weight: .semibold))
-
-                            // Bitrate
-                            VStack(alignment: .leading, spacing: 10) {
+                        // Gaming Boost
+                        FrostedGroupBox(title: "Gaming Boost", icon: settings.gamingBoost ? "bolt.fill" : "bolt") {
+                            VStack(alignment: .leading, spacing: 16) {
                                 HStack {
-                                    Text("Bitrate")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
-                                    Spacer()
-                                    Text("\(settings.effectiveBitrate) Mbps")
-                                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                                        .foregroundColor(.accentColor)
-                                }
-
-                                // Bitrate preset buttons
-                                HStack(spacing: 6) {
-                                    BitrateButton(label: "100", value: 100, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
-                                        settings.bitrate = 100
-                                    }
-                                    BitrateButton(label: "300", value: 300, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
-                                        settings.bitrate = 300
-                                    }
-                                    BitrateButton(label: "500", value: 500, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
-                                        settings.bitrate = 500
-                                    }
-                                    BitrateButton(label: "1000", value: 1000, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
-                                        settings.bitrate = 1000
-                                    }
-                                    BitrateButton(label: "2000", value: 2000, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
-                                        settings.bitrate = 2000
-                                    }
-                                }
-
-                                // Fine-tune slider
-                                HStack(spacing: 8) {
-                                    Text("20")
-                                        .font(.system(size: 9))
-                                        .foregroundColor(.secondary)
-                                    Slider(value: Binding(
-                                        get: { Double(settings.bitrate) },
-                                        set: { settings.bitrate = Int($0) }
-                                    ), in: 20...5000, step: 10)
-                                    .disabled(settings.gamingBoost)
-                                    Text("5000")
-                                        .font(.system(size: 9))
-                                        .foregroundColor(.secondary)
-                                }
-
-                                if settings.gamingBoost {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "bolt.fill")
-                                            .font(.system(size: 10))
-                                        Text("Locked at 1000 Mbps in Gaming Boost")
-                                            .font(.system(size: 10))
-                                    }
-                                    .foregroundColor(.orange)
-                                }
-                            }
-
-                            // Quality
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Quality Preset")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-
-                                Picker("", selection: $settings.quality) {
-                                    Text("Low (Fast)").tag("low")
-                                    Text("Medium").tag("medium")
-                                    Text("High (Slow)").tag("high")
-                                }
-                                .pickerStyle(.segmented)
-                                .disabled(settings.gamingBoost)
-
-                                if settings.gamingBoost {
-                                    Text("Quality locked to Low in Gaming Boost mode")
-                                        .font(.system(size: 10))
-                                        .foregroundColor(.orange)
-                                }
-                            }
-                        }
-                        .padding(12)
-                    }
-
-                    // Status
-                    GroupBox {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Status")
-                                .font(.system(size: 13, weight: .semibold))
-
-                            StatusRow(title: "Virtual Display", status: settings.displayCreated ? "Active" : "Inactive", color: settings.displayCreated ? .green : .secondary)
-                            StatusRow(title: "Client Connected", status: settings.clientConnected ? "Yes" : "No", color: settings.clientConnected ? .green : .secondary)
-                            StatusRow(title: "Screen Recording", status: settings.hasScreenRecordingPermission ? "Granted" : "Not Granted", color: settings.hasScreenRecordingPermission ? .green : .red)
-                            StatusRow(title: "Accessibility (Touch)", status: settings.hasAccessibilityPermission ? "Granted" : "Not Granted", color: settings.hasAccessibilityPermission ? .green : .red)
-
-                            // Screen Recording permission warning
-                            if !settings.hasScreenRecordingPermission {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "exclamationmark.triangle.fill")
-                                            .foregroundColor(.orange)
-                                            .font(.system(size: 14))
-                                        Text("Screen Recording permission required")
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Enable Gaming Mode")
                                             .font(.system(size: 12, weight: .medium))
-                                            .foregroundColor(.orange)
+                                        Text("Optimized for competitive gaming")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary)
                                     }
-                                    Text("Required to capture and stream the virtual display.")
+                                    Spacer()
+                                    Toggle("", isOn: $settings.gamingBoost)
+                                        .labelsHidden()
+                                }
+
+                                if settings.gamingBoost {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundColor(.green)
+                                                .font(.system(size: 10))
+                                            Text("High bitrate (1000 Mbps)")
+                                                .font(.system(size: 11))
+                                        }
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundColor(.green)
+                                                .font(.system(size: 10))
+                                            Text("120 Hz refresh rate")
+                                                .font(.system(size: 11))
+                                        }
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundColor(.green)
+                                                .font(.system(size: 10))
+                                            Text("Ultra-low latency encoding")
+                                                .font(.system(size: 11))
+                                        }
+                                    }
+                                    .padding(.leading, 4)
+                                    .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+
+                        // Streaming Settings
+                        FrostedGroupBox(title: "Streaming Settings", icon: "antenna.radiowaves.left.and.right") {
+                            VStack(alignment: .leading, spacing: 16) {
+                                // Bitrate
+                                VStack(alignment: .leading, spacing: 10) {
+                                    HStack {
+                                        Text("Bitrate")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.secondary)
+                                        Spacer()
+                                        Text("\(settings.effectiveBitrate) Mbps")
+                                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                            .foregroundColor(.accentColor)
+                                    }
+
+                                    HStack(spacing: 6) {
+                                        BitrateButton(label: "100", value: 100, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
+                                            settings.bitrate = 100
+                                        }
+                                        BitrateButton(label: "300", value: 300, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
+                                            settings.bitrate = 300
+                                        }
+                                        BitrateButton(label: "500", value: 500, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
+                                            settings.bitrate = 500
+                                        }
+                                        BitrateButton(label: "1000", value: 1000, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
+                                            settings.bitrate = 1000
+                                        }
+                                        BitrateButton(label: "2000", value: 2000, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
+                                            settings.bitrate = 2000
+                                        }
+                                    }
+
+                                    HStack(spacing: 8) {
+                                        Text("20")
+                                            .font(.system(size: 9))
+                                            .foregroundColor(.secondary)
+                                        Slider(value: Binding(
+                                            get: { Double(settings.bitrate) },
+                                            set: { settings.bitrate = Int($0) }
+                                        ), in: 20...5000, step: 10)
+                                        .disabled(settings.gamingBoost)
+                                        Text("5000")
+                                            .font(.system(size: 9))
+                                            .foregroundColor(.secondary)
+                                    }
+
+                                    if settings.gamingBoost {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "bolt.fill")
+                                                .font(.system(size: 10))
+                                            Text("Locked at 1000 Mbps in Gaming Boost")
+                                                .font(.system(size: 10))
+                                        }
+                                        .foregroundColor(.orange)
+                                    }
+                                }
+
+                                // Quality
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Quality Preset")
                                         .font(.system(size: 11))
                                         .foregroundColor(.secondary)
-                                    Button(action: {
-                                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
-                                    }) {
-                                        HStack {
-                                            Image(systemName: "gear")
-                                            Text("Open System Settings")
-                                        }
+
+                                    Picker("", selection: $settings.quality) {
+                                        Text("Low").tag("low")
+                                        Text("Medium").tag("medium")
+                                        Text("High").tag("high")
                                     }
-                                    .buttonStyle(.borderedProminent)
-                                    .controlSize(.small)
+                                    .pickerStyle(.segmented)
+                                    .disabled(settings.gamingBoost)
+
+                                    if settings.gamingBoost {
+                                        Text("Quality locked to Low in Gaming Boost mode")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.orange)
+                                    }
                                 }
-                                .padding(10)
-                                .background(Color.orange.opacity(0.1))
-                                .cornerRadius(8)
                             }
-
-                            // Accessibility permission warning
-                            if !settings.hasAccessibilityPermission {
-                                VStack(alignment: .leading, spacing: 12) {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: "hand.tap.fill")
-                                            .foregroundColor(.blue)
-                                            .font(.system(size: 18))
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("Enable Touch Control")
-                                                .font(.system(size: 13, weight: .semibold))
-                                            Text("Control your Mac from your tablet")
-                                                .font(.system(size: 11))
-                                                .foregroundColor(.secondary)
-                                        }
-                                    }
-
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        Label("Open System Settings → Privacy & Security", systemImage: "1.circle.fill")
-                                            .font(.system(size: 11))
-                                        Label("Select Accessibility in the left sidebar", systemImage: "2.circle.fill")
-                                            .font(.system(size: 11))
-                                        Label("Turn on Side Screen", systemImage: "3.circle.fill")
-                                            .font(.system(size: 11))
-                                    }
-                                    .foregroundColor(.secondary)
-
-                                    Button(action: {
-                                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
-                                    }) {
-                                        HStack {
-                                            Image(systemName: "gear")
-                                            Text("Open Settings")
-                                        }
-                                        .frame(maxWidth: .infinity)
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                    .controlSize(.regular)
-                                }
-                                .padding(12)
-                                .background(Color.blue.opacity(0.08))
-                                .cornerRadius(10)
-                            }
-
                         }
-                        .padding(12)
-                    }
 
-                    // Performance
-                    if settings.clientConnected {
-                        GroupBox {
+                        // Status
+                        FrostedGroupBox(title: "Status", icon: "checkmark.circle") {
                             VStack(alignment: .leading, spacing: 12) {
-                                Text("Performance")
-                                    .font(.system(size: 13, weight: .semibold))
+                                StatusRow(title: "Virtual Display", status: settings.displayCreated ? "Active" : "Inactive", color: settings.displayCreated ? .green : .secondary)
+                                StatusRow(title: "Client Connected", status: settings.clientConnected ? "Yes" : "No", color: settings.clientConnected ? .green : .secondary)
+                                StatusRow(title: "Screen Recording", status: settings.hasScreenRecordingPermission ? "Granted" : "Required", color: settings.hasScreenRecordingPermission ? .green : .red)
+                                StatusRow(title: "Accessibility", status: settings.hasAccessibilityPermission ? "Granted" : "Optional", color: settings.hasAccessibilityPermission ? .green : .orange)
 
+                                if !settings.hasScreenRecordingPermission {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "exclamationmark.triangle.fill")
+                                                .foregroundColor(.orange)
+                                            Text("Screen Recording Required")
+                                                .font(.system(size: 12, weight: .medium))
+                                        }
+                                        Text("Required to capture the virtual display.")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.secondary)
+                                        Button(action: {
+                                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+                                        }) {
+                                            HStack {
+                                                Image(systemName: "gear")
+                                                Text("Open System Settings")
+                                            }
+                                        }
+                                        .buttonStyle(.borderedProminent)
+                                        .controlSize(.small)
+                                    }
+                                    .padding(10)
+                                    .background(Color.orange.opacity(0.1))
+                                    .cornerRadius(8)
+                                }
+
+                                if !settings.hasAccessibilityPermission {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "hand.tap.fill")
+                                                .foregroundColor(.blue)
+                                            Text("Enable Touch Control")
+                                                .font(.system(size: 12, weight: .medium))
+                                        }
+                                        Text("Control your Mac from your tablet.")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.secondary)
+                                        Button(action: {
+                                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                                        }) {
+                                            HStack {
+                                                Image(systemName: "gear")
+                                                Text("Open Settings")
+                                            }
+                                            .frame(maxWidth: .infinity)
+                                        }
+                                        .buttonStyle(.borderedProminent)
+                                        .controlSize(.small)
+                                    }
+                                    .padding(10)
+                                    .background(Color.blue.opacity(0.08))
+                                    .cornerRadius(8)
+                                }
+                            }
+                        }
+
+                        // Performance (when connected)
+                        if settings.clientConnected {
+                            FrostedGroupBox(title: "Performance", icon: "speedometer") {
                                 HStack {
                                     VStack(alignment: .leading) {
                                         Text("FPS")
@@ -514,68 +515,104 @@ struct SettingsView: View {
                                             .font(.system(size: 16, weight: .semibold))
                                             .foregroundColor(.green)
                                     }
-
                                     Spacer()
-
                                     VStack(alignment: .leading) {
                                         Text("Bitrate")
                                             .font(.system(size: 10))
                                             .foregroundColor(.secondary)
                                         Text(String(format: "%.1f Mbps", settings.currentBitrate))
                                             .font(.system(size: 16, weight: .semibold))
-                                            .foregroundColor(.blue)
+                                            .foregroundColor(.accentColor)
                                     }
                                 }
                             }
-                            .padding(12)
                         }
                     }
+                    .padding(20)
                 }
-                .padding(20)
-            }
 
-            Divider()
+                // Footer
+                VStack(spacing: 0) {
+                    Rectangle()
+                        .fill(Color.primary.opacity(0.06))
+                        .frame(height: 1)
 
-            // Footer
-            HStack(spacing: 12) {
-                Button(action: { settings.toggleServer() }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: settings.isRunning ? "stop.fill" : "play.fill")
-                            .font(.system(size: 12))
-                        Text(settings.isRunning ? "Stop" : "Start")
-                            .font(.system(size: 13, weight: .medium))
+                    HStack(spacing: 12) {
+                        Button(action: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                settings.toggleServer()
+                            }
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: settings.isRunning ? "stop.fill" : "play.fill")
+                                    .font(.system(size: 12))
+                                Text(settings.isRunning ? "Stop" : "Start")
+                                    .font(.system(size: 13, weight: .medium))
+                            }
+                            .frame(width: 90)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(settings.isRunning ? .red : .accentColor)
+                        .controlSize(.large)
+                        .disabled(!settings.hasScreenRecordingPermission)
+
+                        if settings.isRunning {
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(Color.green)
+                                    .frame(width: 8, height: 8)
+                                    .overlay {
+                                        Circle()
+                                            .stroke(Color.green.opacity(0.3), lineWidth: 2)
+                                            .scaleEffect(1.5)
+                                    }
+                                Text("Running on port \(settings.port)")
+                                    .font(.system(size: 12))
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background {
+                                Capsule().fill(.ultraThinMaterial)
+                                    .overlay {
+                                        Capsule().strokeBorder(Color.green.opacity(0.2), lineWidth: 1)
+                                    }
+                            }
+                            .transition(.scale.combined(with: .opacity))
+                        }
+
+                        Spacer()
+
+                        // Quit button
+                        Button(action: {
+                            NSApp.terminate(nil)
+                        }) {
+                            Image(systemName: "power")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.secondary)
+                                .frame(width: 32, height: 32)
+                                .background {
+                                    Circle().fill(.ultraThinMaterial)
+                                        .overlay {
+                                            Circle().strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+                                        }
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .help("Quit Tab Virtual Display (⌘Q)")
                     }
-                    .frame(width: 90)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+                    .background(.ultraThinMaterial)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(settings.isRunning ? .red : .accentColor)
-                .controlSize(.large)
-                .disabled(!settings.hasScreenRecordingPermission)
-
-                if settings.isRunning {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(Color.green)
-                            .frame(width: 8, height: 8)
-                        Text("Running on port \(settings.port)")
-                            .font(.system(size: 12))
-                            .foregroundColor(.primary)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.green.opacity(0.1))
-                    .cornerRadius(8)
-                }
-
-                Spacer()
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
         }
         .frame(width: 480, height: 780)
     }
 }
 
+// MARK: - Supporting Views
+
+@available(macOS 14.0, *)
 struct StatusRow: View {
     let title: String
     let status: String
@@ -586,22 +623,29 @@ struct StatusRow: View {
             Text(title)
                 .font(.system(size: 12))
             Spacer()
-            Text(status)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(color)
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(color)
+                    .frame(width: 6, height: 6)
+                Text(status)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(color)
+            }
         }
     }
 }
 
+@available(macOS 14.0, *)
 struct ResolutionRow: View {
     let resolution: String
     let isSelected: Bool
     let action: () -> Void
+    @State private var isHovered = false
 
     var body: some View {
         Button(action: action) {
             HStack {
-                Text(resolution.replacingOccurrences(of: "x", with: " × "))
+                Text(resolution.replacingOccurrences(of: "x", with: " x "))
                     .font(.system(size: 12))
                 Spacer()
                 if isSelected {
@@ -611,20 +655,23 @@ struct ResolutionRow: View {
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 5)
-            .background(isSelected ? Color.accentColor : Color.clear)
+            .padding(.vertical, 6)
+            .background(isSelected ? Color.accentColor : (isHovered ? Color.primary.opacity(0.05) : Color.clear))
             .foregroundColor(isSelected ? .white : .primary)
         }
         .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
     }
 }
 
+@available(macOS 14.0, *)
 struct BitrateButton: View {
     let label: String
     let value: Int
     let currentValue: Int
     let disabled: Bool
     let action: () -> Void
+    @State private var isHovered = false
 
     var isSelected: Bool { currentValue == value }
 
@@ -634,17 +681,25 @@ struct BitrateButton: View {
                 .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6)
-                .background(isSelected ? Color.accentColor : Color(NSColor.controlBackgroundColor))
+                .background {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.accentColor)
+                    } else {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+                            }
+                    }
+                }
                 .foregroundColor(isSelected ? .white : (disabled ? .secondary : .primary))
-                .cornerRadius(6)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(isSelected ? Color.clear : Color(NSColor.separatorColor), lineWidth: 1)
-                )
         }
         .buttonStyle(.plain)
         .disabled(disabled)
         .opacity(disabled ? 0.5 : 1)
+        .onHover { isHovered = $0 }
     }
 }
 
@@ -654,36 +709,49 @@ struct RotationButton: View {
     let label: String
     let isSelected: Bool
     let action: () -> Void
+    @State private var isHovered = false
 
     var body: some View {
         Button(action: action) {
             VStack(spacing: 2) {
-                // Mini display icon
                 RoundedRectangle(cornerRadius: 2)
-                    .stroke(isSelected ? Color.accentColor : Color.secondary, lineWidth: 1)
+                    .stroke(isSelected ? Color.accentColor : Color.secondary.opacity(0.5), lineWidth: 1)
                     .frame(width: degrees == 90 || degrees == 270 ? 16 : 24, height: degrees == 90 || degrees == 270 ? 24 : 16)
 
-                Text(label)
+                Text("\(label)")
                     .font(.system(size: 9))
                     .foregroundColor(isSelected ? .accentColor : .secondary)
             }
-            .frame(width: 60, height: 45)
-            .contentShape(Rectangle()) // Makes entire area clickable
-            .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
-            .cornerRadius(6)
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 1)
-            )
+            .frame(width: 50, height: 40)
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.accentColor.opacity(0.15))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .strokeBorder(Color.accentColor, lineWidth: 1)
+                        }
+                } else {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+                        }
+                }
+            }
         }
-        .buttonStyle(.borderless) // Better than .plain for macOS
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
     }
 }
+
+// MARK: - Display Settings
 
 @available(macOS 14.0, *)
 class DisplaySettings: ObservableObject {
     private let defaults = UserDefaults.standard
-    private let keyPrefix = "VirtualDisplay_"
+    private let keyPrefix = "SideScreen_"
 
     @Published var resolution: String {
         didSet { save("resolution", resolution) }
@@ -731,7 +799,6 @@ class DisplaySettings: ObservableObject {
     var onToggleServer: (() -> Void)?
 
     init() {
-        // Load saved settings or use defaults
         self.resolution = defaults.string(forKey: keyPrefix + "resolution") ?? "1920x1200"
         self.refreshRate = defaults.object(forKey: keyPrefix + "refreshRate") as? Int ?? 60
         self.hiDPI = defaults.bool(forKey: keyPrefix + "hiDPI")
@@ -744,14 +811,13 @@ class DisplaySettings: ObservableObject {
         self.customWidth = defaults.object(forKey: keyPrefix + "customWidth") as? Int ?? 1920
         self.customHeight = defaults.object(forKey: keyPrefix + "customHeight") as? Int ?? 1200
 
-        print("📂 Loaded settings: \(resolution) @ \(refreshRate)Hz, bitrate=\(bitrate), quality=\(quality)")
+        print("Loaded settings: \(resolution) @ \(refreshRate)Hz, bitrate=\(bitrate), quality=\(quality)")
     }
 
     private func save(_ key: String, _ value: Any) {
         defaults.set(value, forKey: keyPrefix + key)
     }
 
-    // Resolution groups by aspect ratio
     struct ResolutionGroup: Identifiable {
         let id = UUID()
         let name: String
@@ -780,27 +846,22 @@ class DisplaySettings: ObservableObject {
         ])
     ]
 
-    // Common resolutions (default view)
     static let commonResolutions = [
         "1920x1080", "1920x1200", "2560x1440", "2560x1600"
     ]
 
-    // All resolutions flat list
     static var allResolutions: [String] {
         resolutionGroups.flatMap { $0.resolutions }
     }
 
-    // Computed property for effective bitrate
     var effectiveBitrate: Int {
         return gamingBoost ? 1000 : bitrate
     }
 
-    // Computed property for effective quality
     var effectiveQuality: String {
         return gamingBoost ? "low" : quality
     }
 
-    // Computed property for effective refresh rate
     var effectiveRefreshRate: Int {
         return gamingBoost ? 120 : refreshRate
     }
@@ -810,7 +871,6 @@ class DisplaySettings: ObservableObject {
     }
 
     func resetToDefaults() {
-        // Clear all saved settings
         let keys = ["resolution", "refreshRate", "hiDPI", "bitrate", "quality",
                     "gamingBoost", "port", "rotation", "showAllResolutions",
                     "customWidth", "customHeight"]
@@ -818,7 +878,6 @@ class DisplaySettings: ObservableObject {
             defaults.removeObject(forKey: keyPrefix + key)
         }
 
-        // Reset to defaults
         resolution = "1920x1200"
         refreshRate = 60
         hiDPI = false
@@ -831,14 +890,13 @@ class DisplaySettings: ObservableObject {
         customWidth = 1920
         customHeight = 1200
 
-        print("🔄 Settings reset to defaults")
+        print("Settings reset to defaults")
     }
 
     var resolutionSize: (width: Int, height: Int) {
         let parts = resolution.split(separator: "x")
         let baseWidth = Int(parts[0]) ?? 1920
         let baseHeight = Int(parts[1]) ?? 1200
-        // Swap dimensions for portrait orientations (90° or 270°)
         if rotation == 90 || rotation == 270 {
             return (baseHeight, baseWidth)
         }
@@ -852,6 +910,8 @@ class DisplaySettings: ObservableObject {
     }
 }
 
+// MARK: - Window Controller
+
 @available(macOS 14.0, *)
 class SettingsWindowController: NSWindowController, NSWindowDelegate {
     convenience init(settings: DisplaySettings) {
@@ -862,7 +922,10 @@ class SettingsWindowController: NSWindowController, NSWindowDelegate {
             defer: false
         )
 
-        window.title = "Side Screen"
+        window.title = "Tab Virtual Display"
+        window.titlebarAppearsTransparent = true
+        window.backgroundColor = .clear
+        window.isMovableByWindowBackground = true
         window.center()
         window.contentView = NSHostingView(rootView: SettingsView(settings: settings))
         window.isReleasedWhenClosed = false
@@ -872,7 +935,6 @@ class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowDidMove(_ notification: Notification) {
-        // Ensure window stays visible on screen
         guard let window = notification.object as? NSWindow,
               let screen = window.screen ?? NSScreen.main else { return }
 
@@ -881,14 +943,12 @@ class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let minVisibleWidth: CGFloat = 100
         let minVisibleHeight: CGFloat = 50
 
-        // Constrain horizontally
         if frame.maxX < visibleFrame.minX + minVisibleWidth {
             frame.origin.x = visibleFrame.minX - frame.width + minVisibleWidth
         } else if frame.minX > visibleFrame.maxX - minVisibleWidth {
             frame.origin.x = visibleFrame.maxX - minVisibleWidth
         }
 
-        // Constrain vertically
         if frame.maxY < visibleFrame.minY + minVisibleHeight {
             frame.origin.y = visibleFrame.minY - frame.height + minVisibleHeight
         } else if frame.minY > visibleFrame.maxY - minVisibleHeight {
@@ -901,7 +961,6 @@ class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 }
 
-// Custom window class to constrain dragging
 @available(macOS 14.0, *)
 class ConstrainedWindow: NSWindow {
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
@@ -914,14 +973,12 @@ class ConstrainedWindow: NSWindow {
         let minVisibleWidth: CGFloat = 100
         let minVisibleHeight: CGFloat = 50
 
-        // Keep at least minVisibleWidth pixels visible horizontally
         if constrainedRect.maxX < visibleFrame.minX + minVisibleWidth {
             constrainedRect.origin.x = visibleFrame.minX - constrainedRect.width + minVisibleWidth
         } else if constrainedRect.minX > visibleFrame.maxX - minVisibleWidth {
             constrainedRect.origin.x = visibleFrame.maxX - minVisibleWidth
         }
 
-        // Keep at least minVisibleHeight pixels visible vertically
         if constrainedRect.maxY < visibleFrame.minY + minVisibleHeight {
             constrainedRect.origin.y = visibleFrame.minY - constrainedRect.height + minVisibleHeight
         } else if constrainedRect.minY > visibleFrame.maxY - minVisibleHeight {

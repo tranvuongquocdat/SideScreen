@@ -1,4 +1,4 @@
-package com.virtualdisplay.client
+package com.sidescreen.app
 
 import android.os.SystemClock
 

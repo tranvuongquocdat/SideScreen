@@ -1,9 +1,12 @@
 # macOS
 .DS_Store
+**/.DS_Store
 MacHost/.build/
 MacHost/.swiftpm/
-*.xcodeproj
-*.xcworkspace
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+*.app
 
 # Android
 AndroidClient/.gradle/
@@ -14,10 +17,30 @@ AndroidClient/local.properties
 *.apk
 *.aab
 *.iml
+*.keystore
 
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
 # Logs
 *.log
+
+# Build artifacts
+build/
+dist/
+*.o
+*.dSYM/
+
+# Environment
+.env
+.env.local
+*.pem
+
+# Temporary
+tmp/
+temp/
+*.tmp

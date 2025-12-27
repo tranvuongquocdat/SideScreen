@@ -158,9 +158,9 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Side Screen"
+                android:text="Tab Virtual Display"
                 android:textColor="#FFFFFF"
-                android:textSize="32sp"
+                android:textSize="28sp"
                 android:textStyle="bold"
                 android:letterSpacing="-0.01"
                 android:gravity="center"
@@ -169,14 +169,15 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Your second display for macOS"
+                android:text="Turn your tablet into a second display"
                 android:textColor="#999999"
-                android:textSize="15sp"
+                android:textSize="14sp"
                 android:gravity="center"
-                android:layout_marginBottom="40dp" />
+                android:layout_marginBottom="24dp" />
 
-            <!-- Simple Instructions -->
+            <!-- Connection Checklist -->
             <LinearLayout
+                android:id="@+id/checklistContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
@@ -187,34 +188,102 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="How to connect"
+                    android:text="Connection Checklist"
                     android:textColor="#FFFFFF"
                     android:textSize="14sp"
                     android:textStyle="bold"
                     android:layout_marginBottom="12dp" />
 
-                <TextView
+                <!-- Developer Mode Check -->
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="1. Connect tablet to Mac via USB cable"
-                    android:textColor="#BBBBBB"
-                    android:textSize="13sp"
-                    android:layout_marginBottom="6dp" />
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="8dp">
+                    <View
+                        android:id="@+id/checkDeveloperMode"
+                        android:layout_width="10dp"
+                        android:layout_height="10dp"
+                        android:background="@drawable/status_indicator_red"
+                        android:layout_marginEnd="10dp" />
+                    <TextView
+                        android:id="@+id/textDeveloperMode"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:text="Developer Mode enabled"
+                        android:textColor="#BBBBBB"
+                        android:textSize="13sp" />
+                </LinearLayout>
 
-                <TextView
+                <!-- USB Debugging Check -->
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="2. Start Side Screen on Mac and click Start"
-                    android:textColor="#BBBBBB"
-                    android:textSize="13sp"
-                    android:layout_marginBottom="6dp" />
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="8dp">
+                    <View
+                        android:id="@+id/checkUsbDebugging"
+                        android:layout_width="10dp"
+                        android:layout_height="10dp"
+                        android:background="@drawable/status_indicator_red"
+                        android:layout_marginEnd="10dp" />
+                    <TextView
+                        android:id="@+id/textUsbDebugging"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:text="USB Debugging enabled"
+                        android:textColor="#BBBBBB"
+                        android:textSize="13sp" />
+                </LinearLayout>
 
-                <TextView
+                <!-- USB Connected Check -->
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="3. Tap Connect below"
-                    android:textColor="#BBBBBB"
-                    android:textSize="13sp" />
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="8dp">
+                    <View
+                        android:id="@+id/checkUsbConnected"
+                        android:layout_width="10dp"
+                        android:layout_height="10dp"
+                        android:background="@drawable/status_indicator_red"
+                        android:layout_marginEnd="10dp" />
+                    <TextView
+                        android:id="@+id/textUsbConnected"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:text="USB cable connected"
+                        android:textColor="#BBBBBB"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+                <!-- Mac Server Check -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+                    <View
+                        android:id="@+id/checkMacServer"
+                        android:layout_width="10dp"
+                        android:layout_height="10dp"
+                        android:background="@drawable/status_indicator_red"
+                        android:layout_marginEnd="10dp" />
+                    <TextView
+                        android:id="@+id/textMacServer"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:text="Mac server running"
+                        android:textColor="#BBBBBB"
+                        android:textSize="13sp" />
+                </LinearLayout>
 
             </LinearLayout>
 

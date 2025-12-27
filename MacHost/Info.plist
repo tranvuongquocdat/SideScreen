@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>VirtualDisplayHost</string>
+    <string>Side Screen</string>
     <key>CFBundleIdentifier</key>
-    <string>com.virtualDisplay.host</string>
+    <string>com.sidescreen.app</string>
     <key>CFBundleVersion</key>
     <string>1.0</string>
     <key>CFBundlePackageType</key>

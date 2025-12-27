@@ -1,14 +1,21 @@
-package com.virtualdisplay.client
+package com.sidescreen.app
 
 import android.annotation.SuppressLint
 import android.app.Dialog
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
+import android.provider.Settings
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.View
@@ -24,9 +31,10 @@ import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.slider.Slider
 import com.google.android.material.switchmaterial.SwitchMaterial
-import com.virtualdisplay.client.databinding.ActivityMainBinding
+import com.sidescreen.app.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.net.Socket
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -46,6 +54,10 @@ class MainActivity : AppCompatActivity() {
     // Input prediction for low-latency gaming
     private val inputPredictor = InputPredictor()
 
+    // Checklist status handler
+    private val checklistHandler = Handler(Looper.getMainLooper())
+    private var checklistRunnable: Runnable? = null
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,8 +70,17 @@ class MainActivity : AppCompatActivity() {
         // Keep screen on
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
+        // Enable edge-to-edge display (draw behind system bars and cutout)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.attributes.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Apply fullscreen mode immediately
+        enableFullscreenMode()
 
         // Enable performance mode for gaming (after binding is initialized)
         enablePerformanceMode()
@@ -70,6 +91,7 @@ class MainActivity : AppCompatActivity() {
         setupSettingsButton()
         restoreOverlayPosition()
         restoreSettingsButtonPosition()
+        startChecklistUpdates()
     }
 
     /**
@@ -87,7 +109,7 @@ class MainActivity : AppCompatActivity() {
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = powerManager.newWakeLock(
                 PowerManager.PARTIAL_WAKE_LOCK,
-                "SideScreen::PerformanceMode"
+                "TabVirtualDisplay::PerformanceMode"
             )
             wakeLock?.acquire()
 
@@ -98,11 +120,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Enable fullscreen immersive mode (only when connected)
+     * Enable fullscreen immersive mode
      * Uses modern WindowInsets API on Android R+ for better system compatibility
+     * Also handles display cutout (notch) to use full screen area
      */
     private fun enableFullscreenMode() {
+        // Ensure we draw behind the cutout
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.attributes.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.setDecorFitsSystemWindows(false)
             window.insetsController?.let { controller ->
                 controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
                 controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -115,6 +145,7 @@ class MainActivity : AppCompatActivity() {
                 or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                 or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                 or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
             )
         }
     }
@@ -572,6 +603,9 @@ class MainActivity : AppCompatActivity() {
                         )
 
                         if (connected) {
+                            // Stop checklist updates when connected (prevents socket conflicts)
+                            stopChecklistUpdates()
+
                             // Enter fullscreen mode when connected
                             enableFullscreenMode()
 
@@ -589,6 +623,9 @@ class MainActivity : AppCompatActivity() {
                             binding.settingsPanel.visibility = View.VISIBLE
                             binding.settingsButton.visibility = View.GONE
                             binding.statusBar.visibility = View.GONE
+
+                            // Restart checklist updates when disconnected
+                            startChecklistUpdates()
                         }
                     }
                 }
@@ -621,13 +658,13 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 val errorMessage = when {
                     e.message?.contains("ECONNREFUSED") == true ->
-                        "Mac server is not running.\n\nPlease start VirtualDisplay.app on your Mac first."
+                        "Mac server is not running.\n\nPlease start TabVirtualDisplay.app on your Mac first."
                     e.message?.contains("Network is unreachable") == true ->
                         "Cannot reach Mac.\n\nMake sure both devices are connected via USB cable and ADB reverse is configured."
                     e.message?.contains("timeout") == true ->
                         "Connection timeout.\n\nCheck if Mac firewall is blocking port $port."
                     else ->
-                        "Connection failed: ${e.message}\n\nTry:\n• Start VirtualDisplay.app on Mac\n• Check USB connection\n• Run: adb reverse tcp:8888 tcp:8888"
+                        "Connection failed: ${e.message}\n\nTry:\n• Start TabVirtualDisplay.app on Mac\n• Check USB connection\n• Run: adb reverse tcp:8888 tcp:8888"
                 }
                 updateStatus("Connection failed")
                 showError(errorMessage)
@@ -770,6 +807,90 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        stopChecklistUpdates()
         cleanup()
+    }
+
+    // ==================== Connection Checklist ====================
+
+    private fun startChecklistUpdates() {
+        checklistRunnable = object : Runnable {
+            override fun run() {
+                updateChecklist()
+                checklistHandler.postDelayed(this, 2000) // Update every 2 seconds
+            }
+        }
+        checklistHandler.post(checklistRunnable!!)
+    }
+
+    private fun stopChecklistUpdates() {
+        checklistRunnable?.let { checklistHandler.removeCallbacks(it) }
+    }
+
+    private fun updateChecklist() {
+        // Check Developer Mode (if we can run this app with USB debugging, dev mode is enabled)
+        val isDeveloperModeEnabled = Settings.Secure.getInt(
+            contentResolver,
+            Settings.Global.DEVELOPMENT_SETTINGS_ENABLED,
+            0
+        ) == 1
+        updateChecklistItem(binding.checkDeveloperMode, isDeveloperModeEnabled)
+
+        // Check USB Debugging (ADB enabled)
+        val isAdbEnabled = Settings.Secure.getInt(
+            contentResolver,
+            Settings.Global.ADB_ENABLED,
+            0
+        ) == 1
+        updateChecklistItem(binding.checkUsbDebugging, isAdbEnabled)
+
+        // Check USB connected (check if any USB device is connected)
+        val usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
+        val isUsbConnected = usbManager.deviceList.isNotEmpty() || isCharging()
+        updateChecklistItem(binding.checkUsbConnected, isUsbConnected)
+
+        // Check Mac Server (try to connect to port)
+        lifecycleScope.launch(Dispatchers.IO) {
+            val port = binding.portInput.text.toString().toIntOrNull() ?: 8888
+            val isServerRunning = checkServerRunning("127.0.0.1", port)
+            runOnUiThread {
+                updateChecklistItem(binding.checkMacServer, isServerRunning)
+
+                // Update main status indicator based on all checklist items
+                val allReady = isDeveloperModeEnabled && isAdbEnabled && isUsbConnected && isServerRunning
+                updateMainStatus(allReady)
+            }
+        }
+    }
+
+    private fun updateMainStatus(allReady: Boolean) {
+        binding.statusIndicator.setBackgroundResource(
+            if (allReady) R.drawable.status_indicator_green
+            else R.drawable.status_indicator_red
+        )
+        binding.statusText.text = if (allReady) "Ready to connect" else "Not ready to connect"
+    }
+
+    private fun updateChecklistItem(indicator: View, isOk: Boolean) {
+        indicator.setBackgroundResource(
+            if (isOk) R.drawable.status_indicator_green
+            else R.drawable.status_indicator_red
+        )
+    }
+
+    private fun isCharging(): Boolean {
+        val intentFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        val batteryStatus = registerReceiver(null, intentFilter)
+        val status = batteryStatus?.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1) ?: -1
+        return status == android.os.BatteryManager.BATTERY_STATUS_CHARGING ||
+               status == android.os.BatteryManager.BATTERY_STATUS_FULL
+    }
+
+    private fun checkServerRunning(host: String, port: Int): Boolean {
+        return try {
+            Socket(host, port).use { true }
+        } catch (e: Exception) {
+            false
+        }
     }
 }

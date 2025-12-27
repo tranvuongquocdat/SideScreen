@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Support Tab Virtual Display - Donate | GitHub Sponsors</title>
+    <meta name="description"
+        content="Support Tab Virtual Display's development through GitHub Sponsors. Help keep this free, privacy-first app alive and growing.">
+    <meta property="og:title" content="Support Tab Virtual Display - Donate">
+    <meta property="og:description"
+        content="Support Tab Virtual Display's development through GitHub Sponsors. Help keep this free, privacy-first app alive and growing.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://sidescreen.app/donate">
+    <link rel="canonical" href="https://sidescreen.app/donate">
+    <link rel="icon" href="./assets/icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .donate-hero {
+            min-height: 100dvh;
+            display: grid;
+            place-items: center;
+            background: linear-gradient(135deg, var(--color-bg) 0%, var(--color-bg-alt) 100%);
+        }
+
+        .donate-content {
+            text-align: center;
+            max-width: 580px;
+            padding: 2rem;
+        }
+
+        .donate-headline {
+            font-size: 3.5rem;
+            font-weight: 700;
+            line-height: 1.05;
+            margin-bottom: 1.5rem;
+            color: var(--color-text);
+            letter-spacing: -0.03em;
+        }
+
+        .donate-subheadline {
+            font-size: 1.25rem;
+            font-weight: 400;
+            color: var(--color-text-secondary);
+            line-height: 1.5;
+        }
+
+        .donate-options {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-block: 3rem;
+        }
+
+        .donate-options .btn {
+            width: 100%;
+            justify-content: center;
+        }
+
+        .btn-github {
+            background: #24292f;
+            color: white;
+        }
+
+        .btn-github:hover {
+            background: #1b1f23;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-coffee {
+            background: #FFDD00;
+            color: #000000;
+        }
+
+        .btn-coffee:hover {
+            background: #FFCC00;
+            color: #000000;
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .donate-note {
+            font-size: 0.95rem;
+            color: var(--color-text-secondary);
+            line-height: 1.6;
+        }
+
+        .donate-icon {
+            width: 24px;
+            height: 24px;
+            margin-right: 8px;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 2rem;
+            color: var(--color-text-secondary);
+            font-weight: 500;
+        }
+
+        .back-link:hover {
+            color: var(--color-primary);
+        }
+
+        @media (max-width: 768px) {
+            .donate-headline {
+                font-size: 2.5rem;
+            }
+
+            .donate-subheadline {
+                font-size: 1.1rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Header -->
+    <header id="header">
+        <div class="container header-container">
+            <a href="index.html" class="logo">
+                <img src="./assets/icon.png" alt="Tab Virtual Display Logo" width="32" height="32">
+                <span class="logo-text">Tab Virtual Display</span>
+            </a>
+            <nav>
+                <ul class="nav-links">
+                    <li><a href="index.html#features" class="nav-link">Features</a></li>
+                    <li><a href="index.html#how-it-works" class="nav-link">How It Works</a></li>
+                    <li><a href="index.html#download" class="nav-link">Download</a></li>
+                    <li><a href="donate.html" class="nav-link active">Donate</a></li>
+                </ul>
+            </nav>
+            <div class="header-actions">
+                <a href="index.html#download" class="btn btn-primary">Download</a>
+                <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Toggle mobile menu">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="3" y1="12" x2="21" y2="12"></line>
+                        <line x1="3" y1="6" x2="21" y2="6"></line>
+                        <line x1="3" y1="18" x2="21" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Donate Hero Section -->
+    <section class="donate-hero">
+        <div class="container">
+            <div class="donate-content">
+                <a href="index.html" class="back-link">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="19" y1="12" x2="5" y2="12"></line>
+                        <polyline points="12 19 5 12 12 5"></polyline>
+                    </svg>
+                    Back to Home
+                </a>
+
+                <h1 class="donate-headline">Support Tab Virtual Display</h1>
+                <p class="donate-subheadline">
+                    Choose your preferred way to support development
+                </p>
+
+                <div class="donate-options">
+                    <a href="https://github.com/sponsors/tranvuongquocdat" class="btn btn-github btn-large" target="_blank" rel="noopener noreferrer">
+                        <svg class="donate-icon" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+                        </svg>
+                        GitHub Sponsors
+                    </a>
+
+                    <a href="https://buymeacoffee.com/sidescreen" class="btn btn-coffee btn-large" target="_blank" rel="noopener noreferrer">
+                        <span style="font-size: 1.25rem;">☕</span>
+                        Buy Me a Coffee
+                    </a>
+                </div>
+
+                <p class="donate-note">
+                    Built by an indie developer with no venture funding.<br>
+                    Every contribution helps keep Tab Virtual Display free, open-source, and privacy-focused.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Script -->
+    <script src="scripts.js"></script>
+</body>
+
+</html>

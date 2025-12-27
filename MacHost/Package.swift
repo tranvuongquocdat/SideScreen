@@ -2,18 +2,18 @@
 import PackageDescription
 
 let package = Package(
-    name: "VirtualDisplayHost",
+    name: "TabVirtualDisplay",
     platforms: [
         .macOS(.v14)  // Required for CGVirtualDisplay API
     ],
     products: [
         .executable(
-            name: "VirtualDisplayHost",
-            targets: ["VirtualDisplayHost"])
+            name: "TabVirtualDisplay",
+            targets: ["TabVirtualDisplay"])
     ],
     targets: [
         .executableTarget(
-            name: "VirtualDisplayHost",
+            name: "TabVirtualDisplay",
             dependencies: [],
             path: "Sources",
             cSettings: [

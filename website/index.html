@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tab Virtual Display - Turn Your Tablet into a Second Display for Mac</title>
+    <meta name="description"
+        content="Transform your Android tablet into a second display for macOS via USB-C. Low latency, hardware accelerated, gaming ready. Free and open source.">
+    <meta name="keywords"
+        content="second display mac, android tablet display, usb-c display, virtual display macos, dual monitor mac, tablet second screen">
+    <meta property="og:title" content="Tab Virtual Display - Second Display for Mac">
+    <meta property="og:description"
+        content="Transform your Android tablet into a second display for macOS. Low latency, hardware accelerated, gaming ready.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://sidescreen.app">
+    <meta property="og:image" content="./assets/hero-screenshot.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Tab Virtual Display - Second Display for Mac">
+    <meta name="twitter:description" content="Transform your Android tablet into a second display for macOS. Low latency, hardware accelerated, gaming ready.">
+    <meta name="twitter:image" content="./assets/hero-screenshot.png">
+    <meta name="theme-color" content="#007AFF">
+    <link rel="canonical" href="https://sidescreen.app">
+    <link rel="icon" href="./assets/icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Tab Virtual Display",
+        "description": "Transform your Android tablet into a second display for macOS via USB-C connection.",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "macOS, Android",
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+        },
+        "author": {
+            "@type": "Person",
+            "name": "tranvuongquocdat"
+        }
+    }
+    </script>
+</head>
+
+<body>
+    <!-- Header -->
+    <header id="header">
+        <div class="container header-container">
+            <a href="#home" class="logo">
+                <img src="./assets/icon.png" alt="Tab Virtual Display Logo" width="32" height="32">
+                <span class="logo-text">Tab Virtual Display</span>
+            </a>
+            <nav>
+                <ul class="nav-links">
+                    <li><a href="#privacy" class="nav-link">Privacy</a></li>
+                    <li><a href="#features" class="nav-link">Features</a></li>
+                    <li><a href="#how-it-works" class="nav-link">How It Works</a></li>
+                    <li><a href="#download" class="nav-link">Download</a></li>
+                    <li><a href="donate.html" class="nav-link">Donate</a></li>
+                </ul>
+            </nav>
+            <div class="header-actions">
+                <a href="https://github.com/tranvuongquocdat/SideScreen" class="btn btn-outline">GitHub</a>
+                <a href="#download" class="btn btn-primary">Download</a>
+                <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Toggle mobile menu">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="3" y1="12" x2="21" y2="12"></line>
+                        <line x1="3" y1="6" x2="21" y2="6"></line>
+                        <line x1="3" y1="18" x2="21" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero section" id="home">
+        <div class="container">
+            <div class="hero-content">
+                <div class="privacy-badge">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                    </svg>
+                    <span>Privacy First • Open Source</span>
+                </div>
+
+                <div class="privacy-highlights">
+                    <span class="privacy-highlight">Native Performance</span>
+                    <span class="privacy-highlight">USB-C Connection</span>
+                </div>
+
+                <h1 class="hero-title">Your tablet, your second screen</h1>
+                <p class="hero-subtitle">
+                    Transform your Android tablet into a second display for your Mac via USB-C.
+                    Low latency. Hardware accelerated. Gaming ready. No cloud. No accounts.
+                </p>
+
+                <div class="hero-actions">
+                    <a href="#download" class="btn btn-primary btn-large download-btn">Get It Now</a>
+                    <a href="#features" class="btn btn-outline btn-large">See Features</a>
+                </div>
+
+                <p class="support-callout">Built by an indie developer</p>
+                <div class="support-links">
+                    <a href="donate.html" class="btn btn-coffee">Support Development</a>
+                    <a href="https://github.com/tranvuongquocdat/SideScreen" class="btn btn-outline">GitHub</a>
+                </div>
+            </div>
+
+            <div class="hero-visual">
+                <div class="hero-image-container">
+                    <!-- Replace with actual screenshot -->
+                    <div class="placeholder-image">
+                        <p>Hero Screenshot</p>
+                        <small>Mac + Tablet Setup</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Privacy Section -->
+    <section class="privacy-section section" id="privacy">
+        <div class="container">
+            <div class="privacy-content">
+                <h2 class="section-title">Privacy by Design</h2>
+                <p class="section-subtitle">Your data stays on your devices. Always.</p>
+
+                <div class="privacy-features">
+                    <div class="privacy-feature">
+                        <div class="privacy-feature-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                                <line x1="8" y1="21" x2="16" y2="21"></line>
+                                <line x1="12" y1="17" x2="12" y2="21"></line>
+                            </svg>
+                        </div>
+                        <h3 class="privacy-feature-title">100% Local</h3>
+                        <p class="privacy-feature-desc">No cloud, no servers, no external connections. Everything stays between your Mac and tablet via USB.</p>
+                    </div>
+                    <div class="privacy-feature">
+                        <div class="privacy-feature-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+                            </svg>
+                        </div>
+                        <h3 class="privacy-feature-title">Zero Tracking</h3>
+                        <p class="privacy-feature-desc">We don't collect analytics, usage data, or personal information. Not even crash reports.</p>
+                    </div>
+                    <div class="privacy-feature">
+                        <div class="privacy-feature-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <polyline points="16 18 22 12 16 6"></polyline>
+                                <polyline points="8 6 2 12 8 18"></polyline>
+                            </svg>
+                        </div>
+                        <h3 class="privacy-feature-title">Open Source</h3>
+                        <p class="privacy-feature-desc">Full transparency. Review our code, contribute, or build it yourself. MIT licensed.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features section" id="features">
+        <div class="container">
+            <h2 class="section-title">Everything you need for a second display</h2>
+            <p class="section-subtitle">Built for performance, designed for simplicity</p>
+
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                            <line x1="8" y1="21" x2="16" y2="21"></line>
+                            <line x1="12" y1="17" x2="12" y2="21"></line>
+                        </svg>
+                    </div>
+                    <h3>Virtual Display</h3>
+                    <p>Create a true virtual monitor on your Mac. Drag windows to your tablet just like a real display - not just mirroring.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                        </svg>
+                    </div>
+                    <h3>Low Latency</h3>
+                    <p>USB-C connection with H.265 hardware encoding ensures minimal delay. Perfect for productivity and even gaming.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                            <path d="M2 17l10 5 10-5"></path>
+                            <path d="M2 12l10 5 10-5"></path>
+                        </svg>
+                    </div>
+                    <h3>Touch Support</h3>
+                    <p>Use your tablet's touchscreen to interact with macOS. Input prediction compensates for any latency.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polygon points="10 8 16 12 10 16 10 8"></polygon>
+                        </svg>
+                    </div>
+                    <h3>Gaming Mode</h3>
+                    <p>Enable Gaming Boost for optimized settings: higher bitrate, lower latency, and up to 120 FPS.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                        </svg>
+                    </div>
+                    <h3>Fully Customizable</h3>
+                    <p>Configure resolution, frame rate, bitrate, and quality. Find the perfect balance for your setup.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                        </svg>
+                    </div>
+                    <h3>Privacy First</h3>
+                    <p>No cloud. No accounts. No telemetry. Everything stays between your Mac and tablet via USB.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works Section -->
+    <section class="how-it-works section" id="how-it-works">
+        <div class="container">
+            <h2 class="section-title">Get started in 3 steps</h2>
+            <p class="section-subtitle">From download to second screen in under 5 minutes</p>
+
+            <div class="steps">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <h3>Download & Install</h3>
+                    <p>Get Tab Virtual Display for your Mac and install the Android app on your tablet.</p>
+                </div>
+
+                <div class="step-arrow">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                        <polyline points="12 5 19 12 12 19"></polyline>
+                    </svg>
+                </div>
+
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <h3>Connect via USB</h3>
+                    <p>Plug your tablet into your Mac with a USB-C cable. Run the port forwarding command.</p>
+                </div>
+
+                <div class="step-arrow">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                        <polyline points="12 5 19 12 12 19"></polyline>
+                    </svg>
+                </div>
+
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <h3>Enjoy!</h3>
+                    <p>Launch both apps and tap Connect. Your tablet is now a second display!</p>
+                </div>
+            </div>
+
+            <div class="code-block">
+                <div class="code-header">
+                    <span>Terminal</span>
+                    <button class="copy-btn" data-copy="adb reverse tcp:8888 tcp:8888" aria-label="Copy command">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                    </button>
+                </div>
+                <pre><code># Setup port forwarding (run once after connecting)
+adb reverse tcp:8888 tcp:8888
+
+# That's it! Now launch the apps.</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Requirements Section -->
+    <section class="requirements section">
+        <div class="container">
+            <h2 class="section-title">Requirements</h2>
+
+            <div class="requirements-grid">
+                <div class="requirement-card">
+                    <h3>macOS Host</h3>
+                    <ul>
+                        <li>macOS 14 (Sonoma) or later</li>
+                        <li>Apple Silicon or Intel Mac</li>
+                        <li>USB-C port</li>
+                    </ul>
+                </div>
+
+                <div class="requirement-card">
+                    <h3>Android Client</h3>
+                    <ul>
+                        <li>Android 8.0 (API 26) or later</li>
+                        <li>Hardware H.265 decoder</li>
+                        <li>USB-C cable</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Download Section -->
+    <section class="download section" id="download">
+        <div class="container">
+            <h2 class="section-title">Download Tab Virtual Display</h2>
+            <p class="section-subtitle">Free and open source. Always.</p>
+
+            <div class="download-options">
+                <a href="https://github.com/tranvuongquocdat/SideScreen/releases/latest" class="download-card download-btn">
+                    <div class="download-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                        </svg>
+                    </div>
+                    <h3>GitHub Releases</h3>
+                    <p>Download the latest version from GitHub</p>
+                    <span class="download-action">Download</span>
+                </a>
+
+                <div class="download-card alt">
+                    <div class="download-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="16 18 22 12 16 6"></polyline>
+                            <polyline points="8 6 2 12 8 18"></polyline>
+                        </svg>
+                    </div>
+                    <h3>Build from Source</h3>
+                    <p>Clone the repo and build yourself</p>
+                    <code class="download-code">git clone https://github.com/tranvuongquocdat/SideScreen</code>
+                </div>
+            </div>
+
+            <div class="download-requirements">
+                <span class="download-requirement">Requires macOS 14.0 or later</span>
+                <span class="download-requirement">Apple Silicon & Intel support</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Donation Modal -->
+    <div id="donation-modal" class="modal-overlay">
+        <div class="modal-content">
+            <button class="modal-close" aria-label="Close modal">&times;</button>
+            <h2 class="modal-title">Love Tab Virtual Display?</h2>
+            <p class="modal-text">Tab Virtual Display is built by an indie developer and kept 100% free. If you find it useful, consider supporting development.</p>
+            <div class="modal-actions">
+                <a href="donate.html" class="btn btn-primary">Support Development</a>
+                <button id="proceed-to-download" class="btn btn-outline">Continue to Download</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FAQ Section -->
+    <section class="faq section" id="faq">
+        <div class="container">
+            <h2 class="section-title">Frequently Asked Questions</h2>
+
+            <div class="faq-list">
+                <details class="faq-item">
+                    <summary>Does it work wirelessly?</summary>
+                    <p>Currently, Tab Virtual Display uses USB-C for the most stable, low-latency connection. WiFi support is planned for a future release.</p>
+                </details>
+
+                <details class="faq-item">
+                    <summary>Why do I need to run `adb reverse`?</summary>
+                    <p>This command sets up port forwarding so your Android tablet can connect to your Mac through the USB cable. You only need to run it once each time you reconnect the cable.</p>
+                </details>
+
+                <details class="faq-item">
+                    <summary>What's the latency like?</summary>
+                    <p>With USB-C and hardware H.265 encoding, you can expect under 20ms latency - smooth enough for productivity and casual gaming.</p>
+                </details>
+
+                <details class="faq-item">
+                    <summary>Does it work with iPad?</summary>
+                    <p>Currently, only Android tablets are supported. iOS support may be considered in the future.</p>
+                </details>
+
+                <details class="faq-item">
+                    <summary>Is it really free?</summary>
+                    <p>Yes! Tab Virtual Display is free and open source under the MIT license. If you find it useful, consider supporting development.</p>
+                </details>
+
+                <details class="faq-item">
+                    <summary>My tablet doesn't show the display correctly</summary>
+                    <p>Make sure you've granted Screen Recording permission on macOS and that both apps are running. Try lowering the resolution if you experience issues.</p>
+                </details>
+            </div>
+        </div>
+    </section>
+
+    <!-- Support Section -->
+    <section class="support section">
+        <div class="container">
+            <h2 class="section-title">Support Development</h2>
+            <p class="section-subtitle">Tab Virtual Display is free and open source. Your support helps keep it that way.</p>
+
+            <div class="support-actions">
+                <a href="https://github.com/tranvuongquocdat/SideScreen" class="btn btn-outline btn-large">
+                    Star on GitHub
+                </a>
+                <a href="donate.html" class="btn btn-primary btn-large">
+                    Support Development
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Community Section -->
+    <section class="community-section">
+        <div class="container">
+            <h2 class="section-title">Built by the Community</h2>
+            <p class="section-subtitle">
+                Tab Virtual Display is an open-source project made possible by contributors.
+            </p>
+
+            <a href="https://github.com/tranvuongquocdat/SideScreen/graphs/contributors" target="_blank" rel="noopener noreferrer" class="contributors-link">
+                <img src="https://contrib.rocks/image?repo=tranvuongquocdat/SideScreen&columns=7" alt="Tab Virtual Display Contributors" class="contributors-img" loading="lazy">
+            </a>
+
+            <div class="community-actions">
+                <span class="community-subtext">Want to join?</span>
+                <a href="https://github.com/tranvuongquocdat/SideScreen" target="_blank" class="link-highlight">Contribute Code</a>
+                <span class="divider">|</span>
+                <a href="donate.html" class="link-highlight">Support Development</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <img src="./assets/icon.png" alt="Tab Virtual Display" width="32" height="32">
+                    <span>Tab Virtual Display</span>
+                </div>
+
+                <div class="footer-links">
+                    <a href="https://github.com/tranvuongquocdat/SideScreen">GitHub</a>
+                    <a href="https://github.com/tranvuongquocdat/SideScreen/issues">Report Bug</a>
+                    <a href="https://github.com/tranvuongquocdat/SideScreen/blob/main/LICENSE">License</a>
+                    <a href="donate.html">Donate</a>
+                </div>
+
+                <p class="footer-copy">
+                    Made with passion for the Mac community.<br>
+                    Open source under MIT License.
+                </p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Toast Container -->
+    <div class="toast-container"></div>
+
+    <script src="scripts.js"></script>
+</body>
+
+</html>

@@ -5,7 +5,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
-echo "🚀 Installing Virtual Display..."
+echo "🚀 Installing Side Screen..."
 echo ""
 
 # Check ADB connection first
@@ -34,7 +34,7 @@ mkdir -p "$APP_DIR/MacOS"
 mkdir -p "$APP_DIR/Resources"
 
 # Copy executable
-cp MacHost/.build/release/VirtualDisplayHost "$APP_DIR/MacOS/SideScreen"
+cp MacHost/.build/release/SideScreen "$APP_DIR/MacOS/SideScreen"
 
 # Create Info.plist
 cat > "$APP_DIR/Info.plist" << 'PLIST'
@@ -104,7 +104,7 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "To start streaming:"
 echo "  1. Start Mac app: open SideScreen.app"
-echo "     (or run: MacHost/.build/release/VirtualDisplayHost)"
+echo "     (or run: MacHost/.build/release/SideScreen)"
 echo "  2. Open 'Side Screen' app on Android"
 echo "  3. Tap Connect"
 echo ""
