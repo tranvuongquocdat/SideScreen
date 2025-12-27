@@ -57,6 +57,7 @@ class MainActivity : AppCompatActivity() {
     // Checklist status handler
     private val checklistHandler = Handler(Looper.getMainLooper())
     private var checklistRunnable: Runnable? = null
+    private var isConnected = false  // Track connection state to prevent checklist conflicts
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -587,6 +588,9 @@ class MainActivity : AppCompatActivity() {
 
                 streamClient?.onConnectionStatus = { connected ->
                     runOnUiThread {
+                        // Update connection state flag
+                        isConnected = connected
+
                         if (connected) {
                             updateStatus("Connected - Streaming active")
                         } else {
@@ -624,12 +628,9 @@ class MainActivity : AppCompatActivity() {
                             binding.settingsButton.visibility = View.GONE
                             binding.statusBar.visibility = View.GONE
 
-                            // Restart checklist updates after short delay (wait for old connection to fully close)
-                            checklistHandler.removeCallbacksAndMessages(null) // Clear any pending callbacks
-                            checklistHandler.postDelayed({
-                                log("📋 Restarting checklist updates")
-                                startChecklistUpdates()
-                            }, 500)
+                            // Restart checklist updates immediately
+                            log("📋 Restarting checklist updates")
+                            startChecklistUpdates()
                         }
                     }
                 }
@@ -840,6 +841,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateChecklist() {
+        // Skip if connected (to prevent socket conflicts)
+        if (isConnected) return
+
         // Check Developer Mode (if we can run this app with USB debugging, dev mode is enabled)
         val isDeveloperModeEnabled = Settings.Secure.getInt(
             contentResolver,
@@ -863,9 +867,15 @@ class MainActivity : AppCompatActivity() {
 
         // Check Mac Server (try to connect to port)
         lifecycleScope.launch(Dispatchers.IO) {
+            // Double-check connection state before socket test
+            if (isConnected) return@launch
+
             val port = binding.portInput.text.toString().toIntOrNull() ?: 8888
             val isServerRunning = checkServerRunning("127.0.0.1", port)
             runOnUiThread {
+                // Final check before updating UI
+                if (isConnected) return@runOnUiThread
+
                 updateChecklistItem(binding.checkMacServer, isServerRunning)
 
                 // Update main status indicator based on all checklist items

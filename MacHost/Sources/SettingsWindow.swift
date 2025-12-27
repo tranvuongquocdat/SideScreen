@@ -422,6 +422,7 @@ struct SettingsView: View {
                                         .foregroundColor(.secondary)
 
                                     Picker("", selection: $settings.quality) {
+                                        Text("Ultra Low").tag("ultralow")
                                         Text("Low").tag("low")
                                         Text("Medium").tag("medium")
                                         Text("High").tag("high")
@@ -430,9 +431,13 @@ struct SettingsView: View {
                                     .disabled(settings.gamingBoost)
 
                                     if settings.gamingBoost {
-                                        Text("Quality locked to Low in Gaming Boost mode")
+                                        Text("Quality locked to Ultra Low in Gaming Boost mode")
                                             .font(.system(size: 10))
                                             .foregroundColor(.orange)
+                                    } else if settings.quality == "ultralow" {
+                                        Text("Fastest encoding, lowest latency")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.green)
                                     }
                                 }
                             }
@@ -800,10 +805,10 @@ class DisplaySettings: ObservableObject {
 
     init() {
         self.resolution = defaults.string(forKey: keyPrefix + "resolution") ?? "1920x1200"
-        self.refreshRate = defaults.object(forKey: keyPrefix + "refreshRate") as? Int ?? 60
+        self.refreshRate = defaults.object(forKey: keyPrefix + "refreshRate") as? Int ?? 120  // Default: highest FPS
         self.hiDPI = defaults.bool(forKey: keyPrefix + "hiDPI")
-        self.bitrate = defaults.object(forKey: keyPrefix + "bitrate") as? Int ?? 500
-        self.quality = defaults.string(forKey: keyPrefix + "quality") ?? "medium"
+        self.bitrate = defaults.object(forKey: keyPrefix + "bitrate") as? Int ?? 2000  // Default: high bitrate
+        self.quality = defaults.string(forKey: keyPrefix + "quality") ?? "ultralow"  // Default: fastest encoding
         self.gamingBoost = defaults.bool(forKey: keyPrefix + "gamingBoost")
         self.port = UInt16(defaults.object(forKey: keyPrefix + "port") as? Int ?? 8888)
         self.rotation = defaults.object(forKey: keyPrefix + "rotation") as? Int ?? 0
@@ -859,7 +864,7 @@ class DisplaySettings: ObservableObject {
     }
 
     var effectiveQuality: String {
-        return gamingBoost ? "low" : quality
+        return gamingBoost ? "ultralow" : quality
     }
 
     var effectiveRefreshRate: Int {
@@ -879,10 +884,10 @@ class DisplaySettings: ObservableObject {
         }
 
         resolution = "1920x1200"
-        refreshRate = 60
+        refreshRate = 120  // Default: highest FPS
         hiDPI = false
-        bitrate = 500
-        quality = "medium"
+        bitrate = 2000  // Default: high bitrate
+        quality = "ultralow"  // Default: fastest encoding
         gamingBoost = false
         port = 8888
         rotation = 0

@@ -3,7 +3,7 @@
    Apple-inspired design with frosted glass
    ======================================== */
 
-/* CSS Variables */
+/* CSS Variables - Light Mode (Default) */
 :root {
     --color-primary: #007AFF;
     --color-primary-dark: #0056CC;
@@ -42,6 +42,63 @@
     --container-max: 1200px;
     --section-padding: 100px;
 }
+
+/* Dark Mode */
+[data-theme="dark"] {
+    --color-bg: #0D0D0D;
+    --color-bg-alt: #1C1C1E;
+    --color-bg-dark: #000000;
+
+    --color-text: #F5F5F7;
+    --color-text-secondary: #A1A1A6;
+    --color-text-light: #FFFFFF;
+
+    --color-border: #38383A;
+    --color-border-light: #2C2C2E;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.5);
+    --shadow-xl: 0 20px 50px rgba(0, 0, 0, 0.6);
+}
+
+/* Theme Toggle Button */
+.theme-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: none;
+    background: var(--color-bg-alt);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all var(--transition-normal);
+    border: 1px solid var(--color-border-light);
+}
+
+.theme-toggle:hover {
+    background: var(--color-border-light);
+    transform: scale(1.05);
+}
+
+.theme-toggle svg {
+    width: 20px;
+    height: 20px;
+    color: var(--color-text);
+    transition: transform var(--transition-normal);
+}
+
+.theme-toggle:hover svg {
+    transform: rotate(15deg);
+}
+
+/* Hide icons based on theme */
+.theme-toggle .icon-sun { display: none; }
+.theme-toggle .icon-moon { display: block; }
+
+[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
 
 /* Reset */
 *, *::before, *::after {

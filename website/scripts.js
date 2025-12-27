@@ -1,6 +1,35 @@
 // Tab Virtual Display Website JavaScript
 
+// ==================== Theme Toggle (runs before DOMContentLoaded) ====================
+(function() {
+    // Check for saved theme preference or default to system preference
+    const savedTheme = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+    if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+    }
+})();
+
 document.addEventListener('DOMContentLoaded', function() {
+    // ==================== Theme Toggle ====================
+    const themeToggle = document.getElementById('theme-toggle');
+
+    if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+
+            if (newTheme === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            } else {
+                document.documentElement.removeAttribute('data-theme');
+            }
+
+            localStorage.setItem('theme', newTheme);
+        });
+    }
+
     // ==================== Mobile Menu ====================
     const mobileMenuBtn = document.getElementById('mobile-menu-btn');
     const navLinks = document.querySelector('.nav-links');
@@ -163,19 +192,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // ==================== Header Scroll Effect ====================
     const header = document.getElementById('header');
-    let lastScroll = 0;
 
     window.addEventListener('scroll', () => {
-        const currentScroll = window.pageYOffset;
-
-        if (currentScroll > 50) {
+        if (window.pageYOffset > 50) {
             header?.classList.add('scrolled');
         } else {
             header?.classList.remove('scrolled');
         }
-
-        lastScroll = currentScroll;
-    });
+    }, { passive: true });
 
     // ==================== FAQ Accordion ====================
     document.querySelectorAll('.faq-item summary').forEach(summary => {
@@ -227,18 +251,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Make createToast available globally
     window.createToast = createToast;
-
-    // ==================== Logo Animation (Optional) ====================
-    const logoText = document.querySelector('.logo-text');
-    if (logoText) {
-        // Add subtle hover effect
-        logoText.addEventListener('mouseenter', () => {
-            logoText.style.transform = 'scale(1.05)';
-        });
-        logoText.addEventListener('mouseleave', () => {
-            logoText.style.transform = 'scale(1)';
-        });
-    }
 
     // ==================== Contributors Image Lazy Load ====================
     const contributorsImg = document.querySelector('.contributors-img');

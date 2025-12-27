@@ -8,8 +8,8 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR/MacHost"
 
 # Kill running instance
-echo "Stopping running SideScreen..."
-pkill -f SideScreen 2>/dev/null || true
+echo "Stopping running Tab Virtual Display..."
+pkill -f TabVirtualDisplay 2>/dev/null || true
 sleep 0.5
 
 # Clean old build
@@ -21,7 +21,7 @@ echo "Building macOS Host..."
 swift build -c release
 
 # Create .app bundle
-APP_NAME="SideScreen"
+APP_NAME="TabVirtualDisplay"
 APP_DIR="$ROOT_DIR/$APP_NAME.app"
 
 echo "Creating app bundle..."
@@ -30,7 +30,7 @@ mkdir -p "$APP_DIR/Contents/MacOS"
 mkdir -p "$APP_DIR/Contents/Resources"
 
 # Copy binary
-cp .build/release/SideScreen "$APP_DIR/Contents/MacOS/"
+cp .build/release/TabVirtualDisplay "$APP_DIR/Contents/MacOS/"
 
 # Create Info.plist
 cat > "$APP_DIR/Contents/Info.plist" << 'EOF'
@@ -39,13 +39,13 @@ cat > "$APP_DIR/Contents/Info.plist" << 'EOF'
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>SideScreen</string>
+    <string>TabVirtualDisplay</string>
     <key>CFBundleIdentifier</key>
-    <string>com.sidescreen.app</string>
+    <string>com.tabvirtualdisplay.app</string>
     <key>CFBundleName</key>
-    <string>Side Screen</string>
+    <string>Tab Virtual Display</string>
     <key>CFBundleDisplayName</key>
-    <string>Side Screen</string>
+    <string>Tab Virtual Display</string>
     <key>CFBundleVersion</key>
     <string>1.0</string>
     <key>CFBundleShortVersionString</key>

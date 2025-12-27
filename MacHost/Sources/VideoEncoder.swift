@@ -16,11 +16,11 @@ class VideoEncoder {
     private var frameBuffer = Data(capacity: 512 * 1024)  // 512KB initial
     private static let startCode: [UInt8] = [0, 0, 0, 1]
 
-    init(width: Int, height: Int, bitrateMbps: Int = 20, quality: String = "medium", gamingBoost: Bool = false, frameRate: Int = 60) {
+    init(width: Int, height: Int, bitrateMbps: Int = 20, quality: String = "ultralow", gamingBoost: Bool = false, frameRate: Int = 60) {
         self.width = width
         self.height = height
         self.bitrateMbps = gamingBoost ? 50 : bitrateMbps
-        self.quality = gamingBoost ? "low" : quality
+        self.quality = gamingBoost ? "ultralow" : quality
         self.gamingBoost = gamingBoost
         self.frameRate = frameRate
         setupCompressionSession()
@@ -28,7 +28,7 @@ class VideoEncoder {
 
     func updateSettings(bitrateMbps: Int, quality: String, gamingBoost: Bool) {
         self.bitrateMbps = gamingBoost ? 50 : bitrateMbps
-        self.quality = gamingBoost ? "low" : quality
+        self.quality = gamingBoost ? "ultralow" : quality
         self.gamingBoost = gamingBoost
 
         // Drain pending frames before invalidation
@@ -89,13 +89,14 @@ class VideoEncoder {
         // Quality based on preset
         let qualityValue: Float
         if gamingBoost {
-            qualityValue = 0.5  // Lower quality for speed
+            qualityValue = 0.3  // Ultra low quality for maximum speed
         } else {
             qualityValue = switch quality {
+                case "ultralow": 0.3  // Fastest encoding, lowest latency
                 case "low": 0.5
                 case "medium": 0.7
                 case "high": 0.85
-                default: 0.7
+                default: 0.3  // Default to ultralow
             }
         }
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_Quality, value: qualityValue as CFNumber)
