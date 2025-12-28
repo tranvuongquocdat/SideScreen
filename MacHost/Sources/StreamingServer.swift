@@ -23,9 +23,9 @@ class StreamingServer {
     private var isStopped = false
 
     // Frame dropping for latency control
-    // Increased from 50ms to 80ms to reduce aggressive P-frame dropping
-    // which was causing stuttering during encoding variance spikes
-    private let maxFrameAge: UInt64 = 80_000_000  // 80ms in nanoseconds - drop older frames
+    // 50ms frame age - balanced with client's 60ms tolerance
+    // Lower = less latency, but may drop more P-frames during encoding spikes
+    private let maxFrameAge: UInt64 = 50_000_000  // 50ms in nanoseconds - drop older frames
     private var canSendNextFrame = true  // Simple backpressure
 
     init(port: UInt16) {

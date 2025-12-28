@@ -28,8 +28,9 @@ class VideoDecoder(private val surface: Surface, private val display: Display? =
     private var currentWidth = 1920
     private var currentHeight = 1200
 
-    // Frame age limit for dropping old frames (50ms in nanoseconds)
-    private val maxFrameAgeNs = 50_000_000L
+    // Frame age limit for dropping old frames (60ms in nanoseconds)
+    // Must be >= server's maxFrameAge (50ms) with some slack for network jitter
+    private val maxFrameAgeNs = 60_000_000L
 
     var onFrameRendered: ((Long) -> Unit)? = null
     var onFrameStats: ((fps: Double, variance: Double) -> Unit)? = null

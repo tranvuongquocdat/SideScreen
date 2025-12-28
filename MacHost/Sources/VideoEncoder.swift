@@ -74,12 +74,12 @@ class VideoEncoder {
         // Frame rate settings
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: frameRate as CFNumber)
 
-        // Keyframe interval: 1 second (industry standard for real-time streaming)
-        // Increased from 0.1s to reduce bandwidth bursts that caused stuttering
-        // Scene change detection in hardware encoder handles rapid changes automatically
-        let keyframeInterval = frameRate  // 1 second worth of frames (60 at 60fps)
+        // Keyframe interval: 0.5 second (balance between error recovery and bandwidth)
+        // 1s was too long - when P-frames are lost, artifacts persist until next keyframe
+        // 0.5s provides faster error recovery while avoiding bandwidth bursts of 0.1s
+        let keyframeInterval = frameRate / 2  // 0.5 second (30 frames at 60fps)
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: keyframeInterval as CFNumber)
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, value: 1.0 as CFNumber)
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, value: 0.5 as CFNumber)
 
         // Critical for low latency - NO frame reordering (no B-frames)
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse)

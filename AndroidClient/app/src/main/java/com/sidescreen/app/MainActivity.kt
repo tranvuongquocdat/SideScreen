@@ -34,6 +34,7 @@ import com.google.android.material.switchmaterial.SwitchMaterial
 import com.sidescreen.app.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.net.InetSocketAddress
 import java.net.Socket
 
 class MainActivity : AppCompatActivity() {
@@ -899,11 +900,36 @@ class MainActivity : AppCompatActivity() {
                status == android.os.BatteryManager.BATTERY_STATUS_FULL
     }
 
+    /**
+     * Check if Mac server is actually running (not just ADB reverse)
+     *
+     * Problem: When `adb reverse tcp:8888 tcp:8888` is active, ADB daemon listens on port 8888.
+     * A simple socket connect will succeed to ADB daemon, not the actual Mac server.
+     *
+     * Solution: After connecting, try to read data with a short timeout.
+     * Mac server sends display config (type=1) immediately upon connection.
+     * ADB daemon doesn't send anything, so read will timeout → false.
+     */
     private fun checkServerRunning(host: String, port: Int): Boolean {
+        var socket: Socket? = null
         return try {
-            Socket(host, port).use { true }
+            socket = Socket()
+            socket.connect(InetSocketAddress(host, port), 300)  // 300ms connect timeout
+            socket.soTimeout = 200  // 200ms read timeout
+
+            // Try to read - Mac server sends display config immediately
+            // ADB daemon doesn't send anything, so read will timeout
+            val input = socket.getInputStream()
+            val firstByte = input.read()  // Blocks up to soTimeout
+
+            // If we got data (>= 0), it's the real Mac server
+            // -1 means EOF (connection closed), anything else is data
+            firstByte >= 0
         } catch (e: Exception) {
+            // Timeout, connection refused, or other error = server not running
             false
+        } finally {
+            try { socket?.close() } catch (e: Exception) { /* ignore */ }
         }
     }
 }

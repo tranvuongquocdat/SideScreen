@@ -587,6 +587,24 @@ struct SettingsView: View {
 
                         Spacer()
 
+                        // Restart button
+                        Button(action: {
+                            restartApp()
+                        }) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.secondary)
+                                .frame(width: 32, height: 32)
+                                .background {
+                                    Circle().fill(.ultraThinMaterial)
+                                        .overlay {
+                                            Circle().strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+                                        }
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .help("Restart App")
+
                         // Quit button
                         Button(action: {
                             NSApp.terminate(nil)
@@ -612,6 +630,28 @@ struct SettingsView: View {
             }
         }
         .frame(width: 480, height: 780)
+    }
+
+    /// Restart the app by launching a new instance and terminating current one
+    private func restartApp() {
+        // Get the app bundle path
+        guard let appPath = Bundle.main.bundlePath as String? else {
+            print("❌ Could not get app path")
+            return
+        }
+
+        // Use Process to launch a new instance after a short delay
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
+        task.arguments = ["-c", "sleep 0.5 && open \"\(appPath)\""]
+
+        do {
+            try task.run()
+            // Terminate current app
+            NSApp.terminate(nil)
+        } catch {
+            print("❌ Failed to restart: \(error)")
+        }
     }
 }
 
