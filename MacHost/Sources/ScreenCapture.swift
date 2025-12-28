@@ -69,8 +69,9 @@ class ScreenCapture {
         config.showsCursor = true
 
         // Queue depth: balance between latency and stability
-        // 6 frames = 100ms buffer at 60fps - enough to handle encoding delays
-        config.queueDepth = 6
+        // 3 frames = ~50ms buffer at 60fps - lower latency while handling encoding variance
+        // Reduced from 6 (100ms) to improve responsiveness
+        config.queueDepth = 3
 
         // No audio
         config.capturesAudio = false

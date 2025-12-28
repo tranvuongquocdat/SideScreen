@@ -33,6 +33,10 @@ class VideoDecoder(private val surface: Surface, private val display: Display? =
 
     var onFrameRendered: ((Long) -> Unit)? = null
     var onFrameStats: ((fps: Double, variance: Double) -> Unit)? = null
+    var onFrameDecoded: ((ByteArray) -> Unit)? = null  // Callback to release buffer back to pool
+
+    // Reuse BufferInfo to reduce GC pressure (created once, used for all decode calls)
+    private val bufferInfo = MediaCodec.BufferInfo()
 
     init {
         setupDecoder()
@@ -121,13 +125,15 @@ class VideoDecoder(private val surface: Surface, private val display: Display? =
             val frameAge = now - frameTimestamp
             if (frameAge > maxFrameAgeNs) {
                 droppedFrames++
+                onFrameDecoded?.invoke(frameData)  // Release buffer even if dropped
                 return  // Skip this old frame
             }
 
-            // Increased timeout to 5ms for reliability (was 1ms - too aggressive)
+            // 5ms timeout for input buffer (was 5000 microseconds)
             val inputBufferIndex = decoder.dequeueInputBuffer(5000)
             if (inputBufferIndex < 0) {
                 droppedFrames++
+                onFrameDecoded?.invoke(frameData)  // Release buffer even if dropped
                 return  // No input buffer available
             }
 
@@ -143,15 +149,16 @@ class VideoDecoder(private val surface: Surface, private val display: Display? =
                 0
             )
 
-            // Process output - handle format change BEFORE the main loop
-            val bufferInfo = MediaCodec.BufferInfo()
-            var outputBufferIndex = decoder.dequeueOutputBuffer(bufferInfo, 0)
+            // Process output - use 5ms timeout instead of 0 (busy-wait)
+            // 5ms allows CPU to sleep between checks while still being responsive
+            // At 60fps = 16.6ms per frame, 5ms is responsive enough
+            var outputBufferIndex = decoder.dequeueOutputBuffer(bufferInfo, 5000)
 
             // Handle format change first
             if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                 val newFormat = decoder.outputFormat
                 Log.d(TAG, "Format changed: $newFormat")
-                outputBufferIndex = decoder.dequeueOutputBuffer(bufferInfo, 0)
+                outputBufferIndex = decoder.dequeueOutputBuffer(bufferInfo, 5000)
             }
 
             // Process all available output frames
@@ -168,11 +175,16 @@ class VideoDecoder(private val surface: Surface, private val display: Display? =
                 lastFrameTime = outputTime
                 updateStats()
 
+                // Use 0 timeout here for remaining frames (non-blocking drain)
                 outputBufferIndex = decoder.dequeueOutputBuffer(bufferInfo, 0)
             }
 
+            // Notify that buffer can be released back to pool
+            onFrameDecoded?.invoke(frameData)
+
         } catch (e: Exception) {
             Log.e(TAG, "❌ Decode error", e)
+            onFrameDecoded?.invoke(frameData)  // Release buffer on error
         }
     }
 

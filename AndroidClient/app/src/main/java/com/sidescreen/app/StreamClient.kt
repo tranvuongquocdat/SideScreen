@@ -34,6 +34,44 @@ class StreamClient(
     private var framesReceived = 0L
     private var lastStatsTime = System.currentTimeMillis()
 
+    // Buffer pooling to reduce GC pressure from per-frame allocations
+    // At 60fps with ~100KB frames, this prevents ~6MB/s of allocations
+    private val bufferPool = ArrayDeque<ByteArray>(8)
+    private val poolLock = Any()
+
+    /**
+     * Acquire a buffer from pool or allocate new one if needed
+     * @param minSize Minimum size required for the buffer
+     */
+    private fun acquireBuffer(minSize: Int): ByteArray {
+        synchronized(poolLock) {
+            val iterator = bufferPool.iterator()
+            while (iterator.hasNext()) {
+                val buffer = iterator.next()
+                if (buffer.size >= minSize) {
+                    iterator.remove()
+                    return buffer
+                }
+            }
+        }
+        // No suitable buffer found, allocate new one
+        return ByteArray(minSize)
+    }
+
+    /**
+     * Release a buffer back to the pool for reuse
+     * Called after decode completes via onFrameDecoded callback
+     */
+    fun releaseBuffer(buffer: ByteArray) {
+        synchronized(poolLock) {
+            // Keep pool size limited to prevent memory bloat
+            if (bufferPool.size < 8) {
+                bufferPool.addLast(buffer)
+            }
+            // If pool is full, let buffer be GC'd
+        }
+    }
+
     // High-priority thread for touch events to minimize latency
     // Use THREAD_PRIORITY_DISPLAY instead of URGENT_DISPLAY to avoid starving system processes
     private val touchExecutor = Executors.newSingleThreadExecutor { runnable ->
@@ -86,10 +124,12 @@ class StreamClient(
                             break
                         }
 
-                        val frameData = ByteArray(frameSize)
-                        input.readFully(frameData)
+                        // Use pooled buffer to reduce GC pressure
+                        val frameData = acquireBuffer(frameSize)
+                        input.readFully(frameData, 0, frameSize)
 
                         // Pass timestamp to decoder for frame age tracking
+                        // Buffer will be released via releaseBuffer() after decode completes
                         onFrameReceived?.invoke(frameData, receiveTimestamp)
                         updateStats(frameSize)
                     }

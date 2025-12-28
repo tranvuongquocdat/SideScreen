@@ -96,25 +96,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Enable sustained performance mode for gaming
-     * Maximizes CPU/GPU clocks and prevents thermal throttling
+     * Enable performance mode for streaming
+     * NOTE: setSustainedPerformanceMode is DISABLED - it causes thermal throttling
+     * which makes the entire device laggy. Normal power management is more efficient.
      */
-    @SuppressLint("WakelockTimeout")
     private fun enablePerformanceMode() {
         try {
-            // Request sustained performance mode (Android 7.0+)
-            window.setSustainedPerformanceMode(true)
+            // REMOVED: setSustainedPerformanceMode(true)
+            // Sustained performance mode forces max CPU/GPU clocks which causes
+            // thermal throttling on extended use, making the device laggy.
+            // Let the SoC manage power efficiently instead.
 
-            // Use PARTIAL_WAKE_LOCK instead of deprecated SCREEN_BRIGHT_WAKE_LOCK
+            // Use PARTIAL_WAKE_LOCK with timeout to prevent battery drain
             // Screen is already kept on via FLAG_KEEP_SCREEN_ON
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = powerManager.newWakeLock(
                 PowerManager.PARTIAL_WAKE_LOCK,
                 "TabVirtualDisplay::PerformanceMode"
             )
-            wakeLock?.acquire()
+            // 30 minute timeout instead of infinite acquire
+            wakeLock?.acquire(30 * 60 * 1000L)
 
-            log("🎮 Performance mode ENABLED")
+            log("🎮 Performance mode ENABLED (balanced)")
         } catch (e: Exception) {
             log("⚠️ Performance mode failed: ${e.message}")
         }
@@ -586,6 +589,12 @@ class MainActivity : AppCompatActivity() {
                     videoDecoder?.decode(frameData, timestamp)
                 }
 
+                // Wire up buffer release callback for buffer pooling
+                // When decode completes, buffer is returned to StreamClient's pool
+                videoDecoder?.onFrameDecoded = { buffer ->
+                    streamClient?.releaseBuffer(buffer)
+                }
+
                 streamClient?.onConnectionStatus = { connected ->
                     runOnUiThread {
                         // Update connection state flag
@@ -684,13 +693,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun cleanup() {
         try {
-            // Reset sustained performance mode FIRST (affects system-wide power management)
-            try {
-                window.setSustainedPerformanceMode(false)
-            } catch (e: Exception) {
-                // Ignore if not supported
-            }
-
             disconnect()
             videoDecoder?.release()
             videoDecoder = null
@@ -712,25 +714,14 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
-        // Partial cleanup - reset system-affecting settings when app goes to background
-        // This prevents launcher lag when app is in background
-        try {
-            window.setSustainedPerformanceMode(false)
-        } catch (e: Exception) {
-            // Ignore if not supported
-        }
+        // No sustained performance mode to reset - we don't use it anymore
+        // This method kept for potential future cleanup needs
     }
 
     override fun onRestart() {
         super.onRestart()
-        // Re-enable performance mode when returning to app
-        if (streamClient != null) {
-            try {
-                window.setSustainedPerformanceMode(true)
-            } catch (e: Exception) {
-                // Ignore if not supported
-            }
-        }
+        // No sustained performance mode to re-enable - we don't use it anymore
+        // Wake lock will auto-renew if still within timeout
     }
 
     private fun handleTouch(view: View, event: MotionEvent) {
