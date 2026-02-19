@@ -93,7 +93,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
 
             elements.forEach((element, index) => {
-                element.style.transitionDelay = `${index * 0.05}s`;
+                element.style.transitionDelay = `${index * 0.03}s`;
                 observer.observe(element);
             });
         } else {
