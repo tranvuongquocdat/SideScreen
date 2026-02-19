@@ -1,4 +1,4 @@
-// Tab Virtual Display Website JavaScript
+// Side Screen Website JavaScript
 
 // ==================== Theme Toggle (runs before DOMContentLoaded) ====================
 (function() {

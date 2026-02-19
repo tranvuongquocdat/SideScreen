@@ -12,7 +12,7 @@ echo "Building version $VERSION..."
 cd "$ROOT_DIR/MacHost"
 
 # Kill running instance
-echo "Stopping running Tab Virtual Display..."
+echo "Stopping running Side Screen..."
 pkill -f TabVirtualDisplay 2>/dev/null || true
 sleep 0.5
 
@@ -53,11 +53,11 @@ cat > "$APP_DIR/Contents/Info.plist" << EOF
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
-    <string>com.tabvirtualdisplay.app</string>
+    <string>com.sidescreen.app</string>
     <key>CFBundleName</key>
-    <string>Tab Virtual Display</string>
+    <string>Side Screen</string>
     <key>CFBundleDisplayName</key>
-    <string>Tab Virtual Display</string>
+    <string>Side Screen</string>
     <key>CFBundleVersion</key>
     <string>$VERSION</string><!-- VERSION -->
     <key>CFBundleShortVersionString</key>

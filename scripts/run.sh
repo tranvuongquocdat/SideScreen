@@ -4,7 +4,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-echo "🚀 Starting Tab Virtual Display..."
+echo "🚀 Starting Side Screen..."
 
 # Kill any existing instance
 pkill -f TabVirtualDisplay 2>/dev/null || true

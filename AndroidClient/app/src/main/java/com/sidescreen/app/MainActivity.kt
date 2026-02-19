@@ -754,7 +754,7 @@ class MainActivity : AppCompatActivity() {
                 val errorMessage =
                     when {
                         e.message?.contains("ECONNREFUSED") == true -> {
-                            "Mac server is not running.\n\nPlease start TabVirtualDisplay.app on your Mac first."
+                            "Mac server is not running.\n\nPlease start Side Screen.app on your Mac first."
                         }
 
                         e.message?.contains("Network is unreachable") == true -> {
@@ -766,7 +766,7 @@ class MainActivity : AppCompatActivity() {
                         }
 
                         else -> {
-                            "Connection failed: ${e.message}\n\nTry:\n• Start TabVirtualDisplay.app on Mac\n• Check USB connection\n• Run: adb reverse tcp:8888 tcp:8888"
+                            "Connection failed: ${e.message}\n\nTry:\n• Start Side Screen.app on Mac\n• Check USB connection\n• Run: adb reverse tcp:8888 tcp:8888"
                         }
                     }
                 updateStatus("Connection failed")

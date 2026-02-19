@@ -94,7 +94,7 @@ struct SettingsView: View {
                     .onHover { headerHovered = $0 }
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Tab Virtual Display")
+                        Text("Side Screen")
                             .font(.system(size: 20, weight: .bold, design: .rounded))
                         Text("Turn your tablet into a second display")
                             .font(.system(size: 12, weight: .medium))
@@ -118,7 +118,7 @@ struct SettingsView: View {
                         Button("Cancel", role: .cancel) { }
                         Button("Reset", role: .destructive) {
                             settings.resetToDefaults()
-                            if let window = NSApp.windows.first(where: { $0.title == "Tab Virtual Display" }) {
+                            if let window = NSApp.windows.first(where: { $0.title == "Side Screen" }) {
                                 window.center()
                             }
                         }
@@ -621,7 +621,7 @@ struct SettingsView: View {
                                 }
                         }
                         .buttonStyle(.plain)
-                        .help("Quit Tab Virtual Display (⌘Q)")
+                        .help("Quit Side Screen (⌘Q)")
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 14)
@@ -967,7 +967,7 @@ class SettingsWindowController: NSWindowController, NSWindowDelegate {
             defer: false
         )
 
-        window.title = "Tab Virtual Display"
+        window.title = "Side Screen"
         window.titlebarAppearsTransparent = true
         window.backgroundColor = .clear
         window.isMovableByWindowBackground = true

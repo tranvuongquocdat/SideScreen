@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR"
 
-echo "🚀 Installing Tab Virtual Display..."
+echo "🚀 Installing Side Screen..."
 echo ""
 
 # Set JAVA_HOME for Android Studio's bundled JDK
@@ -54,11 +54,11 @@ cat > "$APP_DIR/Info.plist" << 'PLIST'
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>Tab Virtual Display</string>
+    <string>Side Screen</string>
     <key>CFBundleDisplayName</key>
-    <string>Tab Virtual Display</string>
+    <string>Side Screen</string>
     <key>CFBundleIdentifier</key>
-    <string>com.tabvirtualdisplay.app</string>
+    <string>com.sidescreen.app</string>
     <key>CFBundleVersion</key>
     <string>1.0</string>
     <key>CFBundleShortVersionString</key>
