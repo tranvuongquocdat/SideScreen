@@ -69,6 +69,9 @@ jobs:
           </plist>
           EOF
 
+      - name: Ad-hoc code sign
+        run: codesign --force --deep --sign - SideScreen.app
+
       - name: Create DMG
         run: |
           VERSION=${{ steps.version.outputs.version }}
@@ -143,7 +146,7 @@ jobs:
             - **Android**: `SideScreen-${{ steps.version.outputs.version }}-android.apk`
 
             ### Installation
-            - **macOS**: Open DMG, drag Side Screen to Applications
+            - **macOS**: Open DMG, drag Side Screen to Applications. On first launch, if macOS says "damaged", run: `xattr -cr /Applications/SideScreen.app`
             - **Android**: Install APK (enable "Unknown sources" if needed). Port forwarding is handled automatically by the Mac app.
           files: |
             artifacts/macos-dmg/*.dmg

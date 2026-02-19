@@ -183,6 +183,16 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ## Troubleshooting
 
 <details>
+<summary><strong>"SideScreen is damaged" on macOS</strong></summary>
+
+This happens because the app is not notarized by Apple. Run this command to fix it:
+```bash
+xattr -cr /Applications/SideScreen.app
+```
+Then open the app again.
+</details>
+
+<details>
 <summary><strong>"Connection refused" on Android</strong></summary>
 
 The Mac app sets up `adb reverse` automatically when streaming starts. If it still fails, make sure `adb` is installed (via Android SDK or Homebrew: `brew install android-platform-tools`) and your device has USB debugging enabled.

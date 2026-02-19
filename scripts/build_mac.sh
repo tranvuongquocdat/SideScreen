@@ -76,6 +76,11 @@ cat > "$APP_DIR/Contents/Info.plist" << EOF
 </plist>
 EOF
 
+# Ad-hoc code sign to prevent Gatekeeper "damaged" error
+echo "Code signing (ad-hoc)..."
+codesign --force --deep --sign - "$APP_DIR"
+echo "  ✓ App signed"
+
 echo ""
 echo "Build successful!"
 echo ""

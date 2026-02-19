@@ -496,6 +496,11 @@
                 </details>
 
                 <details class="faq-item">
+                    <summary>macOS says "SideScreen is damaged"</summary>
+                    <p>This happens because the app isn't notarized by Apple. Open Terminal and run: <code>xattr -cr /Applications/SideScreen.app</code>, then open the app again.</p>
+                </details>
+
+                <details class="faq-item">
                     <summary>Do I need to run any terminal commands?</summary>
                     <p>No! The Mac app automatically runs <code>adb reverse</code> to set up port forwarding when streaming starts. Just make sure <code>adb</code> is installed (via Android SDK or <code>brew install android-platform-tools</code>).</p>
                 </details>
