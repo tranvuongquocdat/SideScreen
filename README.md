@@ -247,7 +247,7 @@ If Side Screen is useful to you, consider supporting development:
 
 <div align="center">
 
-Made with ❤️ for the Mac community
+Made with ❤️ by **Tran Vuong Quoc Dat**
 
 [Report Bug](https://github.com/tranvuongquocdat/SideScreen/issues) · [Request Feature](https://github.com/tranvuongquocdat/SideScreen/issues) · [Discussions](https://github.com/tranvuongquocdat/SideScreen/discussions)
 
