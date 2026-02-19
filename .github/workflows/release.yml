@@ -1,0 +1,148 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-mac:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: echo "version=$(cat VERSION)" >> $GITHUB_OUTPUT
+
+      - name: Build macOS
+        run: |
+          cd MacHost
+          swift build -c release
+
+      - name: Create .app bundle
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          APP_DIR="SideScreen.app"
+          mkdir -p "$APP_DIR/Contents/MacOS"
+          mkdir -p "$APP_DIR/Contents/Resources"
+          cp MacHost/.build/release/TabVirtualDisplay "$APP_DIR/Contents/MacOS/"
+
+          # Copy icon if exists
+          if [ -f "MacHost/Resources/AppIcon.icns" ]; then
+            cp MacHost/Resources/AppIcon.icns "$APP_DIR/Contents/Resources/"
+          fi
+
+          cat > "$APP_DIR/Contents/Info.plist" << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>TabVirtualDisplay</string>
+              <key>CFBundleIconFile</key>
+              <string>AppIcon</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.sidescreen.app</string>
+              <key>CFBundleName</key>
+              <string>Side Screen</string>
+              <key>CFBundleDisplayName</key>
+              <string>Side Screen</string>
+              <key>CFBundleVersion</key>
+              <string>${VERSION}</string>
+              <key>CFBundleShortVersionString</key>
+              <string>${VERSION}</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>14.0</string>
+              <key>LSUIElement</key>
+              <false/>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+              <key>NSSupportsAutomaticGraphicsSwitching</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Create DMG
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          hdiutil create -volname "Side Screen" -srcfolder SideScreen.app -ov -format UDZO "SideScreen-${VERSION}-mac.dmg"
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: "*.dmg"
+
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: echo "version=$(cat VERSION)" >> $GITHUB_OUTPUT
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Build APK
+        run: |
+          cd AndroidClient
+          chmod +x gradlew
+          ./gradlew assembleRelease
+
+      - name: Rename APK
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          cp AndroidClient/app/build/outputs/apk/release/app-release-unsigned.apk "SideScreen-${VERSION}-android.apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: "*.apk"
+
+  create-release:
+    needs: [build-mac, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: echo "version=$(cat VERSION)" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Side Screen v${{ steps.version.outputs.version }}"
+          body: |
+            ## Side Screen v${{ steps.version.outputs.version }}
+
+            ### Downloads
+            - **macOS**: `SideScreen-${{ steps.version.outputs.version }}-mac.dmg`
+            - **Android**: `SideScreen-${{ steps.version.outputs.version }}-android.apk`
+
+            ### Installation
+            - **macOS**: Open DMG, drag Side Screen to Applications
+            - **Android**: Install APK (enable "Unknown sources" if needed), then run `adb reverse tcp:8888 tcp:8888`
+          files: |
+            artifacts/macos-dmg/*.dmg
+            artifacts/android-apk/*.apk
+          draft: false
+          prerelease: false

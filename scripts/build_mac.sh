@@ -5,6 +5,10 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Read version
+VERSION=$(cat "$ROOT_DIR/VERSION" | tr -d '[:space:]')
+echo "Building version $VERSION..."
+
 cd "$ROOT_DIR/MacHost"
 
 # Kill running instance
@@ -32,14 +36,22 @@ mkdir -p "$APP_DIR/Contents/Resources"
 # Copy binary
 cp .build/release/TabVirtualDisplay "$APP_DIR/Contents/MacOS/"
 
+# Copy app icon if exists
+if [ -f "$ROOT_DIR/MacHost/Resources/AppIcon.icns" ]; then
+    cp "$ROOT_DIR/MacHost/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/"
+    echo "  ✓ App icon copied"
+fi
+
 # Create Info.plist
-cat > "$APP_DIR/Contents/Info.plist" << 'EOF'
+cat > "$APP_DIR/Contents/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
     <string>TabVirtualDisplay</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>com.tabvirtualdisplay.app</string>
     <key>CFBundleName</key>
@@ -47,9 +59,9 @@ cat > "$APP_DIR/Contents/Info.plist" << 'EOF'
     <key>CFBundleDisplayName</key>
     <string>Tab Virtual Display</string>
     <key>CFBundleVersion</key>
-    <string>1.0</string>
+    <string>$VERSION</string><!-- VERSION -->
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>$VERSION</string><!-- VERSION -->
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>

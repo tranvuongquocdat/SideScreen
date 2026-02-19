@@ -6,7 +6,8 @@
      📸 CAPTURE INSTRUCTIONS: Create or export your app icon as PNG.
      Save to: resources/logo/sidescreen-icon.png
      Size: 128x128px, with rounded corners if possible -->
-<img src="resources/logo/sidescreen-icon.png" alt="Side Screen" width="128"/>
+<!-- Replace with resources/logo/sidescreen-icon.png after capturing -->
+<img src="resources/logo/icon-placeholder.svg" alt="Side Screen" width="128"/>
 
 <h1>Side Screen</h1>
 
@@ -41,7 +42,8 @@
      - Resolution: 800-1000px wide
      - Save to: resources/screenshots/hero.png (or hero.gif) -->
 <div align="center">
-  <img src="resources/screenshots/hero.png" alt="Side Screen — Mac + Android tablet as second display" width="800"/>
+  <!-- Replace with resources/screenshots/hero.png after capturing -->
+  <img src="resources/screenshots/hero-placeholder.svg" alt="Side Screen — Mac + Android tablet as second display" width="800"/>
 </div>
 
 ---
@@ -71,7 +73,8 @@ Create a true virtual display on your Mac. Drag windows to your tablet like a re
      - Or show a window being dragged from Mac to tablet
      - Save to: resources/screenshots/feature-virtual-display.png -->
 <div align="center">
-  <img src="resources/screenshots/feature-virtual-display.png" alt="Virtual Display" width="700"/>
+  <!-- Replace with resources/screenshots/feature-virtual-display.png after capturing -->
+  <img src="resources/screenshots/feature-virtual-display-placeholder.svg" alt="Virtual Display" width="700"/>
 </div>
 
 ### Ultra-Low Latency
@@ -84,7 +87,8 @@ Hardware-accelerated H.265 encoding on Mac and decoding on Android. Async pipeli
      - Should display FPS, bitrate, and latency numbers
      - Save to: resources/screenshots/feature-performance.png -->
 <div align="center">
-  <img src="resources/screenshots/feature-performance.png" alt="Low Latency Performance" width="500"/>
+  <!-- Replace with resources/screenshots/feature-performance.png after capturing -->
+  <img src="resources/screenshots/feature-performance-placeholder.svg" alt="Low Latency Performance" width="500"/>
 </div>
 
 ### Touch Support
@@ -105,9 +109,11 @@ Configure resolution (up to 1920x1200), frame rate (30–120 FPS), bitrate (10�
      - Right: Android settings dialog
      - Save to: resources/screenshots/settings-mac.png and settings-android.png -->
 <div align="center">
-  <img src="resources/screenshots/settings-mac.png" alt="macOS Settings" width="380"/>
+  <!-- Replace with resources/screenshots/settings-mac.png after capturing -->
+  <img src="resources/screenshots/settings-mac-placeholder.svg" alt="macOS Settings" width="380"/>
   &nbsp;&nbsp;
-  <img src="resources/screenshots/settings-android.png" alt="Android Settings" width="280"/>
+  <!-- Replace with resources/screenshots/settings-android.png after capturing -->
+  <img src="resources/screenshots/settings-android-placeholder.svg" alt="Android Settings" width="280"/>
 </div>
 
 <p align="right"><a href="#readme-top">↑ Back to top</a></p>

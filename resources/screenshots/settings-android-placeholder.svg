@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="280" height="500" viewBox="0 0 280 500">
+  <rect width="280" height="500" rx="8" fill="#f0f0f0" stroke="#e0e0e0" stroke-width="1"/>
+  <text x="140" y="225" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="24" font-weight="bold" fill="#888" letter-spacing="4">ANDROID SETTINGS</text>
+  <text x="140" y="265" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="16" fill="#aaa" letter-spacing="2">Settings Dialog</text>
+</svg>

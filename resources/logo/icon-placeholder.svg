@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="8" fill="#f0f0f0" stroke="#e0e0e0" stroke-width="1"/>
+  <text x="64" y="55" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="24" font-weight="bold" fill="#888" letter-spacing="4">ICON</text>
+  <text x="64" y="80" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="12" fill="#aaa" letter-spacing="2">128x128</text>
+</svg>
