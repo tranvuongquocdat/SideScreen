@@ -1305,6 +1305,31 @@ a:hover {
     color: var(--color-text-secondary);
 }
 
+.download-note {
+    max-width: 600px;
+    margin: 24px auto 0;
+    padding: 16px 20px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-md);
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    text-align: center;
+}
+
+.download-note p {
+    margin-bottom: 8px;
+}
+
+.download-note code {
+    display: inline-block;
+    padding: 4px 12px;
+    background: var(--color-bg-alt);
+    border-radius: var(--border-radius-sm);
+    font-size: 0.85rem;
+    user-select: all;
+}
+
 /* Modal */
 .modal-overlay {
     position: fixed;
