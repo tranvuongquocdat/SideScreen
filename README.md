@@ -2,19 +2,14 @@
 
 <div align="center">
 
-<!-- PLACEHOLDER: App icon/logo (128x128px)
-     📸 CAPTURE INSTRUCTIONS: Create or export your app icon as PNG.
-     Save to: resources/logo/sidescreen-icon.png
-     Size: 128x128px, with rounded corners if possible -->
-<!-- Replace with resources/logo/sidescreen-icon.png after capturing -->
-<img src="resources/logo/icon-placeholder.svg" alt="Side Screen" width="128"/>
+<img src="resources/logo/sidescreen-icon.png" alt="Side Screen" width="128"/>
 
 <h1>Side Screen</h1>
 
 <p><em>Turn your Android tablet into a second display for macOS via USB-C</em></p>
 
 <p>
-  <img src="https://img.shields.io/badge/version-0.1.0-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.2.0-blue?style=flat-square" alt="Version">
   <a href="https://github.com/tranvuongquocdat/SideScreen/releases/latest">
     <img src="https://img.shields.io/github/v/release/tranvuongquocdat/SideScreen?style=flat-square&label=Download&color=007AFF" alt="Download">
   </a>

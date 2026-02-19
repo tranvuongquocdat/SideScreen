@@ -106,6 +106,6 @@ Each release follows this format:
 
 ---
 
-[Unreleased]: https://github.com/tranvuongquocdat/SideScreen/compare/0.1.0...HEAD
-[1.1.0]: https://github.com/tranvuongquocdat/SideScreen/compare/0.1.0...HEAD
-[1.0.0]: https://github.com/tranvuongquocdat/SideScreen/releases/tag/0.1.0
+[Unreleased]: https://github.com/tranvuongquocdat/SideScreen/compare/0.2.0...HEAD
+[0.2.0]: https://github.com/tranvuongquocdat/SideScreen/compare/0.1.0...0.2.0
+[0.1.0]: https://github.com/tranvuongquocdat/SideScreen/releases/tag/0.1.0
