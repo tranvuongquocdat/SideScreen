@@ -81,3 +81,14 @@ echo "Build successful!"
 echo ""
 echo "App: $ROOT_DIR/$APP_NAME.app"
 echo "To run: open $APP_NAME.app"
+
+# Create DMG with Applications symlink
+echo ""
+echo "Creating DMG..."
+DMG_DIR=$(mktemp -d)
+cp -R "$APP_DIR" "$DMG_DIR/"
+ln -s /Applications "$DMG_DIR/Applications"
+DMG_PATH="$ROOT_DIR/SideScreen-${VERSION}-mac.dmg"
+hdiutil create -volname "Side Screen" -srcfolder "$DMG_DIR" -ov -format UDZO "$DMG_PATH"
+rm -rf "$DMG_DIR"
+echo "DMG: $DMG_PATH"

@@ -72,7 +72,11 @@ jobs:
       - name: Create DMG
         run: |
           VERSION=${{ steps.version.outputs.version }}
-          hdiutil create -volname "Side Screen" -srcfolder SideScreen.app -ov -format UDZO "SideScreen-${VERSION}-mac.dmg"
+          mkdir -p dmg-content
+          cp -R SideScreen.app dmg-content/
+          ln -s /Applications dmg-content/Applications
+          hdiutil create -volname "Side Screen" -srcfolder dmg-content -ov -format UDZO "SideScreen-${VERSION}-mac.dmg"
+          rm -rf dmg-content
 
       - name: Upload DMG
         uses: actions/upload-artifact@v4
