@@ -753,12 +753,124 @@ a:hover {
 }
 
 /* Responsive */
+
+/* Tablet landscape & small desktop */
 @media (max-width: 1024px) {
     .features-grid {
         grid-template-columns: repeat(2, 1fr);
     }
+
+    .hero-title {
+        font-size: 3rem;
+    }
+
+    .hero-subtitle {
+        font-size: 1.1rem;
+    }
+
+    .hero-stats {
+        gap: 40px;
+    }
+
+    .nav-links {
+        gap: 20px;
+    }
+
+    .header-actions .btn-outline {
+        display: none;
+    }
 }
 
+/* Tablet portrait (iPad ~768-834px) */
+@media (max-width: 834px) {
+    :root {
+        --section-padding: 64px;
+    }
+
+    h1 { font-size: 2.5rem; }
+    h2 { font-size: 1.75rem; }
+
+    .hero {
+        padding-top: 120px;
+    }
+
+    .hero-title {
+        font-size: 2.5rem;
+    }
+
+    .hero-subtitle {
+        font-size: 1.05rem;
+    }
+
+    .hero-stats {
+        gap: 32px;
+    }
+
+    .stat-value {
+        font-size: 1.75rem;
+    }
+
+    .features-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+    }
+
+    .feature-card {
+        padding: 24px;
+    }
+
+    .feature-card p {
+        font-size: 0.9rem;
+    }
+
+    .privacy-features {
+        gap: 20px;
+    }
+
+    .privacy-feature {
+        padding: 24px 16px;
+    }
+
+    .support-primary {
+        padding: 36px 28px;
+    }
+
+    .support-headline {
+        font-size: 2rem;
+    }
+
+    .alternatives-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+    }
+
+    .alternative-link {
+        padding: 16px;
+    }
+
+    .download-card {
+        padding: 28px;
+    }
+
+    .press-item {
+        width: 300px;
+    }
+
+    .container {
+        padding: 0 20px;
+    }
+
+    /* Show nav on tablet but compact */
+    .nav-links {
+        gap: 16px;
+    }
+
+    .nav-link {
+        font-size: 0.9rem;
+    }
+}
+
+/* Phone */
 @media (max-width: 768px) {
     :root {
         --section-padding: 48px;
@@ -833,15 +945,6 @@ a:hover {
 
     .placeholder-image {
         padding: 60px 20px;
-    }
-
-    /* Nav mobile */
-    .nav-links {
-        display: none;
-    }
-
-    .header-actions .btn-primary {
-        display: none;
     }
 
     /* Features mobile */
@@ -1070,7 +1173,8 @@ a:hover {
     color: var(--color-text);
 }
 
-@media (max-width: 768px) {
+/* Hamburger menu only on phones */
+@media (max-width: 680px) {
     .mobile-menu-btn {
         display: block;
     }
