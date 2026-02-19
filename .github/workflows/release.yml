@@ -146,8 +146,15 @@ jobs:
             - **Android**: `SideScreen-${{ steps.version.outputs.version }}-android.apk`
 
             ### Installation
-            - **macOS**: Open DMG, drag Side Screen to Applications. On first launch, if macOS says "damaged", run: `xattr -cr /Applications/SideScreen.app`
+            - **macOS**: Open DMG, drag Side Screen to Applications
             - **Android**: Install APK (enable "Unknown sources" if needed). Port forwarding is handled automatically by the Mac app.
+
+            ### ⚠️ macOS Gatekeeper
+            If macOS says the app is **"damaged"**, open Terminal and run:
+            ```
+            xattr -cr /Applications/SideScreen.app
+            ```
+            Then open the app again. This is needed because the app is not notarized with an Apple Developer certificate.
           files: |
             artifacts/macos-dmg/*.dmg
             artifacts/android-apk/*.apk
