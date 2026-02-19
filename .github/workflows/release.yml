@@ -104,7 +104,7 @@ jobs:
       - name: Rename APK
         run: |
           VERSION=${{ steps.version.outputs.version }}
-          cp AndroidClient/app/build/outputs/apk/release/app-release-unsigned.apk "SideScreen-${VERSION}-android.apk"
+          cp AndroidClient/app/build/outputs/apk/release/app-release.apk "SideScreen-${VERSION}-android.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
