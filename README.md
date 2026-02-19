@@ -14,6 +14,7 @@
 <p><em>Turn your Android tablet into a second display for macOS via USB-C</em></p>
 
 <p>
+  <img src="https://img.shields.io/badge/version-0.1.0-blue?style=flat-square" alt="Version">
   <a href="https://github.com/tranvuongquocdat/SideScreen/releases/latest">
     <img src="https://img.shields.io/github/v/release/tranvuongquocdat/SideScreen?style=flat-square&label=Download&color=007AFF" alt="Download">
   </a>
