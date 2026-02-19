@@ -11,8 +11,8 @@ android {
         applicationId = "com.sidescreen.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 201
-        versionName = "0.2.1"
+        versionCode = 202
+        versionName = "0.2.2"
     }
 
     buildTypes {

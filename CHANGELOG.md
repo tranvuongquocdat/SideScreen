@@ -17,6 +17,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+<a id="0.2.2"></a>
+## [0.2.2] - 2026-02-19
+
+Bug fixes and UX improvements for website and DMG installer.
+
+### Fixed
+- DMG installer now includes Applications folder shortcut for drag-and-drop installation
+- Theme toggle button vertically centered in website header
+- Hero action buttons no longer overlap with stats section above
+- Removed outdated `adb reverse` manual instructions — Mac app handles port forwarding automatically
+
+### Improved
+- Faster scroll-in animations (0.6s → 0.3s) for snappier website experience
+- Updated website FAQ and README to reflect automatic ADB setup
+
+---
+
 <a id="1.1.0"></a>
 ## [1.1.0] - 2026-02-19
 
@@ -106,7 +123,8 @@ Each release follows this format:
 
 ---
 
-[Unreleased]: https://github.com/tranvuongquocdat/SideScreen/compare/0.2.1...HEAD
+[Unreleased]: https://github.com/tranvuongquocdat/SideScreen/compare/0.2.2...HEAD
+[0.2.2]: https://github.com/tranvuongquocdat/SideScreen/compare/0.2.1...0.2.2
 [0.2.1]: https://github.com/tranvuongquocdat/SideScreen/compare/0.2.0...0.2.1
 [0.2.0]: https://github.com/tranvuongquocdat/SideScreen/compare/0.1.0...0.2.0
 [0.1.0]: https://github.com/tranvuongquocdat/SideScreen/releases/tag/0.1.0
