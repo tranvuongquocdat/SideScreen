@@ -38,14 +38,14 @@ echo "  ✓ macOS app built"
 
 # Create macOS .app bundle
 echo "📦 Creating macOS .app bundle..."
-APP_NAME="TabVirtualDisplay.app"
+APP_NAME="SideScreen.app"
 APP_DIR="$APP_NAME/Contents"
 rm -rf "$APP_NAME"
 mkdir -p "$APP_DIR/MacOS"
 mkdir -p "$APP_DIR/Resources"
 
 # Copy executable
-cp MacHost/.build/release/TabVirtualDisplay "$APP_DIR/MacOS/TabVirtualDisplay"
+cp MacHost/.build/release/SideScreen "$APP_DIR/MacOS/SideScreen"
 
 # Create Info.plist
 cat > "$APP_DIR/Info.plist" << 'PLIST'
@@ -64,7 +64,7 @@ cat > "$APP_DIR/Info.plist" << 'PLIST'
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
     <key>CFBundleExecutable</key>
-    <string>TabVirtualDisplay</string>
+    <string>SideScreen</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>
@@ -116,8 +116,8 @@ echo "✅ Installation complete!"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "To start streaming:"
-echo "  1. Start Mac app: open TabVirtualDisplay.app"
-echo "     (or run: MacHost/.build/release/TabVirtualDisplay)"
+echo "  1. Start Mac app: open SideScreen.app"
+echo "     (or run: MacHost/.build/release/SideScreen)"
 echo "  2. Open 'Side Screen' app on Android"
 echo "  3. Tap Connect"
 echo ""

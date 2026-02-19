@@ -2,18 +2,18 @@
 import PackageDescription
 
 let package = Package(
-    name: "TabVirtualDisplay",
+    name: "SideScreen",
     platforms: [
         .macOS(.v14)  // Required for CGVirtualDisplay API
     ],
     products: [
         .executable(
-            name: "TabVirtualDisplay",
-            targets: ["TabVirtualDisplay"])
+            name: "SideScreen",
+            targets: ["SideScreen"])
     ],
     targets: [
         .executableTarget(
-            name: "TabVirtualDisplay",
+            name: "SideScreen",
             dependencies: [],
             path: "Sources",
             cSettings: [

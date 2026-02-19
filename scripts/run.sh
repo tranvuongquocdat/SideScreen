@@ -7,25 +7,25 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 echo "🚀 Starting Side Screen..."
 
 # Kill any existing instance
-pkill -f TabVirtualDisplay 2>/dev/null || true
+pkill -f SideScreen 2>/dev/null || true
 sleep 0.3
 
 # Check if app bundle exists
-if [ -d "$ROOT_DIR/TabVirtualDisplay.app" ]; then
-    echo "  Opening TabVirtualDisplay.app..."
-    open "$ROOT_DIR/TabVirtualDisplay.app"
-elif [ -f "$ROOT_DIR/MacHost/.build/release/TabVirtualDisplay" ]; then
+if [ -d "$ROOT_DIR/SideScreen.app" ]; then
+    echo "  Opening SideScreen.app..."
+    open "$ROOT_DIR/SideScreen.app"
+elif [ -f "$ROOT_DIR/MacHost/.build/release/SideScreen" ]; then
     echo "  Running release binary..."
-    "$ROOT_DIR/MacHost/.build/release/TabVirtualDisplay" &
-elif [ -f "$ROOT_DIR/MacHost/.build/debug/TabVirtualDisplay" ]; then
+    "$ROOT_DIR/MacHost/.build/release/SideScreen" &
+elif [ -f "$ROOT_DIR/MacHost/.build/debug/SideScreen" ]; then
     echo "  Running debug binary..."
-    "$ROOT_DIR/MacHost/.build/debug/TabVirtualDisplay" &
+    "$ROOT_DIR/MacHost/.build/debug/SideScreen" &
 else
     echo "❌ No build found. Building now..."
     "$SCRIPT_DIR/build_mac.sh"
     echo ""
-    echo "  Opening TabVirtualDisplay.app..."
-    open "$ROOT_DIR/TabVirtualDisplay.app"
+    echo "  Opening SideScreen.app..."
+    open "$ROOT_DIR/SideScreen.app"
 fi
 
 echo ""

@@ -29,7 +29,7 @@ jobs:
           APP_DIR="SideScreen.app"
           mkdir -p "$APP_DIR/Contents/MacOS"
           mkdir -p "$APP_DIR/Contents/Resources"
-          cp MacHost/.build/release/TabVirtualDisplay "$APP_DIR/Contents/MacOS/"
+          cp MacHost/.build/release/SideScreen "$APP_DIR/Contents/MacOS/"
 
           # Copy icon if exists
           if [ -f "MacHost/Resources/AppIcon.icns" ]; then
@@ -42,7 +42,7 @@ jobs:
           <plist version="1.0">
           <dict>
               <key>CFBundleExecutable</key>
-              <string>TabVirtualDisplay</string>
+              <string>SideScreen</string>
               <key>CFBundleIconFile</key>
               <string>AppIcon</string>
               <key>CFBundleIdentifier</key>

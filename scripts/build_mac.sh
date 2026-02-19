@@ -13,7 +13,7 @@ cd "$ROOT_DIR/MacHost"
 
 # Kill running instance
 echo "Stopping running Side Screen..."
-pkill -f TabVirtualDisplay 2>/dev/null || true
+pkill -f SideScreen 2>/dev/null || true
 sleep 0.5
 
 # Clean old build
@@ -25,7 +25,7 @@ echo "Building macOS Host..."
 swift build -c release
 
 # Create .app bundle
-APP_NAME="TabVirtualDisplay"
+APP_NAME="SideScreen"
 APP_DIR="$ROOT_DIR/$APP_NAME.app"
 
 echo "Creating app bundle..."
@@ -34,7 +34,7 @@ mkdir -p "$APP_DIR/Contents/MacOS"
 mkdir -p "$APP_DIR/Contents/Resources"
 
 # Copy binary
-cp .build/release/TabVirtualDisplay "$APP_DIR/Contents/MacOS/"
+cp .build/release/SideScreen "$APP_DIR/Contents/MacOS/"
 
 # Copy app icon if exists
 if [ -f "$ROOT_DIR/MacHost/Resources/AppIcon.icns" ]; then
@@ -49,7 +49,7 @@ cat > "$APP_DIR/Contents/Info.plist" << EOF
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>TabVirtualDisplay</string>
+    <string>SideScreen</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>

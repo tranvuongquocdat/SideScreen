@@ -304,7 +304,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 height: size.height,
                 refreshRate: settings.refreshRate,
                 hiDPI: settings.hiDPI,
-                name: "TabVirtualDisplay"
+                name: "SideScreen"
             )
             print("✅ Virtual display created")
 

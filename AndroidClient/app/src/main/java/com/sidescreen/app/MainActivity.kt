@@ -113,7 +113,7 @@ class MainActivity : AppCompatActivity() {
             wakeLock =
                 powerManager.newWakeLock(
                     PowerManager.PARTIAL_WAKE_LOCK,
-                    "TabVirtualDisplay::PerformanceMode",
+                    "SideScreen::PerformanceMode",
                 )
             // 30 minute timeout instead of infinite acquire
             wakeLock?.acquire(30 * 60 * 1000L)
