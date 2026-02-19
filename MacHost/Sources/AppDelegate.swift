@@ -130,10 +130,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindow = SettingsWindowController(settings: settings)
 
         settings.onToggleServer = { [weak self] in
-            if self?.settings.isRunning == true {
-                self?.stopServer()
+            guard let self else { return }
+            if self.settings.isRunning {
+                self.stopServer()
             } else {
-                Task {
+                Task { [weak self] in
                     await self?.startServer()
                 }
             }
@@ -345,8 +346,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             streamingServer = StreamingServer(port: settings.port)
             streamingServer?.setDisplaySize(width: size.width, height: size.height, rotation: settings.rotation)
             streamingServer?.onClientConnected = { [weak self] in
+                let captured = self
                 Task { @MainActor in
-                    self?.settings.clientConnected = true
+                    captured?.settings.clientConnected = true
                 }
             }
 
@@ -355,9 +357,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             streamingServer?.onStats = { [weak self] fps, mbps in
+                let captured = self
                 Task { @MainActor in
-                    self?.settings.currentFPS = fps
-                    self?.settings.currentBitrate = mbps
+                    captured?.settings.currentFPS = fps
+                    captured?.settings.currentBitrate = mbps
                 }
             }
 
