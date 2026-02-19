@@ -132,7 +132,7 @@ Configure resolution (up to 1920x1200), frame rate (30â€“120 FPS), bitrate (10â€
 
 ```bash
 git clone https://github.com/tranvuongquocdat/SideScreen.git
-cd SideScreen/TAASD
+cd SideScreen
 ./scripts/install.sh
 ```
 

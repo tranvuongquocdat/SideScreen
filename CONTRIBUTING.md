@@ -72,8 +72,8 @@ The simplest way to help - star the repo to help others discover it!
 
 ```bash
 # Clone the repository
-git clone https://github.com/user/SideScreen.git
-cd SideScreen/TAASD
+git clone https://github.com/tranvuongquocdat/SideScreen.git
+cd SideScreen
 
 # Build macOS app
 cd MacHost
@@ -87,7 +87,7 @@ cd ../AndroidClient
 ### Project Structure
 
 ```
-TAASD/
+SideScreen/
 ├── MacHost/                 # macOS Swift application
 │   └── Sources/             # Swift source files
 ├── AndroidClient/           # Android Kotlin application
