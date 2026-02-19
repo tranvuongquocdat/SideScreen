@@ -2,217 +2,205 @@ package com.sidescreen.app
 
 import android.media.MediaCodec
 import android.media.MediaFormat
-import android.os.Build
+import android.os.Handler
+import android.os.HandlerThread
 import android.os.Process
-import android.util.Log
 import android.view.Choreographer
 import android.view.Display
 import android.view.Surface
-import java.nio.ByteBuffer
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.TimeUnit
 
-class VideoDecoder(private val surface: Surface, private val display: Display? = null) {
+class VideoDecoder(
+    private val surface: Surface,
+    private val display: Display? = null,
+) {
     private var decoder: MediaCodec? = null
+    private var decoderThread: HandlerThread? = null
+    private var decoderHandler: Handler? = null
+
     private var frameCount = 0L
     private var droppedFrames = 0L
     private var lastStatsTime = System.currentTimeMillis()
 
-    // Frame timing for consistency tracking
     private val frameTimes = ArrayDeque<Long>(120)
-    private var lastFrameTime = 0L
 
-    // Display refresh rate for vsync alignment
     private val displayRefreshRate = display?.refreshRate ?: 60f
-    private val frameIntervalNs = (1_000_000_000.0 / displayRefreshRate).toLong()
 
-    // Dynamic resolution support
     private var currentWidth = 1920
     private var currentHeight = 1200
 
-    // Frame age limit for dropping old frames (60ms in nanoseconds)
-    // Must be >= server's maxFrameAge (50ms) with some slack for network jitter
     private val maxFrameAgeNs = 60_000_000L
 
     var onFrameRendered: ((Long) -> Unit)? = null
     var onFrameStats: ((fps: Double, variance: Double) -> Unit)? = null
-    var onFrameDecoded: ((ByteArray) -> Unit)? = null  // Callback to release buffer back to pool
+    var onFrameDecoded: ((ByteArray) -> Unit)? = null
 
-    // Reuse BufferInfo to reduce GC pressure (created once, used for all decode calls)
-    private val bufferInfo = MediaCodec.BufferInfo()
+    private val pendingFrames = ArrayBlockingQueue<FrameData>(2)
+
+    private data class FrameData(
+        val data: ByteArray,
+        val timestamp: Long,
+    )
 
     init {
         setupDecoder()
-        pinThreadToPerformanceCores()
     }
 
-    /**
-     * Update resolution when server sends new display config
-     * Will recreate decoder if resolution changed
-     */
-    fun updateResolution(width: Int, height: Int) {
+    fun updateResolution(
+        width: Int,
+        height: Int,
+    ) {
         if (width != currentWidth || height != currentHeight) {
-            Log.d(TAG, "📐 Resolution changed: ${currentWidth}x${currentHeight} -> ${width}x${height}")
             currentWidth = width
             currentHeight = height
-            // Recreate decoder with new resolution
             release()
             setupDecoder()
-            pinThreadToPerformanceCores()
-        }
-    }
-
-    /**
-     * Pin decoder thread to performance cores (Cortex-A715 on Dimensity 8300)
-     * Cores 4-7 are typically the big cores on MediaTek chips
-     */
-    private fun pinThreadToPerformanceCores() {
-        try {
-            val tid = Process.myTid()
-            // Use DISPLAY priority (less aggressive than URGENT_DISPLAY)
-            // URGENT_DISPLAY can starve system launcher and cause lag
-            Process.setThreadPriority(Process.THREAD_PRIORITY_DISPLAY)
-
-            // Try to set CPU affinity to performance cores (4-7 on Dimensity 8300)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                try {
-                    // This requires root or specific permissions, so we wrap in try-catch
-                    val osClass = Class.forName("android.system.Os")
-                    val cpuSet = Class.forName("android.system.StructCpuSet")
-                    Log.d(TAG, "🎯 Attempting to pin thread $tid to performance cores")
-                } catch (e: Exception) {
-                    Log.d(TAG, "⚠️ Could not set CPU affinity (expected on non-rooted devices)")
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to optimize thread priority: ${e.message}")
         }
     }
 
     private fun setupDecoder() {
         try {
+            decoderThread = HandlerThread("DecoderThread", Process.THREAD_PRIORITY_DISPLAY).also { it.start() }
+            decoderHandler = Handler(decoderThread!!.looper)
+
             decoder = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_HEVC)
 
-            val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_HEVC, currentWidth, currentHeight)
-
-            // Critical low-latency settings
+            val format =
+                MediaFormat.createVideoFormat(
+                    MediaFormat.MIMETYPE_VIDEO_HEVC,
+                    currentWidth,
+                    currentHeight,
+                )
             format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
-            format.setInteger(MediaFormat.KEY_PRIORITY, 0) // Highest priority
-
-            // Operating rate - match display refresh rate
+            format.setInteger(MediaFormat.KEY_PRIORITY, 0)
             format.setInteger(MediaFormat.KEY_OPERATING_RATE, displayRefreshRate.toInt())
-
-            // Disable B-frames for lower latency
             format.setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
 
+            decoder?.setCallback(
+                object : MediaCodec.Callback() {
+                    override fun onInputBufferAvailable(
+                        codec: MediaCodec,
+                        index: Int,
+                    ) {
+                        handleInputBuffer(codec, index)
+                    }
+
+                    override fun onOutputBufferAvailable(
+                        codec: MediaCodec,
+                        index: Int,
+                        info: MediaCodec.BufferInfo,
+                    ) {
+                        handleOutputBuffer(codec, index, info)
+                    }
+
+                    override fun onError(
+                        codec: MediaCodec,
+                        e: MediaCodec.CodecException,
+                    ) {
+                        // Codec error
+                    }
+
+                    override fun onOutputFormatChanged(
+                        codec: MediaCodec,
+                        format: MediaFormat,
+                    ) {
+                        // Format changed
+                    }
+                },
+                decoderHandler,
+            )
+
             decoder?.configure(format, surface, null, 0)
-
-            // Set operating mode for low latency (Android 11+)
             decoder?.setVideoScalingMode(MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT)
-
             decoder?.start()
-
-            Log.d(TAG, "✅ MediaCodec decoder started (H.265, ${currentWidth}x${currentHeight}, ${displayRefreshRate}fps)")
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to setup decoder", e)
             throw e
         }
     }
 
-    fun decode(frameData: ByteArray, frameTimestamp: Long = System.nanoTime()) {
-        val decoder = this.decoder ?: return
-
-        try {
-            // Check frame age - drop old frames to prevent latency buildup
-            val now = System.nanoTime()
-            val frameAge = now - frameTimestamp
-            if (frameAge > maxFrameAgeNs) {
-                droppedFrames++
-                onFrameDecoded?.invoke(frameData)  // Release buffer even if dropped
-                return  // Skip this old frame
-            }
-
-            // 5ms timeout for input buffer (was 5000 microseconds)
-            val inputBufferIndex = decoder.dequeueInputBuffer(5000)
-            if (inputBufferIndex < 0) {
-                droppedFrames++
-                onFrameDecoded?.invoke(frameData)  // Release buffer even if dropped
-                return  // No input buffer available
-            }
-
-            val inputBuffer = decoder.getInputBuffer(inputBufferIndex)
-            inputBuffer?.clear()
-            inputBuffer?.put(frameData)
-
-            decoder.queueInputBuffer(
-                inputBufferIndex,
-                0,
-                frameData.size,
-                frameTimestamp / 1000,  // Use actual frame timestamp
-                0
-            )
-
-            // Process output - use 5ms timeout instead of 0 (busy-wait)
-            // 5ms allows CPU to sleep between checks while still being responsive
-            // At 60fps = 16.6ms per frame, 5ms is responsive enough
-            var outputBufferIndex = decoder.dequeueOutputBuffer(bufferInfo, 5000)
-
-            // Handle format change first
-            if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                val newFormat = decoder.outputFormat
-                Log.d(TAG, "Format changed: $newFormat")
-                outputBufferIndex = decoder.dequeueOutputBuffer(bufferInfo, 5000)
-            }
-
-            // Process all available output frames
-            while (outputBufferIndex >= 0) {
-                val outputTime = System.nanoTime()
-
-                // Align to next vsync interval for smooth presentation
-                val vsyncsElapsed = (outputTime / frameIntervalNs)
-                val nextVsync = (vsyncsElapsed + 1) * frameIntervalNs
-
-                decoder.releaseOutputBuffer(outputBufferIndex, nextVsync)
-
-                trackFrameTiming(outputTime)
-                lastFrameTime = outputTime
-                updateStats()
-
-                // Use 0 timeout here for remaining frames (non-blocking drain)
-                outputBufferIndex = decoder.dequeueOutputBuffer(bufferInfo, 0)
-            }
-
-            // Notify that buffer can be released back to pool
+    fun decode(
+        frameData: ByteArray,
+        frameTimestamp: Long = System.nanoTime(),
+    ) {
+        val now = System.nanoTime()
+        val frameAge = now - frameTimestamp
+        if (frameAge > maxFrameAgeNs) {
+            droppedFrames++
             onFrameDecoded?.invoke(frameData)
+            return
+        }
 
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Decode error", e)
-            onFrameDecoded?.invoke(frameData)  // Release buffer on error
+        if (!pendingFrames.offer(FrameData(frameData, frameTimestamp))) {
+            val dropped = pendingFrames.poll()
+            if (dropped != null) {
+                droppedFrames++
+                onFrameDecoded?.invoke(dropped.data)
+            }
+            pendingFrames.offer(FrameData(frameData, frameTimestamp))
         }
     }
 
-    /**
-     * Track frame timing to calculate consistency (variance)
-     * Lower variance = smoother gameplay
-     */
+    private fun handleInputBuffer(
+        codec: MediaCodec,
+        index: Int,
+    ) {
+        val frame =
+            try {
+                pendingFrames.poll(5, TimeUnit.MILLISECONDS)
+            } catch (_: InterruptedException) {
+                null
+            }
+
+        if (frame == null) return
+
+        try {
+            val inputBuffer = codec.getInputBuffer(index)
+            inputBuffer?.clear()
+            inputBuffer?.put(frame.data, 0, frame.data.size)
+            codec.queueInputBuffer(index, 0, frame.data.size, frame.timestamp / 1000, 0)
+        } catch (_: Exception) {
+        } finally {
+            onFrameDecoded?.invoke(frame.data)
+        }
+    }
+
+    private fun handleOutputBuffer(
+        codec: MediaCodec,
+        index: Int,
+        info: MediaCodec.BufferInfo,
+    ) {
+        try {
+            Choreographer.getInstance().postFrameCallback { vsyncNanos ->
+                try {
+                    codec.releaseOutputBuffer(index, vsyncNanos)
+                } catch (_: Exception) {
+                }
+            }
+
+            trackFrameTiming(System.nanoTime())
+            updateStats()
+        } catch (_: Exception) {
+            try {
+                codec.releaseOutputBuffer(index, false)
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     private fun trackFrameTiming(timestamp: Long) {
         frameTimes.addLast(timestamp)
-        if (frameTimes.size > 120) {
-            frameTimes.removeFirst()
-        }
+        if (frameTimes.size > 120) frameTimes.removeFirst()
 
-        // Calculate frame time variance every 60 frames
         if (frameTimes.size >= 60 && frameCount % 60L == 0L) {
-            val deltas = frameTimes.zipWithNext { a, b -> (b - a) / 1_000_000.0 } // Convert to ms
+            val deltas = frameTimes.zipWithNext { a, b -> (b - a) / 1_000_000.0 }
             if (deltas.isNotEmpty()) {
                 val avgDelta = deltas.average()
                 val variance = deltas.map { (it - avgDelta) * (it - avgDelta) }.average()
                 val stdDev = kotlin.math.sqrt(variance)
-
                 onFrameStats?.invoke(1000.0 / avgDelta, stdDev)
-
-                Log.d(TAG, "📊 Frame consistency: avg=${String.format("%.1f", avgDelta)}ms, σ=${String.format("%.2f", stdDev)}ms")
             }
         }
-
         onFrameRendered?.invoke(timestamp)
     }
 
@@ -220,15 +208,7 @@ class VideoDecoder(private val surface: Surface, private val display: Display? =
         frameCount++
         val now = System.currentTimeMillis()
         val elapsed = now - lastStatsTime
-
-        if (elapsed >= 1000) {  // Log every 1 second for more responsive stats
-            val fps = (frameCount * 1000.0) / elapsed
-            if (droppedFrames > 0) {
-                Log.d(TAG, "📊 Decoder: ${String.format("%.1f", fps)} fps, dropped: $droppedFrames")
-            } else {
-                Log.d(TAG, "📊 Decoder: ${String.format("%.1f", fps)} fps")
-            }
-
+        if (elapsed >= 1000) {
             frameCount = 0
             droppedFrames = 0
             lastStatsTime = now
@@ -237,17 +217,14 @@ class VideoDecoder(private val surface: Surface, private val display: Display? =
 
     fun release() {
         try {
+            pendingFrames.clear()
             decoder?.stop()
             decoder?.release()
             decoder = null
-            Log.d(TAG, "Decoder released")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error releasing decoder", e)
+            decoderThread?.quitSafely()
+            decoderThread = null
+            decoderHandler = null
+        } catch (_: Exception) {
         }
-    }
-
-    companion object {
-        private const val TAG = "VideoDecoder"
-        private const val TIMEOUT_US = 10000L // 10ms
     }
 }

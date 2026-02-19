@@ -68,10 +68,9 @@ class ScreenCapture {
         // Display settings
         config.showsCursor = true
 
-        // Queue depth: balance between latency and GOP stability
-        // 4 frames = ~67ms buffer at 60fps - good balance
-        // Too high (8) = 133ms latency, too low (3) = frame drops
-        config.queueDepth = 4
+        // Queue depth: minimal buffering for lowest latency
+        // 2 frames = ~33ms buffer at 60fps - optimized for low latency
+        config.queueDepth = 2
 
         // No audio
         config.capturesAudio = false
@@ -102,8 +101,13 @@ class ScreenCapture {
             server?.sendFrame(data, timestamp: timestamp, isKeyframe: isKeyframe)
         }
 
+        // Decouple capture from encoding with a dedicated queue
+        let encodeQueue = DispatchQueue(label: "encodeQueue", qos: .userInteractive)
+
         streamOutput?.onFrameReceived = { [weak self] sampleBuffer in
-            self?.encoder?.encode(sampleBuffer: sampleBuffer)
+            encodeQueue.async {
+                self?.encoder?.encode(sampleBuffer: sampleBuffer)
+            }
         }
 
         Task {

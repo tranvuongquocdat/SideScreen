@@ -1,0 +1,6 @@
+[*.kt]
+max_line_length = 120
+indent_size = 4
+insert_final_newline = true
+ktlint_standard_no-wildcard-imports = disabled
+ktlint_standard_package-name = disabled

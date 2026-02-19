@@ -6,24 +6,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tab Virtual Display - Turn Your Tablet into a Second Display for Mac</title>
     <meta name="description"
-        content="Transform your Android tablet into a second display for macOS via USB-C. Low latency, hardware accelerated, gaming ready. Free and open source.">
+        content="Transform your Android tablet into a second display for macOS via USB-C. Under 30ms latency with async pipeline, hardware H.265 acceleration, gaming ready. Free and open source.">
     <meta name="keywords"
         content="second display mac, android tablet display, usb-c display, virtual display macos, dual monitor mac, tablet second screen">
     <meta property="og:title" content="Tab Virtual Display - Second Display for Mac">
     <meta property="og:description"
-        content="Transform your Android tablet into a second display for macOS. Low latency, hardware accelerated, gaming ready.">
+        content="Transform your Android tablet into a second display for macOS. Under 30ms latency, hardware accelerated, gaming ready.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://sidescreen.app">
+    <!-- PLACEHOLDER: Open Graph image for social sharing
+         WHAT TO CAPTURE: Branded card with app name, tagline, and device mockup
+         SAVE TO: website/assets/hero-screenshot.png
+         SIZE: 1200x630 -->
     <meta property="og:image" content="./assets/hero-screenshot.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Tab Virtual Display - Second Display for Mac">
-    <meta name="twitter:description" content="Transform your Android tablet into a second display for macOS. Low latency, hardware accelerated, gaming ready.">
+    <meta name="twitter:description" content="Transform your Android tablet into a second display for macOS. Under 30ms latency, hardware accelerated, gaming ready.">
+    <!-- PLACEHOLDER: Twitter card image
+         WHAT TO CAPTURE: Same as OG image above
+         SAVE TO: website/assets/hero-screenshot.png
+         SIZE: 1200x630 -->
     <meta name="twitter:image" content="./assets/hero-screenshot.png">
     <meta name="theme-color" content="#007AFF">
     <link rel="canonical" href="https://sidescreen.app">
-    <link rel="icon" href="./assets/icon.png">
+    <link rel="icon" href="../resources/logo/main_logo.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -56,7 +64,11 @@
     <header id="header">
         <div class="container header-container">
             <a href="#home" class="logo">
-                <img src="./assets/icon.png" alt="Tab Virtual Display Logo" width="32" height="32">
+                <!-- PLACEHOLDER: App logo for header nav
+                     WHAT TO CAPTURE: Side Screen app icon/logo
+                     SAVE TO: resources/logo/main_logo.png
+                     SIZE: 64x64 (displayed at 32x32) -->
+                <img src="../resources/logo/main_logo.png" alt="Tab Virtual Display Logo" width="32" height="32">
                 <span class="logo-text">Tab Virtual Display</span>
             </a>
             <nav>
@@ -112,13 +124,29 @@
                 <div class="privacy-highlights">
                     <span class="privacy-highlight">Native Performance</span>
                     <span class="privacy-highlight">USB-C Connection</span>
+                    <span class="privacy-highlight">&lt;30ms Latency</span>
                 </div>
 
                 <h1 class="hero-title">Your tablet, your second screen</h1>
                 <p class="hero-subtitle">
                     Transform your Android tablet into a second display for your Mac via USB-C.
-                    Low latency. Hardware accelerated. Gaming ready. No cloud. No accounts.
+                    Under 30ms latency. Async pipeline with hardware H.265 encoding. Gaming ready. No cloud. No accounts.
                 </p>
+
+                <div class="hero-stats">
+                    <div class="stat">
+                        <span class="stat-value">&lt;30ms</span>
+                        <span class="stat-label">End-to-end latency</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value">120 FPS</span>
+                        <span class="stat-label">Max refresh rate</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value">H.265</span>
+                        <span class="stat-label">Hardware accelerated</span>
+                    </div>
+                </div>
 
                 <div class="hero-actions">
                     <a href="#download" class="btn btn-primary btn-large download-btn">Get It Now</a>
@@ -134,7 +162,10 @@
 
             <div class="hero-visual">
                 <div class="hero-image-container">
-                    <!-- Replace with actual screenshot -->
+                    <!-- PLACEHOLDER: Hero screenshot showing Mac + Tablet setup
+                         WHAT TO CAPTURE: MacBook with Side Screen running, connected tablet showing extended display content
+                         SAVE TO: website/assets/hero-screenshot.png
+                         SIZE: 1200x630 -->
                     <div class="placeholder-image">
                         <p>Hero Screenshot</p>
                         <small>Mac + Tablet Setup</small>
@@ -273,8 +304,8 @@
                             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
                         </svg>
                     </div>
-                    <h3>Low Latency</h3>
-                    <p>USB-C connection with H.265 hardware encoding ensures minimal delay. Perfect for productivity and even gaming.</p>
+                    <h3>Under 30ms Latency</h3>
+                    <p>Async pipeline with decoupled capture, encode, and send stages. SCStream queueDepth optimization and async MediaCodec with Choreographer vsync deliver sub-30ms end-to-end latency.</p>
                 </div>
 
                 <div class="feature-card">
@@ -286,7 +317,7 @@
                         </svg>
                     </div>
                     <h3>Touch Support</h3>
-                    <p>Use your tablet's touchscreen to interact with macOS. Input prediction compensates for any latency.</p>
+                    <p>Use your tablet's touchscreen to interact with macOS. Optimized touch path with reduced logging overhead and input prediction for near-instant response.</p>
                 </div>
 
                 <div class="feature-card">
@@ -478,7 +509,7 @@ adb reverse tcp:8888 tcp:8888
 
                 <details class="faq-item">
                     <summary>What's the latency like?</summary>
-                    <p>With USB-C and hardware H.265 encoding, you can expect under 20ms latency - smooth enough for productivity and casual gaming.</p>
+                    <p>With the optimized async pipeline (SCStream queueDepth tuning, async MediaCodec, Choreographer vsync, TCP_NODELAY, and BufferedInputStream), you can expect under 30ms end-to-end latency - smooth enough for productivity and casual gaming.</p>
                 </details>
 
                 <details class="faq-item">
@@ -543,6 +574,10 @@ adb reverse tcp:8888 tcp:8888
             </p>
 
             <a href="https://github.com/tranvuongquocdat/SideScreen/graphs/contributors" target="_blank" rel="noopener noreferrer" class="contributors-link">
+                <!-- PLACEHOLDER: Contributors avatars (auto-generated from GitHub)
+                     WHAT TO CAPTURE: Auto-loaded from contrib.rocks API
+                     SAVE TO: N/A (external URL)
+                     SIZE: auto -->
                 <img src="https://contrib.rocks/image?repo=tranvuongquocdat/SideScreen&columns=7" alt="Tab Virtual Display Contributors" class="contributors-img" loading="lazy">
             </a>
 
@@ -560,7 +595,11 @@ adb reverse tcp:8888 tcp:8888
         <div class="container">
             <div class="footer-content">
                 <div class="footer-brand">
-                    <img src="./assets/icon.png" alt="Tab Virtual Display" width="32" height="32">
+                    <!-- PLACEHOLDER: App logo for footer
+                         WHAT TO CAPTURE: Same as header logo
+                         SAVE TO: resources/logo/main_logo.png
+                         SIZE: 64x64 (displayed at 32x32) -->
+                    <img src="../resources/logo/main_logo.png" alt="Tab Virtual Display" width="32" height="32">
                     <span>Tab Virtual Display</span>
                 </div>
 

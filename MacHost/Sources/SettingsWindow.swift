@@ -6,7 +6,7 @@ import SwiftUI
 @available(macOS 14.0, *)
 struct FrostedGroupBox<Content: View>: View {
     let title: String
-    var icon: String? = nil
+    var icon: String?
     @ViewBuilder let content: Content
 
     var body: some View {

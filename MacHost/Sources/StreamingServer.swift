@@ -12,6 +12,7 @@ class StreamingServer {
 
     private let frameQueue = DispatchQueue(label: "frameQueue", qos: .userInteractive)
     private let receiveQueue = DispatchQueue(label: "receiveQueue", qos: .userInteractive)
+    private let networkQueue = DispatchQueue(label: "networkQueue", qos: .userInteractive)
     private var bytesSent: UInt64 = 0
     private var frameCount: UInt64 = 0
     private var droppedFrames: UInt64 = 0
@@ -62,7 +63,7 @@ class StreamingServer {
                 }
             }
 
-            listener?.start(queue: .main)
+            listener?.start(queue: networkQueue)
         } catch {
             print("❌ Failed to start server: \(error)")
         }
@@ -100,7 +101,7 @@ class StreamingServer {
             }
         }
 
-        connection?.start(queue: .main)
+        connection?.start(queue: networkQueue)
     }
 
     func setDisplaySize(width: Int, height: Int, rotation: Int = 0) {
@@ -179,18 +180,10 @@ class StreamingServer {
         guard let connection = connection, !isStopped else { return }
 
         // GOP-aware frame dropping: NEVER drop keyframes
-        // Dropping a keyframe causes decoder to lose reference, resulting in blocky artifacts
         if !isKeyframe {
-            // Only apply age/backpressure checks to P-frames
             let now = DispatchTime.now().uptimeNanoseconds
             let frameAge = now - timestamp
             if frameAge > maxFrameAge {
-                droppedFrames += 1
-                return  // Skip this P-frame - it's too old
-            }
-
-            // Simple backpressure: skip P-frames if previous send not complete
-            guard canSendNextFrame else {
                 droppedFrames += 1
                 return
             }
@@ -199,7 +192,12 @@ class StreamingServer {
         frameQueue.async { [weak self] in
             guard let self = self else { return }
 
-            // Pre-allocate packet buffer
+            // Backpressure check inside frameQueue for thread safety
+            if !isKeyframe && !self.canSendNextFrame {
+                self.droppedFrames += 1
+                return
+            }
+
             var packet = Data(capacity: data.count + 5)
             packet.append(0) // Type: Video frame
             var frameSize = Int32(data.count).bigEndian
@@ -208,9 +206,10 @@ class StreamingServer {
 
             self.canSendNextFrame = false
 
-            // Send with completion handler for backpressure
             connection.send(content: packet, completion: .contentProcessed { [weak self] error in
-                self?.canSendNextFrame = true
+                self?.frameQueue.async {
+                    self?.canSendNextFrame = true
+                }
                 if error != nil {
                     self?.droppedFrames += 1
                 }

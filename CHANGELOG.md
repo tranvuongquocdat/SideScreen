@@ -17,6 +17,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+<a id="1.1.0"></a>
+## [1.1.0] - 2026-02-19
+
+Performance overhaul targeting sub-30ms end-to-end latency.
+
+### Performance Improvements
+- SCStream `queueDepth` optimization (-33ms worst-case capture latency)
+- Async MediaCodec API with Choreographer vsync alignment on Android
+- Pipeline decoupling: capture, encode, and send stages now run independently
+- Timestamp accuracy fixes on both macOS and Android
+- TCP_NODELAY and BufferedInputStream optimizations for network layer
+- Touch path latency reduction (removed verbose logging from hot path)
+
+### Developer Experience
+- SwiftLint integration for macOS codebase
+- ktlint integration for Android codebase
+- GitHub Actions CI/CD for automated builds and lint checks
+- DockDoor-style README with badges, hero section, and structured docs
+
+### Website
+- Updated performance claims to reflect <30ms latency target
+- Added hero stats section with latency, FPS, and codec info
+- Placeholder image instructions for all screenshot locations
+
+---
+
 <a id="1.0.0"></a>
 ## [1.0.0] - 2025-12-27
 
@@ -80,5 +106,6 @@ Each release follows this format:
 
 ---
 
-[Unreleased]: https://github.com/user/SideScreen/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/user/SideScreen/releases/tag/v1.0.0
+[Unreleased]: https://github.com/tranvuongquocdat/SideScreen/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/tranvuongquocdat/SideScreen/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/tranvuongquocdat/SideScreen/releases/tag/v1.0.0

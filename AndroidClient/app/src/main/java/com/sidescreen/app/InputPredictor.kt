@@ -10,16 +10,20 @@ class InputPredictor {
     private data class TouchSample(
         val x: Float,
         val y: Float,
-        val timestamp: Long  // nanoseconds
+        // Timestamp in nanoseconds
+        val timestamp: Long,
     )
 
     private val history = ArrayDeque<TouchSample>(5)
-    private val MIN_SAMPLES_FOR_PREDICTION = 2
+    private val minSamplesForPrediction = 2
 
     /**
      * Add a new touch sample to the history
      */
-    fun addSample(x: Float, y: Float) {
+    fun addSample(
+        x: Float,
+        y: Float,
+    ) {
         val timestamp = SystemClock.elapsedRealtimeNanos()
         history.addLast(TouchSample(x, y, timestamp))
 
@@ -37,7 +41,7 @@ class InputPredictor {
      * @return Pair of predicted (x, y) coordinates
      */
     fun predictPosition(latencyMs: Float): Pair<Float, Float> {
-        if (history.size < MIN_SAMPLES_FOR_PREDICTION) {
+        if (history.size < minSamplesForPrediction) {
             // Not enough data, return last known position
             return if (history.isEmpty()) {
                 Pair(0f, 0f)
@@ -83,7 +87,7 @@ class InputPredictor {
         return if (dt > 0) {
             Pair(
                 (curr.x - prev.x) / dt,
-                (curr.y - prev.y) / dt
+                (curr.y - prev.y) / dt,
             )
         } else {
             Pair(0f, 0f)

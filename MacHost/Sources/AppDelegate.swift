@@ -203,7 +203,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 "/Users/\(NSUserName())/Library/Android/sdk/platform-tools/adb"
             ]
 
-            var adbPath: String? = nil
+            var adbPath: String?
             for path in adbPaths {
                 let expandedPath = NSString(string: path).expandingTildeInPath
                 if FileManager.default.fileExists(atPath: expandedPath) {

@@ -44,7 +44,7 @@ class MainActivity : AppCompatActivity() {
     private var streamClient: StreamClient? = null
     private var displayWidth = 1920
     private var displayHeight = 1080
-    private var displayRotation = 0  // 0, 90, 180, 270 degrees
+    private var displayRotation = 0 // 0, 90, 180, 270 degrees
     private var wakeLock: PowerManager.WakeLock? = null
 
     // For dragging stats overlay
@@ -58,8 +58,7 @@ class MainActivity : AppCompatActivity() {
     // Checklist status handler
     private val checklistHandler = Handler(Looper.getMainLooper())
     private var checklistRunnable: Runnable? = null
-    private var isConnected = false  // Track connection state to prevent checklist conflicts
-
+    private var isConnected = false // Track connection state to prevent checklist conflicts
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -111,10 +110,11 @@ class MainActivity : AppCompatActivity() {
             // Use PARTIAL_WAKE_LOCK with timeout to prevent battery drain
             // Screen is already kept on via FLAG_KEEP_SCREEN_ON
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = powerManager.newWakeLock(
-                PowerManager.PARTIAL_WAKE_LOCK,
-                "TabVirtualDisplay::PerformanceMode"
-            )
+            wakeLock =
+                powerManager.newWakeLock(
+                    PowerManager.PARTIAL_WAKE_LOCK,
+                    "TabVirtualDisplay::PerformanceMode",
+                )
             // 30 minute timeout instead of infinite acquire
             wakeLock?.acquire(30 * 60 * 1000L)
 
@@ -146,11 +146,11 @@ class MainActivity : AppCompatActivity() {
             @Suppress("DEPRECATION")
             window.decorView.systemUiVisibility = (
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                or View.SYSTEM_UI_FLAG_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    or View.SYSTEM_UI_FLAG_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
             )
         }
     }
@@ -169,21 +169,28 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("ClickableViewAccessibility")
     private fun setupSurface() {
-        binding.surfaceView.holder.addCallback(object : SurfaceHolder.Callback {
-            override fun surfaceCreated(holder: SurfaceHolder) {
-                log("Surface created")
-            }
+        binding.surfaceView.holder.addCallback(
+            object : SurfaceHolder.Callback {
+                override fun surfaceCreated(holder: SurfaceHolder) {
+                    log("Surface created")
+                }
 
-            override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-                log("Surface changed: ${width}x${height}")
-                initializeDecoder(holder)
-            }
+                override fun surfaceChanged(
+                    holder: SurfaceHolder,
+                    format: Int,
+                    width: Int,
+                    height: Int,
+                ) {
+                    log("Surface changed: ${width}x$height")
+                    initializeDecoder(holder)
+                }
 
-            override fun surfaceDestroyed(holder: SurfaceHolder) {
-                log("Surface destroyed")
-                cleanup()
-            }
-        })
+                override fun surfaceDestroyed(holder: SurfaceHolder) {
+                    log("Surface destroyed")
+                    cleanup()
+                }
+            },
+        )
 
         binding.surfaceView.setOnTouchListener { view, event ->
             handleTouch(view, event)
@@ -193,8 +200,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupUI() {
         binding.connectButton.setOnClickListener {
-            var host = binding.hostInput.text.toString().ifEmpty { "127.0.0.1" }
-            val port = binding.portInput.text.toString().toIntOrNull() ?: 8888
+            var host =
+                binding.hostInput.text
+                    .toString()
+                    .ifEmpty { "127.0.0.1" }
+            val port =
+                binding.portInput.text
+                    .toString()
+                    .toIntOrNull() ?: 8888
 
             // Convert localhost to 127.0.0.1 for better Android compatibility
             if (host.equals("localhost", ignoreCase = true)) {
@@ -229,7 +242,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun showError(message: String) {
         runOnUiThread {
-            android.app.AlertDialog.Builder(this)
+            android.app.AlertDialog
+                .Builder(this)
                 .setTitle("Connection Error")
                 .setMessage(message)
                 .setPositiveButton("OK", null)
@@ -253,6 +267,7 @@ class MainActivity : AppCompatActivity() {
                     overlayDy = view.y - event.rawY
                     true
                 }
+
                 MotionEvent.ACTION_MOVE -> {
                     if (isDraggingOverlay) {
                         // Calculate new position
@@ -268,7 +283,8 @@ class MainActivity : AppCompatActivity() {
                         newX = newX.coerceIn(0f, maxX)
                         newY = newY.coerceIn(0f, maxY)
 
-                        view.animate()
+                        view
+                            .animate()
                             .x(newX)
                             .y(newY)
                             .setDuration(0)
@@ -276,6 +292,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     true
                 }
+
                 MotionEvent.ACTION_UP -> {
                     if (isDraggingOverlay) {
                         // Save position
@@ -285,7 +302,10 @@ class MainActivity : AppCompatActivity() {
                     }
                     true
                 }
-                else -> false
+
+                else -> {
+                    false
+                }
             }
         }
     }
@@ -366,19 +386,22 @@ class MainActivity : AppCompatActivity() {
         // 0=BottomRight, 1=BottomLeft, 2=TopRight, 3=TopLeft
         // 4=TopCenter, 5=BottomCenter, 6=CenterLeft, 7=CenterRight
         fun updatePositionSelection(selectedPosition: Int) {
-            val buttons = listOf(
-                cornerBottomRight,    // 0
-                cornerBottomLeft,     // 1
-                cornerTopRight,       // 2
-                cornerTopLeft,        // 3
-                positionTopCenter,    // 4
-                positionBottomCenter, // 5
-                positionCenterLeft,   // 6
-                positionCenterRight   // 7
-            )
+            val buttons =
+                listOf(
+                    cornerBottomRight, // 0
+                    cornerBottomLeft, // 1
+                    cornerTopRight, // 2
+                    cornerTopLeft, // 3
+                    positionTopCenter, // 4
+                    positionBottomCenter, // 5
+                    positionCenterLeft, // 6
+                    positionCenterRight, // 7
+                )
             buttons.forEachIndexed { index, button ->
                 if (index == selectedPosition) {
-                    button.backgroundTintList = android.content.res.ColorStateList.valueOf(0x334CAF50)
+                    button.backgroundTintList =
+                        android.content.res.ColorStateList
+                            .valueOf(0x334CAF50)
                 } else {
                     button.backgroundTintList = null
                 }
@@ -404,7 +427,8 @@ class MainActivity : AppCompatActivity() {
             prefs.overlayY = -1f
             // Use displayMetrics for reliable positioning
             val dm = resources.displayMetrics
-            binding.statusBar.animate()
+            binding.statusBar
+                .animate()
                 .x(dm.widthPixels - binding.statusBar.width - 48f)
                 .y(48f)
                 .setDuration(300)
@@ -515,43 +539,93 @@ class MainActivity : AppCompatActivity() {
 
         when (position) {
             0 -> { // Bottom Right (default)
-                constraintSet.connect(buttonId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, marginDp)
+                constraintSet.connect(
+                    buttonId,
+                    ConstraintSet.BOTTOM,
+                    ConstraintSet.PARENT_ID,
+                    ConstraintSet.BOTTOM,
+                    marginDp,
+                )
                 constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, marginDp)
             }
+
             1 -> { // Bottom Left
-                constraintSet.connect(buttonId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, marginDp)
-                constraintSet.connect(buttonId, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, marginDp)
+                constraintSet.connect(
+                    buttonId,
+                    ConstraintSet.BOTTOM,
+                    ConstraintSet.PARENT_ID,
+                    ConstraintSet.BOTTOM,
+                    marginDp,
+                )
+                constraintSet.connect(
+                    buttonId,
+                    ConstraintSet.START,
+                    ConstraintSet.PARENT_ID,
+                    ConstraintSet.START,
+                    marginDp,
+                )
             }
+
             2 -> { // Top Right
                 constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, marginDp)
                 constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, marginDp)
             }
+
             3 -> { // Top Left
                 constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, marginDp)
-                constraintSet.connect(buttonId, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, marginDp)
+                constraintSet.connect(
+                    buttonId,
+                    ConstraintSet.START,
+                    ConstraintSet.PARENT_ID,
+                    ConstraintSet.START,
+                    marginDp,
+                )
             }
+
             4 -> { // Top Center
                 constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, marginDp)
                 constraintSet.connect(buttonId, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, 0)
                 constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, 0)
             }
+
             5 -> { // Bottom Center
-                constraintSet.connect(buttonId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, marginDp)
+                constraintSet.connect(
+                    buttonId,
+                    ConstraintSet.BOTTOM,
+                    ConstraintSet.PARENT_ID,
+                    ConstraintSet.BOTTOM,
+                    marginDp,
+                )
                 constraintSet.connect(buttonId, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, 0)
                 constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, 0)
             }
+
             6 -> { // Center Left
                 constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, 0)
                 constraintSet.connect(buttonId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, 0)
-                constraintSet.connect(buttonId, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, marginDp)
+                constraintSet.connect(
+                    buttonId,
+                    ConstraintSet.START,
+                    ConstraintSet.PARENT_ID,
+                    ConstraintSet.START,
+                    marginDp,
+                )
             }
+
             7 -> { // Center Right
                 constraintSet.connect(buttonId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, 0)
                 constraintSet.connect(buttonId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, 0)
                 constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, marginDp)
             }
+
             else -> { // Default to bottom right
-                constraintSet.connect(buttonId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM, marginDp)
+                constraintSet.connect(
+                    buttonId,
+                    ConstraintSet.BOTTOM,
+                    ConstraintSet.PARENT_ID,
+                    ConstraintSet.BOTTOM,
+                    marginDp,
+                )
                 constraintSet.connect(buttonId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, marginDp)
             }
         }
@@ -567,12 +641,13 @@ class MainActivity : AppCompatActivity() {
         try {
             // Pass display for vsync-aligned frame presentation
             // Use modern API on Android R+, fallback to deprecated for older versions
-            val displayObj = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                display  // Activity.getDisplay() - modern API
-            } else {
-                @Suppress("DEPRECATION")
-                windowManager.defaultDisplay
-            }
+            val displayObj =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    display // Activity.getDisplay() - modern API
+                } else {
+                    @Suppress("DEPRECATION")
+                    windowManager.defaultDisplay
+                }
             videoDecoder = VideoDecoder(holder.surface, displayObj)
             log("✅ Decoder initialized (${displayObj?.refreshRate ?: 60f}Hz display)")
         } catch (e: Exception) {
@@ -580,7 +655,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun connect(host: String, port: Int) {
+    private fun connect(
+        host: String,
+        port: Int,
+    ) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 log("Connecting to $host:$port...")
@@ -612,8 +690,11 @@ class MainActivity : AppCompatActivity() {
 
                         // Update status indicator color
                         binding.statusIndicator.setBackgroundResource(
-                            if (connected) android.R.color.holo_green_light
-                            else android.R.color.holo_red_light
+                            if (connected) {
+                                android.R.color.holo_green_light
+                            } else {
+                                android.R.color.holo_red_light
+                            },
                         )
 
                         if (connected) {
@@ -654,11 +735,11 @@ class MainActivity : AppCompatActivity() {
                     videoDecoder?.updateResolution(width, height)
 
                     runOnUiThread {
-                        binding.resolutionText.text = "${width}x${height}"
+                        binding.resolutionText.text = "${width}x$height"
                         // Apply rotation to SurfaceView
                         applyRotation(rotation)
                     }
-                    log("Display: ${width}x${height} @ ${rotation}°")
+                    log("Display: ${width}x$height @ $rotation°")
                 }
 
                 streamClient?.onStats = { fps, mbps ->
@@ -669,18 +750,25 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 streamClient?.connect()
-
             } catch (e: Exception) {
-                val errorMessage = when {
-                    e.message?.contains("ECONNREFUSED") == true ->
-                        "Mac server is not running.\n\nPlease start TabVirtualDisplay.app on your Mac first."
-                    e.message?.contains("Network is unreachable") == true ->
-                        "Cannot reach Mac.\n\nMake sure both devices are connected via USB cable and ADB reverse is configured."
-                    e.message?.contains("timeout") == true ->
-                        "Connection timeout.\n\nCheck if Mac firewall is blocking port $port."
-                    else ->
-                        "Connection failed: ${e.message}\n\nTry:\n• Start TabVirtualDisplay.app on Mac\n• Check USB connection\n• Run: adb reverse tcp:8888 tcp:8888"
-                }
+                val errorMessage =
+                    when {
+                        e.message?.contains("ECONNREFUSED") == true -> {
+                            "Mac server is not running.\n\nPlease start TabVirtualDisplay.app on your Mac first."
+                        }
+
+                        e.message?.contains("Network is unreachable") == true -> {
+                            "Cannot reach Mac.\n\nMake sure both devices are connected via USB cable and ADB reverse is configured."
+                        }
+
+                        e.message?.contains("timeout") == true -> {
+                            "Connection timeout.\n\nCheck if Mac firewall is blocking port $port."
+                        }
+
+                        else -> {
+                            "Connection failed: ${e.message}\n\nTry:\n• Start TabVirtualDisplay.app on Mac\n• Check USB connection\n• Run: adb reverse tcp:8888 tcp:8888"
+                        }
+                    }
                 updateStatus("Connection failed")
                 showError(errorMessage)
             }
@@ -725,7 +813,10 @@ class MainActivity : AppCompatActivity() {
         // Wake lock will auto-renew if still within timeout
     }
 
-    private fun handleTouch(view: View, event: MotionEvent) {
+    private fun handleTouch(
+        view: View,
+        event: MotionEvent,
+    ) {
         // Simple touch handling - no pinch/long press complexity
         val x = event.x / view.width.toFloat()
         val y = event.y / view.height.toFloat()
@@ -734,7 +825,6 @@ class MainActivity : AppCompatActivity() {
             MotionEvent.ACTION_DOWN -> {
                 inputPredictor.reset()
                 inputPredictor.addSample(x, y)
-                log("👆 Touch DOWN: ($x, $y)")
                 streamClient?.sendTouch(x, y, 0)
             }
 
@@ -746,13 +836,11 @@ class MainActivity : AppCompatActivity() {
 
             MotionEvent.ACTION_UP -> {
                 inputPredictor.reset()
-                log("👆 Touch UP: ($x, $y)")
                 streamClient?.sendTouch(x, y, 2)
             }
 
             MotionEvent.ACTION_CANCEL -> {
                 inputPredictor.reset()
-                log("👆 Touch CANCEL")
             }
         }
     }
@@ -762,12 +850,13 @@ class MainActivity : AppCompatActivity() {
      * This provides proper fullscreen portrait/landscape support
      */
     private fun applyRotation(rotation: Int) {
-        requestedOrientation = when (rotation) {
-            90 -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            180 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
-            270 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
-            else -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE // 0°
-        }
+        requestedOrientation =
+            when (rotation) {
+                90 -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                180 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+                270 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+                else -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE // 0°
+            }
 
         // Reset SurfaceView transform (orientation change handles rotation)
         binding.surfaceView.apply {
@@ -779,12 +868,14 @@ class MainActivity : AppCompatActivity() {
         // ConstraintSet handles orientation changes automatically
         // No need for postDelayed positioning
 
-        log("🔄 Orientation: ${when(rotation) {
-            90 -> "Portrait"
-            180 -> "Landscape (flipped)"
-            270 -> "Portrait (flipped)"
-            else -> "Landscape"
-        }}")
+        log(
+            "🔄 Orientation: ${when (rotation) {
+                90 -> "Portrait"
+                180 -> "Landscape (flipped)"
+                270 -> "Portrait (flipped)"
+                else -> "Landscape"
+            }}",
+        )
     }
 
     /**
@@ -816,12 +907,13 @@ class MainActivity : AppCompatActivity() {
             checklistHandler.removeCallbacks(it)
         }
 
-        checklistRunnable = object : Runnable {
-            override fun run() {
-                updateChecklist()
-                checklistHandler.postDelayed(this, 2000) // Update every 2 seconds
+        checklistRunnable =
+            object : Runnable {
+                override fun run() {
+                    updateChecklist()
+                    checklistHandler.postDelayed(this, 2000) // Update every 2 seconds
+                }
             }
-        }
         checklistHandler.post(checklistRunnable!!)
     }
 
@@ -837,19 +929,21 @@ class MainActivity : AppCompatActivity() {
         if (isConnected) return
 
         // Check Developer Mode (if we can run this app with USB debugging, dev mode is enabled)
-        val isDeveloperModeEnabled = Settings.Secure.getInt(
-            contentResolver,
-            Settings.Global.DEVELOPMENT_SETTINGS_ENABLED,
-            0
-        ) == 1
+        val isDeveloperModeEnabled =
+            Settings.Secure.getInt(
+                contentResolver,
+                Settings.Global.DEVELOPMENT_SETTINGS_ENABLED,
+                0,
+            ) == 1
         updateChecklistItem(binding.checkDeveloperMode, isDeveloperModeEnabled)
 
         // Check USB Debugging (ADB enabled)
-        val isAdbEnabled = Settings.Secure.getInt(
-            contentResolver,
-            Settings.Global.ADB_ENABLED,
-            0
-        ) == 1
+        val isAdbEnabled =
+            Settings.Secure.getInt(
+                contentResolver,
+                Settings.Global.ADB_ENABLED,
+                0,
+            ) == 1
         updateChecklistItem(binding.checkUsbDebugging, isAdbEnabled)
 
         // Check USB connected (check if any USB device is connected)
@@ -862,7 +956,10 @@ class MainActivity : AppCompatActivity() {
             // Double-check connection state before socket test
             if (isConnected) return@launch
 
-            val port = binding.portInput.text.toString().toIntOrNull() ?: 8888
+            val port =
+                binding.portInput.text
+                    .toString()
+                    .toIntOrNull() ?: 8888
             val isServerRunning = checkServerRunning("127.0.0.1", port)
             runOnUiThread {
                 // Final check before updating UI
@@ -879,16 +976,25 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateMainStatus(allReady: Boolean) {
         binding.statusIndicator.setBackgroundResource(
-            if (allReady) R.drawable.status_indicator_green
-            else R.drawable.status_indicator_red
+            if (allReady) {
+                R.drawable.status_indicator_green
+            } else {
+                R.drawable.status_indicator_red
+            },
         )
         binding.statusText.text = if (allReady) "Ready to connect" else "Not ready to connect"
     }
 
-    private fun updateChecklistItem(indicator: View, isOk: Boolean) {
+    private fun updateChecklistItem(
+        indicator: View,
+        isOk: Boolean,
+    ) {
         indicator.setBackgroundResource(
-            if (isOk) R.drawable.status_indicator_green
-            else R.drawable.status_indicator_red
+            if (isOk) {
+                R.drawable.status_indicator_green
+            } else {
+                R.drawable.status_indicator_red
+            },
         )
     }
 
@@ -897,7 +1003,7 @@ class MainActivity : AppCompatActivity() {
         val batteryStatus = registerReceiver(null, intentFilter)
         val status = batteryStatus?.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1) ?: -1
         return status == android.os.BatteryManager.BATTERY_STATUS_CHARGING ||
-               status == android.os.BatteryManager.BATTERY_STATUS_FULL
+            status == android.os.BatteryManager.BATTERY_STATUS_FULL
     }
 
     /**
@@ -910,17 +1016,20 @@ class MainActivity : AppCompatActivity() {
      * Mac server sends display config (type=1) immediately upon connection.
      * ADB daemon doesn't send anything, so read will timeout → false.
      */
-    private fun checkServerRunning(host: String, port: Int): Boolean {
+    private fun checkServerRunning(
+        host: String,
+        port: Int,
+    ): Boolean {
         var socket: Socket? = null
         return try {
             socket = Socket()
-            socket.connect(InetSocketAddress(host, port), 300)  // 300ms connect timeout
-            socket.soTimeout = 200  // 200ms read timeout
+            socket.connect(InetSocketAddress(host, port), 300) // 300ms connect timeout
+            socket.soTimeout = 200 // 200ms read timeout
 
             // Try to read - Mac server sends display config immediately
             // ADB daemon doesn't send anything, so read will timeout
             val input = socket.getInputStream()
-            val firstByte = input.read()  // Blocks up to soTimeout
+            val firstByte = input.read() // Blocks up to soTimeout
 
             // If we got data (>= 0), it's the real Mac server
             // -1 means EOF (connection closed), anything else is data
@@ -929,7 +1038,11 @@ class MainActivity : AppCompatActivity() {
             // Timeout, connection refused, or other error = server not running
             false
         } finally {
-            try { socket?.close() } catch (e: Exception) { /* ignore */ }
+            try {
+                socket?.close()
+            } catch (e: Exception) {
+                // ignore
+            }
         }
     }
 }

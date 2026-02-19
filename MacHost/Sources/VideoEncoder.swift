@@ -93,11 +93,11 @@ class VideoEncoder {
             qualityValue = 0.3  // Ultra low quality for maximum speed
         } else {
             qualityValue = switch quality {
-                case "ultralow": 0.3  // Fastest encoding, lowest latency
-                case "low": 0.5
-                case "medium": 0.7
-                case "high": 0.85
-                default: 0.3  // Default to ultralow
+            case "ultralow": 0.3  // Fastest encoding, lowest latency
+            case "low": 0.5
+            case "medium": 0.7
+            case "high": 0.85
+            default: 0.3  // Default to ultralow
             }
         }
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_Quality, value: qualityValue as CFNumber)
@@ -121,13 +121,18 @@ class VideoEncoder {
         let presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         let duration = CMSampleBufferGetDuration(sampleBuffer)
 
+        // Pass capture timestamp as refcon for accurate frame age tracking
+        let captureNanos = UInt64(CMTimeGetSeconds(presentationTimeStamp) * 1_000_000_000)
+        let refconValue = UnsafeMutableRawPointer.allocate(byteCount: 8, alignment: 8)
+        refconValue.storeBytes(of: captureNanos, as: UInt64.self)
+
         VTCompressionSessionEncodeFrame(
             session,
             imageBuffer: imageBuffer,
             presentationTimeStamp: presentationTimeStamp,
             duration: duration,
             frameProperties: nil,
-            sourceFrameRefcon: nil,
+            sourceFrameRefcon: refconValue,
             infoFlagsOut: nil
         )
     }
@@ -143,7 +148,7 @@ class VideoEncoder {
 // Static start code to avoid repeated allocations
 private let nalStartCode: [UInt8] = [0, 0, 0, 1]
 
-private let encodingOutputCallback: VTCompressionOutputCallback = { (outputCallbackRefCon, sourceFrameRefCon, status, infoFlags, sampleBuffer) in
+private let encodingOutputCallback: VTCompressionOutputCallback = { (outputCallbackRefCon, sourceFrameRefCon, status, _, sampleBuffer) in
     guard status == noErr,
           let sampleBuffer = sampleBuffer,
           let refcon = outputCallbackRefCon else {
@@ -153,7 +158,13 @@ private let encodingOutputCallback: VTCompressionOutputCallback = { (outputCallb
     let encoder = Unmanaged<VideoEncoder>.fromOpaque(refcon).takeUnretainedValue()
 
     // Get timestamp for frame age tracking
-    let timestamp = DispatchTime.now().uptimeNanoseconds
+    let timestamp: UInt64
+    if let refcon = sourceFrameRefCon {
+        timestamp = refcon.load(as: UInt64.self)
+        refcon.deallocate()
+    } else {
+        timestamp = DispatchTime.now().uptimeNanoseconds
+    }
 
     // Extract encoded data
     guard let dataBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return }

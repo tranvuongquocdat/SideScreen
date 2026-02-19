@@ -3,7 +3,9 @@ package com.sidescreen.app
 import android.content.Context
 import android.content.SharedPreferences
 
-class PreferencesManager(context: Context) {
+class PreferencesManager(
+    context: Context,
+) {
     private val prefs: SharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
 
     var showStatsOverlay: Boolean

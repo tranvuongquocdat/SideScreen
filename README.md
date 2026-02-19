@@ -2,21 +2,25 @@
 
 <div align="center">
 
-<!-- Logo placeholder - replace with actual logo -->
-<img src="resources/logo/sidescreen-icon.png" alt="Side Screen Logo" width="128"/>
+<!-- PLACEHOLDER: App icon/logo (128x128px)
+     📸 CAPTURE INSTRUCTIONS: Create or export your app icon as PNG.
+     Save to: resources/logo/sidescreen-icon.png
+     Size: 128x128px, with rounded corners if possible -->
+<img src="resources/logo/sidescreen-icon.png" alt="Side Screen" width="128"/>
 
-</div>
+<h1>Side Screen</h1>
 
-<h1 align="center">Side Screen</h1>
-
-<div align="center">
+<p><em>Turn your Android tablet into a second display for macOS via USB-C</em></p>
 
 <p>
   <a href="https://github.com/tranvuongquocdat/SideScreen/releases/latest">
-    <img src="https://img.shields.io/github/v/release/tranvuongquocdat/SideScreen?style=flat&label=Latest&labelColor=444" alt="Latest release">
+    <img src="https://img.shields.io/github/v/release/tranvuongquocdat/SideScreen?style=flat-square&label=Download&color=007AFF" alt="Download">
   </a>
-  <a href="https://github.com/tranvuongquocdat/SideScreen/releases">
-    <img src="https://img.shields.io/github/downloads/tranvuongquocdat/SideScreen/total?label=Downloads" alt="Total downloads">
+  <a href="https://github.com/tranvuongquocdat/SideScreen/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/tranvuongquocdat/SideScreen?style=flat-square&color=34C759" alt="License">
+  </a>
+  <a href="https://github.com/tranvuongquocdat/SideScreen/stargazers">
+    <img src="https://img.shields.io/github/stars/tranvuongquocdat/SideScreen?style=flat-square&color=FF9500" alt="Stars">
   </a>
 </p>
 
@@ -25,298 +29,220 @@
 ![macOS](https://img.shields.io/badge/macOS_14+-000000?style=for-the-badge&logo=apple&logoColor=white)
 ![Android](https://img.shields.io/badge/Android_8+-3DDC84?style=for-the-badge&logo=android&logoColor=white)
 
-**Turn your Android tablet into a second display for your Mac via USB-C.**
-
-Low latency. Hardware accelerated. Gaming ready.
-
-</div>
-
-<!-- Hero Screenshot Placeholder -->
-<div align="center">
-  <img src="resources/screenshots/hero.png" alt="Side Screen Demo" width="800"/>
-  <p><em>Your tablet becomes an extension of your Mac workspace</em></p>
 </div>
 
 ---
 
-## Table of Contents
-
-- [About](#about)
-- [Features](#features)
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Configuration](#configuration)
-- [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
-- [Support](#support)
-- [License](#license)
+<!-- PLACEHOLDER: Hero screenshot or GIF
+     📸 CAPTURE INSTRUCTIONS:
+     - Show your Mac screen + Android tablet side by side
+     - Display should show a window dragged onto the tablet
+     - GIF is ideal: record ~5 seconds of dragging a window onto the tablet
+     - Resolution: 800-1000px wide
+     - Save to: resources/screenshots/hero.png (or hero.gif) -->
+<div align="center">
+  <img src="resources/screenshots/hero.png" alt="Side Screen — Mac + Android tablet as second display" width="800"/>
+</div>
 
 ---
 
 ## About
 
-**Side Screen** transforms your Android tablet into a wireless-free second display for macOS. Unlike wireless solutions, it uses USB-C for a stable, low-latency connection that's perfect for productivity and even gaming.
+**Side Screen** extends your Mac workspace to your Android tablet over USB-C. Unlike wireless solutions that introduce lag, Side Screen uses a direct wired connection with hardware-accelerated H.265 streaming for a responsive, near-native second display experience.
 
-Built with performance in mind:
-- **H.265/HEVC** hardware encoding & decoding
-- **USB connection** for reliable, lag-free streaming
-- **Touch support** with input prediction for responsive interaction
-- **Gaming mode** with up to 120 FPS and optimized bitrate
+- **H.265/HEVC** hardware encoding (Mac) & decoding (Android)
+- **< 30ms latency** over USB-C — smooth enough for productivity and gaming
+- **Touch input** with prediction for responsive interaction
+- **Zero cloud dependency** — everything runs locally, 100% private
 
-<p align="right"><a href="#readme-top">Back to top</a></p>
+<p align="right"><a href="#readme-top">↑ Back to top</a></p>
 
 ---
 
 ## Features
 
 ### Virtual Display
-Create a true virtual display on your Mac - not just screen mirroring. Drag windows to your tablet just like a real monitor.
 
-<!-- Screenshot: Virtual display in action -->
+Create a true virtual display on your Mac. Drag windows to your tablet like a real monitor — not mirroring, but extending.
 
-### Low Latency Streaming
-Hardware-accelerated H.265 encoding on Mac and decoding on Android ensures smooth, real-time video with minimal delay.
-
-<!-- Screenshot: Performance stats -->
-
-### Touch & Input Support
-Use your tablet's touchscreen to interact with macOS. Touch prediction compensates for network latency.
-
-<!-- Screenshot: Touch interaction -->
-
-### Gaming Mode
-Enable Gaming Boost for optimized settings: higher bitrate, lower latency, up to 120 FPS support.
-
-<!-- Screenshot: Gaming mode settings -->
-
-### Customizable Settings
-Configure resolution, frame rate, bitrate, and quality to match your needs and device capabilities.
-
+<!-- PLACEHOLDER: Virtual display screenshot
+     📸 CAPTURE INSTRUCTIONS:
+     - Show macOS Display Preferences with the virtual display appearing
+     - Or show a window being dragged from Mac to tablet
+     - Save to: resources/screenshots/feature-virtual-display.png -->
 <div align="center">
-  <img src="resources/screenshots/settings-mac.png" alt="macOS Settings" width="400"/>
-  <img src="resources/screenshots/settings-android.png" alt="Android Settings" width="300"/>
+  <img src="resources/screenshots/feature-virtual-display.png" alt="Virtual Display" width="700"/>
 </div>
 
-<p align="right"><a href="#readme-top">Back to top</a></p>
+### Ultra-Low Latency
+
+Hardware-accelerated H.265 encoding on Mac and decoding on Android. Async pipeline architecture delivers frames in under 30ms.
+
+<!-- PLACEHOLDER: Performance stats screenshot
+     📸 CAPTURE INSTRUCTIONS:
+     - Show the stats overlay on the Android app while streaming
+     - Should display FPS, bitrate, and latency numbers
+     - Save to: resources/screenshots/feature-performance.png -->
+<div align="center">
+  <img src="resources/screenshots/feature-performance.png" alt="Low Latency Performance" width="500"/>
+</div>
+
+### Touch Support
+
+Use your tablet's touchscreen to interact with macOS. Touch prediction compensates for network latency, making taps and drags feel natural.
+
+### Gaming Mode
+
+Enable Gaming Boost for optimized settings: 50 Mbps bitrate, ultra-low quality encoding, up to 120 FPS.
+
+### Customizable
+
+Configure resolution (up to 1920x1200), frame rate (30–120 FPS), bitrate (10–50 Mbps), and quality presets from either the Mac or Android app.
+
+<!-- PLACEHOLDER: Settings screenshots side by side
+     📸 CAPTURE INSTRUCTIONS:
+     - Left: macOS settings window (the frosted glass one)
+     - Right: Android settings dialog
+     - Save to: resources/screenshots/settings-mac.png and settings-android.png -->
+<div align="center">
+  <img src="resources/screenshots/settings-mac.png" alt="macOS Settings" width="380"/>
+  &nbsp;&nbsp;
+  <img src="resources/screenshots/settings-android.png" alt="Android Settings" width="280"/>
+</div>
+
+<p align="right"><a href="#readme-top">↑ Back to top</a></p>
 
 ---
 
 ## Requirements
 
-### macOS Host
-- macOS 14 (Sonoma) or later
-- Apple Silicon or Intel Mac
-- USB-C port
-
-### Android Client
-- Android 8.0 (API 26) or later
-- Hardware H.265 decoder support
-- USB-C cable
-
-<p align="right"><a href="#readme-top">Back to top</a></p>
+| | macOS Host | Android Client |
+|---|---|---|
+| **OS** | macOS 14 (Sonoma)+ | Android 8.0 (API 26)+ |
+| **Hardware** | Apple Silicon or Intel | H.265 hardware decoder |
+| **Connection** | USB-C port | USB-C cable |
 
 ---
 
 ## Installation
 
-### One-Command Setup
+### Quick Start
 
 ```bash
-# Clone the repository
 git clone https://github.com/tranvuongquocdat/SideScreen.git
 cd SideScreen/TAASD
-
-# Run the installation script
 ./scripts/install.sh
 ```
 
-This will:
-1. Build the macOS app
-2. Build and install the Android APK
-3. Set up USB port forwarding
-
-### Manual Installation
+### Manual Build
 
 <details>
-<summary>Build macOS app manually</summary>
+<summary><strong>macOS</strong></summary>
 
 ```bash
 cd MacHost
 swift build -c release
-
-# Create app bundle
-mkdir -p SideScreen.app/Contents/MacOS
-cp .build/release/SideScreen SideScreen.app/Contents/MacOS/
 ```
-
 </details>
 
 <details>
-<summary>Build Android app manually</summary>
+<summary><strong>Android</strong></summary>
 
 ```bash
 cd AndroidClient
 ./gradlew assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
-
 </details>
-
-<p align="right"><a href="#readme-top">Back to top</a></p>
 
 ---
 
 ## Usage
 
-### Quick Start
-
-1. **Connect** your tablet to your Mac via USB-C
-
-2. **Setup port forwarding** (required once per connection):
+1. Connect tablet to Mac via **USB-C**
+2. Run port forwarding:
    ```bash
    adb reverse tcp:8888 tcp:8888
    ```
-
-3. **Launch Side Screen** on your Mac
-   - The app runs in the menu bar
-   - Click to open settings
-
-4. **Open Side Screen** on your Android tablet
-   - Tap "Connect" to start streaming
-
-5. **Use your tablet** as a second display!
-
-### Menu Bar Controls
-
-| Icon | Description |
-|------|-------------|
-| Settings | Open configuration window |
-| Stats | View real-time performance |
-| Quit | Close the application |
-
-<p align="right"><a href="#readme-top">Back to top</a></p>
+3. Launch **Side Screen** on Mac (runs in menu bar)
+4. Open **Side Screen** on tablet → tap **Connect**
+5. Done — drag windows to your new display
 
 ---
 
 ## Configuration
 
-### Display Settings
-
-| Setting | Options | Description |
-|---------|---------|-------------|
-| Resolution | 1920x1200, 1920x1080, custom | Virtual display resolution |
-| Frame Rate | 30, 60, 90, 120 FPS | Target refresh rate |
-| Bitrate | 10-50 Mbps | Video encoding bitrate |
-| Quality | Low, Medium, High | Encoding quality preset |
-
-### Gaming Boost
-
-Enable for optimized gaming performance:
-- Automatically sets 50 Mbps bitrate
-- Switches to Low quality for minimum latency
-- Enables high frame rate mode
-
-### Advanced Settings
-
-<details>
-<summary>Android client advanced options</summary>
-
-- **Host**: Default `localhost` (change for network mode)
-- **Port**: Default `8888`
-- **Stats Overlay**: Show/hide performance metrics
-- **Button Position**: Customize settings button location
-
-</details>
-
-<p align="right"><a href="#readme-top">Back to top</a></p>
+| Setting | Options | Default |
+|---------|---------|---------|
+| Resolution | 1920x1200, 1920x1080, custom | 1920x1200 |
+| Frame Rate | 30, 60, 90, 120 FPS | 60 |
+| Bitrate | 10–50 Mbps | 20 Mbps |
+| Quality | Low, Medium, High | Medium |
+| Gaming Boost | On/Off | Off |
 
 ---
 
 ## Troubleshooting
 
-### Connection Issues
+<details>
+<summary><strong>"Connection refused" on Android</strong></summary>
 
-**"Connection refused" on Android**
-
-Make sure port forwarding is set up:
+Ensure port forwarding is active:
 ```bash
 adb reverse tcp:8888 tcp:8888
 ```
+</details>
 
-**App not detecting tablet**
+<details>
+<summary><strong>High latency or stuttering</strong></summary>
 
-1. Enable USB debugging on Android
-2. Accept the USB debugging prompt
-3. Verify with `adb devices`
+- Lower resolution or frame rate
+- Ensure H.265 hardware codec support on your device
+- Use a high-quality USB-C cable (not charge-only)
+</details>
 
-### Performance Issues
+<details>
+<summary><strong>Virtual display not appearing</strong></summary>
 
-**High latency or stuttering**
-
-- Lower the resolution or frame rate
-- Ensure both devices support H.265 hardware codec
-- Use a high-quality USB-C cable
-
-**Virtual display not appearing**
-
-- Grant Screen Recording permission to the Mac app
-- The app requires accessibility permissions for some features
-
-### Screen Recording Permission
-
-On first launch, macOS will ask for Screen Recording permission:
-
-1. Open **System Preferences** > **Privacy & Security** > **Screen Recording**
-2. Enable **Side Screen**
-3. Restart the app
-
-<p align="right"><a href="#readme-top">Back to top</a></p>
+Grant Screen Recording permission: **System Preferences → Privacy & Security → Screen Recording → Enable Side Screen**
+</details>
 
 ---
 
 ## Contributing
 
-We welcome contributions! Here's how you can help:
+Contributions are welcome!
 
-- **Star** this repository to help others discover it
-- **Report bugs** by opening an issue
-- **Suggest features** through the issue tracker
-- **Submit PRs** for improvements
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
-
-<p align="right"><a href="#readme-top">Back to top</a></p>
+- ⭐ **Star** this repo to help others discover it
+- 🐛 **Report bugs** via [Issues](https://github.com/tranvuongquocdat/SideScreen/issues)
+- 💡 **Suggest features** via [Issues](https://github.com/tranvuongquocdat/SideScreen/issues)
+- 🔧 **Submit PRs** — see [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ---
 
 ## Support
 
-If you find Side Screen useful, consider supporting development:
+If Side Screen is useful to you, consider supporting development:
 
 <div align="center">
 
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/tranvuongqk)
 [![GitHub Sponsors](https://img.shields.io/badge/GitHub%20Sponsors-EA4AAA?style=for-the-badge&logo=github-sponsors&logoColor=white)](https://github.com/sponsors/tranvuongquocdat)
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/sidescreen)
 
 </div>
-
-<p align="right"><a href="#readme-top">Back to top</a></p>
 
 ---
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+[MIT License](LICENSE) — free for personal and commercial use.
 
 ---
 
 <div align="center">
 
-Made with passion for the Mac community
+Made with ❤️ for the Mac community
 
 [Report Bug](https://github.com/tranvuongquocdat/SideScreen/issues) · [Request Feature](https://github.com/tranvuongquocdat/SideScreen/issues) · [Discussions](https://github.com/tranvuongquocdat/SideScreen/discussions)
 
 </div>
-
-<p align="right"><a href="#readme-top">Back to top</a></p>

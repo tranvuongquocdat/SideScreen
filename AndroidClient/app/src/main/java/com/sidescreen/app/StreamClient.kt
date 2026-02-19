@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit
 
 class StreamClient(
     private val host: String,
-    private val port: Int
+    private val port: Int,
 ) {
     private var socket: Socket? = null
     private var inputStream: DataInputStream? = null
@@ -27,7 +27,7 @@ class StreamClient(
     // Callback now includes timestamp for frame age tracking
     var onFrameReceived: ((ByteArray, Long) -> Unit)? = null
     var onConnectionStatus: ((Boolean) -> Unit)? = null
-    var onDisplaySize: ((Int, Int, Int) -> Unit)? = null  // width, height, rotation
+    var onDisplaySize: ((Int, Int, Int) -> Unit)? = null // width, height, rotation
     var onStats: ((Double, Double) -> Unit)? = null
 
     private var bytesReceived = 0L
@@ -74,103 +74,105 @@ class StreamClient(
 
     // High-priority thread for touch events to minimize latency
     // Use THREAD_PRIORITY_DISPLAY instead of URGENT_DISPLAY to avoid starving system processes
-    private val touchExecutor = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable).apply {
-            name = "TouchThread"
-            priority = Thread.MAX_PRIORITY
-            // Use DISPLAY priority (less aggressive than URGENT_DISPLAY)
-            // URGENT_DISPLAY can starve system launcher and cause lag
-            Process.setThreadPriority(Process.THREAD_PRIORITY_DISPLAY)
+    private val touchExecutor =
+        Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable).apply {
+                name = "TouchThread"
+                priority = Thread.MAX_PRIORITY
+                // Use DISPLAY priority (less aggressive than URGENT_DISPLAY)
+                // URGENT_DISPLAY can starve system launcher and cause lag
+                Process.setThreadPriority(Process.THREAD_PRIORITY_DISPLAY)
+            }
         }
-    }
     private val touchDispatcher = touchExecutor.asCoroutineDispatcher()
     private val touchScope = CoroutineScope(touchDispatcher)
 
-    suspend fun connect() = withContext(Dispatchers.IO) {
-        try {
-            socket = Socket(host, port)
-            inputStream = DataInputStream(socket?.getInputStream())
-            outputStream = java.io.DataOutputStream(socket?.getOutputStream())
-            isConnected = true
+    suspend fun connect() =
+        withContext(Dispatchers.IO) {
+            try {
+                socket =
+                    Socket(host, port).apply {
+                        tcpNoDelay = true
+                    }
+                inputStream = DataInputStream(java.io.BufferedInputStream(socket?.getInputStream(), 65536))
+                outputStream = java.io.DataOutputStream(socket?.getOutputStream())
+                isConnected = true
 
-            Log.d(TAG, "✅ Connected to $host:$port")
-            onConnectionStatus?.invoke(true)
+                Log.d(TAG, "✅ Connected to $host:$port")
+                onConnectionStatus?.invoke(true)
 
-            receiveData()
-
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Connection error", e)
-            onConnectionStatus?.invoke(false)
-            cleanup()
+                receiveData()
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Connection error", e)
+                onConnectionStatus?.invoke(false)
+                cleanup()
+            }
         }
-    }
 
-    private suspend fun receiveData() = withContext(Dispatchers.IO) {
-        val input = inputStream ?: return@withContext
+    private suspend fun receiveData() =
+        withContext(Dispatchers.IO) {
+            val input = inputStream ?: return@withContext
 
-        try {
-            while (isConnected) {
-                val type = input.readByte()
+            try {
+                while (isConnected) {
+                    val type = input.readByte()
 
-                when (type.toInt()) {
-                    0 -> { // Video frame
-                        // Capture timestamp as early as possible
-                        val receiveTimestamp = System.nanoTime()
+                    when (type.toInt()) {
+                        0 -> { // Video frame
+                            val frameSize = input.readInt()
 
-                        val frameSize = input.readInt()
+                            if (frameSize <= 0 || frameSize > MAX_FRAME_SIZE) {
+                                Log.e(TAG, "❌ Invalid frame size: $frameSize")
+                                break
+                            }
 
-                        if (frameSize <= 0 || frameSize > MAX_FRAME_SIZE) {
-                            Log.e(TAG, "❌ Invalid frame size: $frameSize")
-                            break
+                            // Use pooled buffer to reduce GC pressure
+                            val frameData = acquireBuffer(frameSize)
+                            input.readFully(frameData, 0, frameSize)
+
+                            // Capture timestamp after full frame received for accurate age tracking
+                            val receiveTimestamp = System.nanoTime()
+                            onFrameReceived?.invoke(frameData, receiveTimestamp)
+                            updateStats(frameSize)
                         }
 
-                        // Use pooled buffer to reduce GC pressure
-                        val frameData = acquireBuffer(frameSize)
-                        input.readFully(frameData, 0, frameSize)
-
-                        // Pass timestamp to decoder for frame age tracking
-                        // Buffer will be released via releaseBuffer() after decode completes
-                        onFrameReceived?.invoke(frameData, receiveTimestamp)
-                        updateStats(frameSize)
-                    }
-                    1 -> { // Display size + rotation
-                        val width = input.readInt()
-                        val height = input.readInt()
-                        val rotation = input.readInt()
-                        onDisplaySize?.invoke(width, height, rotation)
-                        Log.d(TAG, "Display config: ${width}x${height} @ ${rotation}°")
+                        1 -> { // Display size + rotation
+                            val width = input.readInt()
+                            val height = input.readInt()
+                            val rotation = input.readInt()
+                            onDisplaySize?.invoke(width, height, rotation)
+                            Log.d(TAG, "Display config: ${width}x$height @ $rotation°")
+                        }
                     }
                 }
+            } catch (e: IOException) {
+                if (isConnected) {
+                    Log.e(TAG, "❌ Read error", e)
+                }
+            } finally {
+                disconnect()
             }
-        } catch (e: IOException) {
-            if (isConnected) {
-                Log.e(TAG, "❌ Read error", e)
-            }
-        } finally {
-            disconnect()
         }
-    }
 
-    private val touchBuffer = ByteBuffer.allocate(13).order(ByteOrder.LITTLE_ENDIAN)
-
-    fun sendTouch(x: Float, y: Float, action: Int) {
+    fun sendTouch(
+        x: Float,
+        y: Float,
+        action: Int,
+    ) {
         if (!isConnected) return
 
         touchScope.launch {
             try {
                 socket?.getOutputStream()?.let { out ->
-                    synchronized(touchBuffer) {
-                        touchBuffer.clear()
-                        touchBuffer.put(2.toByte())
-                        touchBuffer.putFloat(x)
-                        touchBuffer.putFloat(y)
-                        touchBuffer.putInt(action)
-                        out.write(touchBuffer.array())
-                        out.flush()
-                    }
+                    val buffer = ByteBuffer.allocate(13).order(ByteOrder.LITTLE_ENDIAN)
+                    buffer.put(2.toByte())
+                    buffer.putFloat(x)
+                    buffer.putFloat(y)
+                    buffer.putInt(action)
+                    out.write(buffer.array())
+                    out.flush()
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to send touch", e)
+            } catch (_: Exception) {
             }
         }
     }
