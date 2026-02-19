@@ -76,10 +76,14 @@ if [ -f "$WEBSITE" ]; then
     echo "  [5/6] Updated website/index.html"
 fi
 
-# 6. Update CHANGELOG.md links
+# 6. Update CHANGELOG.md links (keep old entries, add new)
 CHANGELOG="$ROOT_DIR/CHANGELOG.md"
 if [ -f "$CHANGELOG" ]; then
+    # Update [Unreleased] to point to new version
     sed -i '' "s|compare/$CURRENT_VERSION\.\.\.HEAD|compare/$NEW_VERSION...HEAD|" "$CHANGELOG"
+    # Add new version link after [Unreleased] line
+    sed -i '' "/^\[Unreleased\]/a\\
+[$NEW_VERSION]: https://github.com/tranvuongquocdat/SideScreen/compare/$CURRENT_VERSION...$NEW_VERSION" "$CHANGELOG"
     echo "  [6/6] Updated CHANGELOG.md"
 fi
 
