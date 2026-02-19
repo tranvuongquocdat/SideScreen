@@ -761,50 +761,237 @@ a:hover {
 
 @media (max-width: 768px) {
     :root {
-        --section-padding: 60px;
+        --section-padding: 48px;
     }
 
-    h1 { font-size: 2.5rem; }
-    h2 { font-size: 2rem; }
+    h1 { font-size: 2rem; }
+    h2 { font-size: 1.5rem; }
+    h3 { font-size: 1.2rem; }
+
+    .container {
+        padding: 0 16px;
+    }
+
+    .section-subtitle {
+        font-size: 1rem;
+        margin-bottom: 32px;
+    }
+
+    /* Hero mobile */
+    .hero {
+        padding-top: 100px;
+        padding-bottom: 48px;
+    }
 
     .hero-title {
-        font-size: 2.5rem;
+        font-size: 2rem;
+        margin-bottom: 16px;
     }
 
+    .hero-subtitle {
+        font-size: 1rem;
+        margin-bottom: 24px;
+    }
+
+    .hero-stats {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 20px;
+    }
+
+    .stat-value {
+        font-size: 1.5rem;
+    }
+
+    .stat-label {
+        font-size: 0.75rem;
+    }
+
+    .hero-actions {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+
+    .hero-actions .btn {
+        width: 100%;
+    }
+
+    .support-callout {
+        margin-top: 24px;
+    }
+
+    .support-links {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .support-links .btn {
+        width: 100%;
+    }
+
+    .placeholder-image {
+        padding: 60px 20px;
+    }
+
+    /* Nav mobile */
     .nav-links {
         display: none;
     }
 
-    .features-grid {
-        grid-template-columns: 1fr;
+    .header-actions .btn-primary {
+        display: none;
     }
 
+    /* Features mobile */
+    .features-grid {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+
+    .feature-card {
+        padding: 24px;
+    }
+
+    .feature-icon {
+        width: 48px;
+        height: 48px;
+    }
+
+    .feature-icon svg {
+        width: 28px;
+        height: 28px;
+    }
+
+    /* Steps mobile */
     .steps {
         flex-direction: column;
+        gap: 16px;
     }
 
     .step-arrow {
         transform: rotate(90deg);
     }
 
+    .step {
+        max-width: 100%;
+    }
+
+    /* Requirements & Download mobile */
     .requirements-grid,
     .download-options {
         grid-template-columns: 1fr;
+        gap: 16px;
     }
 
-    .hero-stats {
-        flex-direction: column;
-        gap: 24px;
+    .download-card {
+        padding: 24px;
     }
 
-    .hero-actions {
-        flex-direction: column;
-        align-items: center;
+    .download-code {
+        font-size: 0.75rem;
+        word-break: break-all;
     }
 
+    /* Support section mobile */
+    .support-section {
+        padding: 48px 0;
+    }
+
+    .support-headline {
+        font-size: 1.75rem;
+    }
+
+    .support-subheadline {
+        font-size: 0.95rem;
+        margin-bottom: 32px;
+    }
+
+    .support-primary {
+        padding: 28px 20px;
+    }
+
+    .support-title {
+        font-size: 1.2rem;
+    }
+
+    /* FAQ mobile */
+    .faq-item summary {
+        font-size: 0.95rem;
+        padding: 16px 0;
+    }
+
+    /* Footer mobile */
+    .footer {
+        padding: 40px 0;
+    }
+
+    .footer-links {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 16px;
+    }
+
+    .footer-copy {
+        font-size: 0.8rem;
+    }
+
+    /* Press carousel mobile */
+    .press-item {
+        width: 260px;
+        padding: 20px;
+    }
+
+    .press-quote {
+        font-size: 0.85rem;
+    }
+
+    /* Code block mobile */
+    .code-block pre {
+        padding: 16px;
+    }
+
+    .code-block code {
+        font-size: 0.8rem;
+    }
+
+    /* Modal mobile */
+    .modal-content {
+        padding: 28px 20px;
+    }
+
+    /* Support actions */
     .support-actions {
         flex-direction: column;
         align-items: center;
+    }
+}
+
+/* Small phones */
+@media (max-width: 380px) {
+    h1 { font-size: 1.75rem; }
+    h2 { font-size: 1.35rem; }
+
+    .hero-title {
+        font-size: 1.75rem;
+    }
+
+    .hero-stats {
+        gap: 12px;
+    }
+
+    .stat-value {
+        font-size: 1.25rem;
+    }
+
+    .privacy-highlights {
+        gap: 8px;
+    }
+
+    .privacy-highlight {
+        font-size: 0.75rem;
+        padding: 4px 10px;
     }
 }
 
@@ -906,6 +1093,10 @@ a:hover {
 
     .nav-links.active {
         display: flex;
+    }
+
+    [data-theme="dark"] .nav-links {
+        background: rgba(28, 28, 30, 0.95);
     }
 
     .header-actions .btn-outline {
