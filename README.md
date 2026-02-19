@@ -133,7 +133,7 @@ Download the latest release from [**GitHub Releases**](https://github.com/tranvu
 - **macOS**: Download `.dmg`, open it, drag Side Screen to Applications
 - **Android**: Download `.apk`, install on your tablet
 
-> **Note**: On first launch, if macOS says "damaged", run: `xattr -cr /Applications/SideScreen.app`
+> **Note**: On first launch, if macOS says "damaged", run: `sudo xattr -cr /Applications/SideScreen.app`
 
 <details>
 <summary><strong>Build from source (for developers)</strong></summary>
@@ -180,7 +180,7 @@ cd AndroidClient && ./gradlew assembleDebug
 
 This happens because the app is not notarized by Apple. Run this command to fix it:
 ```bash
-xattr -cr /Applications/SideScreen.app
+sudo xattr -cr /Applications/SideScreen.app
 ```
 Then open the app again.
 </details>

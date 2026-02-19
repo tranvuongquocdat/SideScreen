@@ -152,7 +152,7 @@ jobs:
             ### ⚠️ macOS Gatekeeper
             If macOS says the app is **"damaged"**, open Terminal and run:
             ```
-            xattr -cr /Applications/SideScreen.app
+            sudo xattr -cr /Applications/SideScreen.app
             ```
             Then open the app again. This is needed because the app is not notarized with an Apple Developer certificate.
           files: |
