@@ -2,7 +2,6 @@ package com.sidescreen.app
 
 import android.annotation.SuppressLint
 import android.app.Dialog
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -388,14 +387,14 @@ class MainActivity : AppCompatActivity() {
         fun updatePositionSelection(selectedPosition: Int) {
             val buttons =
                 listOf(
-                    cornerBottomRight, // 0
-                    cornerBottomLeft, // 1
-                    cornerTopRight, // 2
-                    cornerTopLeft, // 3
-                    positionTopCenter, // 4
-                    positionBottomCenter, // 5
-                    positionCenterLeft, // 6
-                    positionCenterRight, // 7
+                    cornerBottomRight,
+                    cornerBottomLeft,
+                    cornerTopRight,
+                    cornerTopLeft,
+                    positionTopCenter,
+                    positionBottomCenter,
+                    positionCenterLeft,
+                    positionCenterRight,
                 )
             buttons.forEachIndexed { index, button ->
                 if (index == selectedPosition) {
@@ -758,7 +757,8 @@ class MainActivity : AppCompatActivity() {
                         }
 
                         e.message?.contains("Network is unreachable") == true -> {
-                            "Cannot reach Mac.\n\nMake sure both devices are connected via USB cable and ADB reverse is configured."
+                            "Cannot reach Mac.\n\n" +
+                                "Make sure both devices are connected via USB cable and ADB reverse is configured."
                         }
 
                         e.message?.contains("timeout") == true -> {
@@ -766,7 +766,9 @@ class MainActivity : AppCompatActivity() {
                         }
 
                         else -> {
-                            "Connection failed: ${e.message}\n\nTry:\n• Start Side Screen.app on Mac\n• Check USB connection\n• Run: adb reverse tcp:8888 tcp:8888"
+                            "Connection failed: ${e.message}\n\n" +
+                                "Try:\n• Start Side Screen.app on Mac\n" +
+                                "• Check USB connection\n• Run: adb reverse tcp:8888 tcp:8888"
                         }
                     }
                 updateStatus("Connection failed")
