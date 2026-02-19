@@ -128,32 +128,25 @@ Configure resolution (up to 1920x1200), frame rate (30â€“120 FPS), bitrate (10â€
 
 ## Installation
 
-### Quick Start
+Download the latest release from [**GitHub Releases**](https://github.com/tranvuongquocdat/SideScreen/releases):
+
+- **macOS**: Download `.dmg`, open it, drag Side Screen to Applications
+- **Android**: Download `.apk`, install on your tablet
+
+> **Note**: On first launch, if macOS says "damaged", run: `xattr -cr /Applications/SideScreen.app`
+
+<details>
+<summary><strong>Build from source (for developers)</strong></summary>
 
 ```bash
 git clone https://github.com/tranvuongquocdat/SideScreen.git
 cd SideScreen
-./scripts/install.sh
-```
 
-### Manual Build
+# macOS
+cd MacHost && swift build -c release
 
-<details>
-<summary><strong>macOS</strong></summary>
-
-```bash
-cd MacHost
-swift build -c release
-```
-</details>
-
-<details>
-<summary><strong>Android</strong></summary>
-
-```bash
-cd AndroidClient
-./gradlew assembleDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+# Android
+cd AndroidClient && ./gradlew assembleDebug
 ```
 </details>
 
