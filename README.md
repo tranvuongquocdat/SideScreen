@@ -162,13 +162,9 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ## Usage
 
 1. Connect tablet to Mac via **USB-C**
-2. Run port forwarding:
-   ```bash
-   adb reverse tcp:8888 tcp:8888
-   ```
-3. Launch **Side Screen** on Mac (runs in menu bar)
-4. Open **Side Screen** on tablet → tap **Connect**
-5. Done — drag windows to your new display
+2. Launch **Side Screen** on Mac (runs in menu bar — port forwarding is set up automatically)
+3. Open **Side Screen** on tablet → tap **Connect**
+4. Done — drag windows to your new display
 
 ---
 
@@ -189,10 +185,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 <details>
 <summary><strong>"Connection refused" on Android</strong></summary>
 
-Ensure port forwarding is active:
-```bash
-adb reverse tcp:8888 tcp:8888
-```
+The Mac app sets up `adb reverse` automatically when streaming starts. If it still fails, make sure `adb` is installed (via Android SDK or Homebrew: `brew install android-platform-tools`) and your device has USB debugging enabled.
 </details>
 
 <details>

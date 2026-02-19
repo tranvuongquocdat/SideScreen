@@ -140,7 +140,7 @@ jobs:
 
             ### Installation
             - **macOS**: Open DMG, drag Side Screen to Applications
-            - **Android**: Install APK (enable "Unknown sources" if needed), then run `adb reverse tcp:8888 tcp:8888`
+            - **Android**: Install APK (enable "Unknown sources" if needed). Port forwarding is handled automatically by the Mac app.
           files: |
             artifacts/macos-dmg/*.dmg
             artifacts/android-apk/*.apk

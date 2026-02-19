@@ -378,7 +378,7 @@
                 <div class="step">
                     <div class="step-number">2</div>
                     <h3>Connect via USB</h3>
-                    <p>Plug your tablet into your Mac with a USB-C cable. Run the port forwarding command.</p>
+                    <p>Plug your tablet into your Mac with a USB-C cable. Port forwarding is handled automatically.</p>
                 </div>
 
                 <div class="step-arrow">
@@ -397,18 +397,11 @@
 
             <div class="code-block">
                 <div class="code-header">
-                    <span>Terminal</span>
-                    <button class="copy-btn" data-copy="adb reverse tcp:8888 tcp:8888" aria-label="Copy command">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                        </svg>
-                    </button>
+                    <span>That's it!</span>
                 </div>
-                <pre><code># Setup port forwarding (run once after connecting)
-adb reverse tcp:8888 tcp:8888
-
-# That's it! Now launch the apps.</code></pre>
+                <pre><code># No terminal commands needed!
+# The Mac app handles port forwarding automatically.
+# Just plug in USB, launch both apps, and tap Connect.</code></pre>
             </div>
         </div>
     </section>
@@ -503,8 +496,8 @@ adb reverse tcp:8888 tcp:8888
                 </details>
 
                 <details class="faq-item">
-                    <summary>Why do I need to run `adb reverse`?</summary>
-                    <p>This command sets up port forwarding so your Android tablet can connect to your Mac through the USB cable. You only need to run it once each time you reconnect the cable.</p>
+                    <summary>Do I need to run any terminal commands?</summary>
+                    <p>No! The Mac app automatically runs <code>adb reverse</code> to set up port forwarding when streaming starts. Just make sure <code>adb</code> is installed (via Android SDK or <code>brew install android-platform-tools</code>).</p>
                 </details>
 
                 <details class="faq-item">

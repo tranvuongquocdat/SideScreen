@@ -55,7 +55,6 @@ class StreamingServer {
                 switch state {
                 case .ready:
                     print("✅ TCP Server listening on port \(self.port)")
-                    print("💡 Run on tablet: adb reverse tcp:\(self.port) tcp:\(self.port)")
                 case .failed(let error):
                     print("❌ Server failed: \(error)")
                 default:
