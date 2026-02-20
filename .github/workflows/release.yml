@@ -134,27 +134,39 @@ jobs:
         with:
           path: artifacts
 
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get previous tag
+          PREV_TAG=$(git tag --sort=-creatordate | sed -n '2p')
+          if [ -z "$PREV_TAG" ]; then
+            NOTES=$(git log --oneline -10 --format="- %s")
+          else
+            NOTES=$(git log --oneline "$PREV_TAG"..HEAD --format="- %s" | grep -v "^- chore:" | head -3)
+          fi
+          {
+            echo "notes<<EOF"
+            echo "$NOTES"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: "Side Screen v${{ steps.version.outputs.version }}"
           body: |
-            ## Side Screen v${{ steps.version.outputs.version }}
+            ## What's Changed
+            ${{ steps.changelog.outputs.notes }}
 
             ### Downloads
-            - **macOS**: `SideScreen-${{ steps.version.outputs.version }}-mac.dmg`
-            - **Android**: `SideScreen-${{ steps.version.outputs.version }}-android.apk`
+            | Platform | File |
+            |----------|------|
+            | macOS | `SideScreen-${{ steps.version.outputs.version }}-mac.dmg` |
+            | Android | `SideScreen-${{ steps.version.outputs.version }}-android.apk` |
 
             ### Installation
-            - **macOS**: Open DMG, drag Side Screen to Applications
-            - **Android**: Install APK (enable "Unknown sources" if needed). Port forwarding is handled automatically by the Mac app.
-
-            ### ⚠️ macOS Gatekeeper
-            If macOS says the app is **"damaged"**, open Terminal and run:
-            ```
-            sudo xattr -cr /Applications/SideScreen.app
-            ```
-            Then open the app again. This is needed because the app is not notarized with an Apple Developer certificate.
+            - **macOS**: Open DMG, drag to Applications. If Gatekeeper says "damaged": `sudo xattr -cr /Applications/SideScreen.app`
+            - **Android**: Install APK (enable "Unknown sources" if needed)
           files: |
             artifacts/macos-dmg/*.dmg
             artifacts/android-apk/*.apk
