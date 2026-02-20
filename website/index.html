@@ -443,7 +443,7 @@
                         </svg>
                     </div>
                     <h3>GitHub Releases</h3>
-                    <p>Download v0.3.0 from GitHub</p>
+                    <p class="download-version-text">Download from GitHub</p>
                     <span class="download-action">Download</span>
                 </a>
 
@@ -616,6 +616,15 @@
     <div class="toast-container"></div>
 
     <script src="scripts.js"></script>
+    <script>
+        fetch('https://api.github.com/repos/tranvuongquocdat/SideScreen/releases/latest')
+            .then(r => r.json())
+            .then(d => {
+                const el = document.querySelector('.download-version-text');
+                if (el && d.tag_name) el.textContent = 'Download v' + d.tag_name + ' from GitHub';
+            })
+            .catch(() => {});
+    </script>
 </body>
 
 </html>

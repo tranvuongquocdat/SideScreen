@@ -3,6 +3,10 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val appVersion = rootProject.file("../VERSION").readText().trim()
+val versionParts = appVersion.split(".")
+val computedVersionCode = versionParts[0].toInt() * 10000 + versionParts[1].toInt() * 100 + versionParts[2].toInt()
+
 android {
     namespace = "com.sidescreen.app"
     compileSdk = 34
@@ -11,8 +15,8 @@ android {
         applicationId = "com.sidescreen.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 300
-        versionName = "0.3.0"
+        versionCode = computedVersionCode
+        versionName = appVersion
     }
 
     buildTypes {
