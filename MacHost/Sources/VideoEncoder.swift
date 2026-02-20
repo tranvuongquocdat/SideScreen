@@ -154,7 +154,7 @@ class VideoEncoder {
         let refconValue = UnsafeMutableRawPointer.allocate(byteCount: 8, alignment: 8)
         refconValue.storeBytes(of: captureNanos, as: UInt64.self)
 
-        var frameProps: CFDictionary? = nil
+        var frameProps: CFDictionary?
         if forceNextKeyframe {
             forceNextKeyframe = false
             frameProps = [kVTEncodeFrameOptionKey_ForceKeyFrame: true] as CFDictionary
