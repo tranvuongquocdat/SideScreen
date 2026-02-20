@@ -31,6 +31,7 @@ class VideoDecoder(
     private var currentHeight = 1200
 
     private val maxFrameAgeNs = 60_000_000L
+
     @Volatile private var isRunning = false
 
     var onFrameRendered: ((Long) -> Unit)? = null
@@ -67,29 +68,47 @@ class VideoDecoder(
 
         val codec = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_HEVC)
 
-        val callback = object : MediaCodec.Callback() {
-            override fun onInputBufferAvailable(codec: MediaCodec, index: Int) {
-                handleInputBuffer(codec, index)
+        val callback =
+            object : MediaCodec.Callback() {
+                override fun onInputBufferAvailable(
+                    codec: MediaCodec,
+                    index: Int,
+                ) {
+                    handleInputBuffer(codec, index)
+                }
+
+                override fun onOutputBufferAvailable(
+                    codec: MediaCodec,
+                    index: Int,
+                    info: MediaCodec.BufferInfo,
+                ) {
+                    handleOutputBuffer(codec, index, info)
+                }
+
+                override fun onError(
+                    codec: MediaCodec,
+                    e: MediaCodec.CodecException,
+                ) {
+                    Log.e(TAG, "Codec error: ${e.diagnosticInfo}", e)
+                }
+
+                override fun onOutputFormatChanged(
+                    codec: MediaCodec,
+                    format: MediaFormat,
+                ) {
+                    Log.d(TAG, "Output format: $format")
+                }
             }
-            override fun onOutputBufferAvailable(codec: MediaCodec, index: Int, info: MediaCodec.BufferInfo) {
-                handleOutputBuffer(codec, index, info)
-            }
-            override fun onError(codec: MediaCodec, e: MediaCodec.CodecException) {
-                Log.e(TAG, "Codec error: ${e.diagnosticInfo}", e)
-            }
-            override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) {
-                Log.d(TAG, "Output format: $format")
-            }
-        }
         codec.setCallback(callback, decoderHandler)
 
         // Try configure with low-latency keys first, fallback without them
         // Some chipsets (e.g. MediaTek) throw IllegalArgumentException with certain keys
-        val format = MediaFormat.createVideoFormat(
-            MediaFormat.MIMETYPE_VIDEO_HEVC,
-            currentWidth,
-            currentHeight,
-        )
+        val format =
+            MediaFormat.createVideoFormat(
+                MediaFormat.MIMETYPE_VIDEO_HEVC,
+                currentWidth,
+                currentHeight,
+            )
 
         var configured = false
 
@@ -110,11 +129,12 @@ class VideoDecoder(
         // Attempt 2: Without KEY_LOW_LATENCY
         if (!configured) {
             try {
-                val basicFormat = MediaFormat.createVideoFormat(
-                    MediaFormat.MIMETYPE_VIDEO_HEVC,
-                    currentWidth,
-                    currentHeight,
-                )
+                val basicFormat =
+                    MediaFormat.createVideoFormat(
+                        MediaFormat.MIMETYPE_VIDEO_HEVC,
+                        currentWidth,
+                        currentHeight,
+                    )
                 basicFormat.setInteger(MediaFormat.KEY_PRIORITY, 0)
                 basicFormat.setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
                 codec.configure(basicFormat, surface, null, 0)
@@ -129,11 +149,12 @@ class VideoDecoder(
         // Attempt 3: Minimal config (just resolution)
         if (!configured) {
             try {
-                val minimalFormat = MediaFormat.createVideoFormat(
-                    MediaFormat.MIMETYPE_VIDEO_HEVC,
-                    currentWidth,
-                    currentHeight,
-                )
+                val minimalFormat =
+                    MediaFormat.createVideoFormat(
+                        MediaFormat.MIMETYPE_VIDEO_HEVC,
+                        currentWidth,
+                        currentHeight,
+                    )
                 codec.configure(minimalFormat, surface, null, 0)
                 configured = true
             } catch (e: Exception) {
@@ -150,7 +171,7 @@ class VideoDecoder(
         isRunning = true
         codec.start()
         decoder = codec
-        Log.d(TAG, "Decoder started: ${currentWidth}x${currentHeight} @ ${displayRefreshRate}Hz")
+        Log.d(TAG, "Decoder started: ${currentWidth}x$currentHeight @ ${displayRefreshRate}Hz")
     }
 
     fun decode(
