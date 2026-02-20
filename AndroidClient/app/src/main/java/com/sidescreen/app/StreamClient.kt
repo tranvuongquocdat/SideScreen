@@ -24,8 +24,8 @@ class StreamClient(
     private var outputStream: java.io.DataOutputStream? = null
     private var isConnected = false
 
-    // Callback now includes timestamp for frame age tracking
-    var onFrameReceived: ((ByteArray, Long) -> Unit)? = null
+    // Callback includes actual frame size (may differ from buffer.size due to pooling) and timestamp
+    var onFrameReceived: ((ByteArray, Int, Long) -> Unit)? = null
     var onConnectionStatus: ((Boolean) -> Unit)? = null
     var onDisplaySize: ((Int, Int, Int) -> Unit)? = null // width, height, rotation
     var onStats: ((Double, Double) -> Unit)? = null
@@ -126,13 +126,12 @@ class StreamClient(
                                 break
                             }
 
-                            // Use pooled buffer to reduce GC pressure
                             val frameData = acquireBuffer(frameSize)
                             input.readFully(frameData, 0, frameSize)
 
                             // Capture timestamp after full frame received for accurate age tracking
                             val receiveTimestamp = System.nanoTime()
-                            onFrameReceived?.invoke(frameData, receiveTimestamp)
+                            onFrameReceived?.invoke(frameData, frameSize, receiveTimestamp)
                             updateStats(frameSize)
                         }
 
@@ -187,8 +186,6 @@ class StreamClient(
         if (elapsed >= 1000) {
             val mbps = (bytesReceived * 8.0) / (elapsed / 1000.0) / 1_000_000
             val fps = (framesReceived * 1000.0) / elapsed
-
-            Log.d(TAG, "📊 Network stats: ${String.format("%.1f", fps)} fps, ${String.format("%.2f", mbps)} Mbps")
             onStats?.invoke(fps, mbps)
 
             bytesReceived = 0

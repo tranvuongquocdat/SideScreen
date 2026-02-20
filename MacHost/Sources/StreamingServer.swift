@@ -181,7 +181,8 @@ class StreamingServer {
         // GOP-aware frame dropping: NEVER drop keyframes
         if !isKeyframe {
             let now = DispatchTime.now().uptimeNanoseconds
-            let frameAge = now - timestamp
+            // Guard against arithmetic overflow when timestamp uses a different epoch
+            let frameAge = now >= timestamp ? now - timestamp : 0
             if frameAge > maxFrameAge {
                 droppedFrames += 1
                 return

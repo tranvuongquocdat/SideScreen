@@ -663,8 +663,8 @@ class MainActivity : AppCompatActivity() {
                 log("Connecting to $host:$port...")
 
                 streamClient = StreamClient(host, port)
-                streamClient?.onFrameReceived = { frameData, timestamp ->
-                    videoDecoder?.decode(frameData, timestamp)
+                streamClient?.onFrameReceived = { frameData, frameSize, timestamp ->
+                    videoDecoder?.decode(frameData, frameSize, timestamp)
                 }
 
                 // Wire up buffer release callback for buffer pooling

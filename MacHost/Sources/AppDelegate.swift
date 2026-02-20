@@ -1,8 +1,25 @@
 import Cocoa
-import ScreenCaptureKit
 import SwiftUI
 import Combine
 import ApplicationServices
+import os.log
+
+// Debug file logger - writes to /tmp/sidescreen.log
+func debugLog(_ message: String) {
+    let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
+    let line = "[\(timestamp)] \(message)\n"
+    print(message)
+    if let data = line.data(using: .utf8) {
+        let url = URL(fileURLWithPath: "/tmp/sidescreen.log")
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            handle.write(data)
+            handle.closeFile()
+        } else {
+            try? data.write(to: url)
+        }
+    }
+}
 
 // MARK: - Simple Touch State (optimized to use nanoseconds instead of Date)
 struct TouchState {
@@ -147,18 +164,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func checkPermissions() async {
-        // Check Screen Recording permission
-        do {
-            try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-            await MainActor.run {
-                settings.hasScreenRecordingPermission = true
-            }
+        // Check Screen Recording permission using CoreGraphics API
+        let hasScreenCapture = CGPreflightScreenCaptureAccess()
+        await MainActor.run {
+            settings.hasScreenRecordingPermission = hasScreenCapture
+        }
+        if hasScreenCapture {
             print("✅ Screen recording permission granted")
-        } catch {
-            await MainActor.run {
-                settings.hasScreenRecordingPermission = false
-            }
+        } else {
             print("⚠️  Screen recording permission not granted yet")
+            // Prompt user to grant permission
+            CGRequestScreenCaptureAccess()
         }
 
         // Check Accessibility permission (required for touch/mouse injection)
@@ -292,12 +308,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // Try to setup ADB reverse for USB connection
         setupADBReverse()
 
         do {
             // Create virtual display
-            print("🔨 Creating virtual display...")
             virtualDisplayManager = VirtualDisplayManager()
             let size = settings.resolutionSize
             try virtualDisplayManager?.createDisplay(
@@ -307,16 +321,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 hiDPI: settings.hiDPI,
                 name: "SideScreen"
             )
-            print("✅ Virtual display created")
 
-            // Disable mirror mode (optional - may fail if display is already in extend mode)
-            print("🔨 Disabling mirror mode...")
+            // Disable mirror mode (may fail if already in extend mode)
             do {
                 try virtualDisplayManager?.disableMirrorMode()
-                print("✅ Mirror mode disabled")
             } catch {
-                print("⚠️  Mirror mode already disabled or not applicable: \(error)")
-                // This is not critical - continue anyway
+                // Not critical - continue anyway
             }
 
             await MainActor.run {
@@ -324,29 +334,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             // Wait for display to initialize
-            print("⏳ Waiting for display to initialize...")
             try await Task.sleep(nanoseconds: 500_000_000)
 
-            // Restore saved display position (if any)
             virtualDisplayManager?.restoreDisplayPosition()
 
             // Setup capture
-            print("🔨 Setting up screen capture...")
-            guard let displayID = virtualDisplayManager?.displayID else {
-                print("❌ Display ID is nil")
-                return
-            }
-            print("📺 Display ID: \(displayID)")
+            guard let displayID = virtualDisplayManager?.displayID else { return }
             screenCapture = try await ScreenCapture()
             try await screenCapture?.setupForVirtualDisplay(displayID, refreshRate: settings.effectiveRefreshRate)
-            print("✅ Screen capture setup complete")
 
             // Setup server
-            print("🔨 Setting up streaming server...")
             streamingServer = StreamingServer(port: settings.port)
             streamingServer?.setDisplaySize(width: size.width, height: size.height, rotation: settings.rotation)
             streamingServer?.onClientConnected = { [weak self] in
                 let captured = self
+                captured?.screenCapture?.requestKeyframe()
                 Task { @MainActor in
                     captured?.settings.clientConnected = true
                 }
@@ -364,9 +366,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
 
-            print("🔨 Starting server on port \(settings.port)...")
             streamingServer?.start()
-            print("🔨 Starting screen capture streaming...")
             screenCapture?.startStreaming(
                 to: streamingServer,
                 bitrateMbps: settings.effectiveBitrate,
@@ -380,7 +380,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             print("✅ Server started on port \(settings.port)")
-            print("💡 Ready to accept connections!")
         } catch {
             print("❌ Failed to start: \(error)")
             await MainActor.run {

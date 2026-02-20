@@ -1,5 +1,5 @@
 import Foundation
-import ScreenCaptureKit
+@preconcurrency import ScreenCaptureKit
 import VideoToolbox
 import CoreMedia
 import CoreGraphics
@@ -15,14 +15,9 @@ class ScreenCapture {
     var displayWidth: Int { display?.width ?? 1920 }
     var displayHeight: Int { display?.height ?? 1080 }
 
-    init() async throws {
-        // Initial setup will be done when we have the virtual display ID
-    }
+    init() async throws {}
 
     /// Setup screen capture for a specific virtual display
-    /// - Parameters:
-    ///   - displayID: The CGDirectDisplayID of the virtual display to capture
-    ///   - refreshRate: The refresh rate in Hz (30, 60, 90, 120)
     func setupForVirtualDisplay(_ displayID: CGDirectDisplayID, refreshRate: Int = 60) async throws {
         self.virtualDisplayID = displayID
         self.refreshRate = refreshRate
@@ -36,63 +31,57 @@ class ScreenCapture {
                 userInfo: [NSLocalizedDescriptionKey: "Virtual display ID not set"])
         }
 
-        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+        for attempt in 1...5 {
+            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
 
-        // Find our virtual display by displayID
-        if let virtualDisplay = content.displays.first(where: { $0.displayID == virtualDisplayID }) {
-            display = virtualDisplay
-            print("📺 Capturing virtual display: \(virtualDisplay.width)x\(virtualDisplay.height) (ID: \(virtualDisplayID))")
-        } else {
-            throw NSError(domain: "ScreenCapture", code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Virtual display with ID \(virtualDisplayID) not found in shareable content"])
+            if let virtualDisplay = content.displays.first(where: { $0.displayID == virtualDisplayID }) {
+                display = virtualDisplay
+                debugLog("Capturing virtual display: \(virtualDisplay.width)x\(virtualDisplay.height) (ID: \(virtualDisplayID))")
+                return
+            }
+
+            if attempt < 5 {
+                try await Task.sleep(nanoseconds: 1_000_000_000)
+            }
         }
+
+        throw NSError(domain: "ScreenCapture", code: 2,
+            userInfo: [NSLocalizedDescriptionKey: "Virtual display with ID \(virtualDisplayID) not found after 5 attempts"])
     }
 
     private func setupStream() async throws {
         guard let display = display else {
-            throw NSError(domain: "ScreenCapture", code: 2, userInfo: [NSLocalizedDescriptionKey: "Display not initialized"])
+            throw NSError(domain: "ScreenCapture", code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Display not initialized"])
         }
+
+        let width = display.width
+        let height = display.height
+        let fps = refreshRate
+
+        streamOutput = StreamOutput()
 
         let filter = SCContentFilter(display: display, excludingWindows: [])
 
         let config = SCStreamConfiguration()
-        config.width = display.width
-        config.height = display.height
-
-        // Set frame interval based on refresh rate setting
-        config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(refreshRate))
-
-        // Pixel format optimized for H.265 encoding
+        config.width = width
+        config.height = height
+        config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(fps))
         config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
-
-        // Display settings
         config.showsCursor = true
-
-        // Queue depth: minimal buffering for lowest latency
-        // 2 frames = ~33ms buffer at 60fps - optimized for low latency
-        config.queueDepth = 2
-
-        // No audio
+        config.queueDepth = 3
         config.capturesAudio = false
-        config.sampleRate = 0
-        config.channelCount = 0
-
-        // Disable background blur and other effects for performance
         config.backgroundColor = .clear
         config.scalesToFit = false
 
-        streamOutput = StreamOutput()
-        stream = SCStream(filter: filter, configuration: config, delegate: nil)
+        let scStream = SCStream(filter: filter, configuration: config, delegate: nil)
+        try scStream.addStreamOutput(streamOutput!, type: .screen, sampleHandlerQueue: .global(qos: .userInteractive))
 
-        // Use high priority queue for minimal latency
-        try stream?.addStreamOutput(streamOutput!, type: .screen, sampleHandlerQueue: .global(qos: .userInteractive))
-
-        print("✅ Stream configured: \(config.width)x\(config.height) @ \(refreshRate)fps (low-latency mode)")
+        stream = scStream
+        debugLog("Stream configured: \(width)x\(height) @ \(fps)fps")
     }
 
     func startStreaming(to server: StreamingServer?, bitrateMbps: Int = 20, quality: String = "medium", gamingBoost: Bool = false, frameRate: Int = 60) {
-        // Note: setDisplaySize is called in AppDelegate before this, with rotation
-        // Don't call it here to avoid overriding rotation to 0
         let width = display?.width ?? 1920
         let height = display?.height ?? 1080
 
@@ -101,23 +90,86 @@ class ScreenCapture {
             server?.sendFrame(data, timestamp: timestamp, isKeyframe: isKeyframe)
         }
 
-        // Decouple capture from encoding with a dedicated queue
         let encodeQueue = DispatchQueue(label: "encodeQueue", qos: .userInteractive)
 
+        // Cache last valid pixel buffer for re-encoding when SCStream sends idle frames
+        var lastPixelBuffer: CVPixelBuffer?
+
         streamOutput?.onFrameReceived = { [weak self] sampleBuffer in
-            encodeQueue.async {
-                self?.encoder?.encode(sampleBuffer: sampleBuffer)
+            guard let self = self else { return }
+            let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+
+            if let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
+                if let copy = self.copyPixelBuffer(imageBuffer) {
+                    lastPixelBuffer = copy
+                    encodeQueue.async {
+                        self.encoder?.encode(pixelBuffer: copy, presentationTimeStamp: pts)
+                    }
+                }
+            } else if let cached = lastPixelBuffer {
+                encodeQueue.async {
+                    self.encoder?.encode(pixelBuffer: cached, presentationTimeStamp: pts)
+                }
             }
         }
 
         Task {
             do {
                 try await stream?.startCapture()
-                print("✅ Capture started")
+                debugLog("SCStream capture started")
             } catch {
-                print("❌ Failed to start capture: \(error)")
+                debugLog("Failed to start capture: \(error)")
             }
         }
+    }
+
+    /// Deep copy a CVPixelBuffer so SCStream can't recycle the underlying IOSurface
+    private func copyPixelBuffer(_ source: CVPixelBuffer) -> CVPixelBuffer? {
+        let width = CVPixelBufferGetWidth(source)
+        let height = CVPixelBufferGetHeight(source)
+        let pixelFormat = CVPixelBufferGetPixelFormatType(source)
+
+        var copy: CVPixelBuffer?
+        let status = CVPixelBufferCreate(kCFAllocatorDefault, width, height, pixelFormat, nil, &copy)
+        guard status == kCVReturnSuccess, let dest = copy else { return nil }
+
+        CVPixelBufferLockBaseAddress(source, .readOnly)
+        CVPixelBufferLockBaseAddress(dest, [])
+
+        let planeCount = CVPixelBufferGetPlaneCount(source)
+        if planeCount > 0 {
+            for plane in 0..<planeCount {
+                let srcAddr = CVPixelBufferGetBaseAddressOfPlane(source, plane)
+                let dstAddr = CVPixelBufferGetBaseAddressOfPlane(dest, plane)
+                let srcBytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(source, plane)
+                let dstBytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(dest, plane)
+                let height = CVPixelBufferGetHeightOfPlane(source, plane)
+                if let srcAddr = srcAddr, let dstAddr = dstAddr {
+                    for row in 0..<height {
+                        memcpy(dstAddr + row * dstBytesPerRow, srcAddr + row * srcBytesPerRow, min(srcBytesPerRow, dstBytesPerRow))
+                    }
+                }
+            }
+        } else {
+            let srcAddr = CVPixelBufferGetBaseAddress(source)
+            let dstAddr = CVPixelBufferGetBaseAddress(dest)
+            let srcBytes = CVPixelBufferGetBytesPerRow(source)
+            let dstBytes = CVPixelBufferGetBytesPerRow(dest)
+            if let srcAddr = srcAddr, let dstAddr = dstAddr {
+                for row in 0..<height {
+                    memcpy(dstAddr + row * dstBytes, srcAddr + row * srcBytes, min(srcBytes, dstBytes))
+                }
+            }
+        }
+
+        CVPixelBufferUnlockBaseAddress(dest, [])
+        CVPixelBufferUnlockBaseAddress(source, .readOnly)
+        return dest
+    }
+
+    /// Force next frame to be a keyframe (call when client connects)
+    func requestKeyframe() {
+        encoder?.requestKeyframe()
     }
 
     func updateEncoderSettings(bitrateMbps: Int, quality: String, gamingBoost: Bool) {
@@ -128,9 +180,8 @@ class ScreenCapture {
         Task {
             do {
                 try await stream?.stopCapture()
-                print("⏹️  Capture stopped")
             } catch {
-                print("❌ Failed to stop capture: \(error)")
+                debugLog("Failed to stop capture: \(error)")
             }
         }
     }

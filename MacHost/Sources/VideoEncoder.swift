@@ -11,6 +11,13 @@ class VideoEncoder {
     private var quality: String = "medium"
     private var gamingBoost: Bool = false
     private var frameRate: Int = 60
+    private var forceNextKeyframe = false
+
+    /// Force the next encoded frame to be a keyframe (call when client connects)
+    func requestKeyframe() {
+        forceNextKeyframe = true
+        debugLog("🔑 Keyframe requested")
+    }
 
     // Pre-allocated buffer for frame data (reduces allocations)
     private var frameBuffer = Data(capacity: 512 * 1024)  // 512KB initial
@@ -132,6 +139,34 @@ class VideoEncoder {
             presentationTimeStamp: presentationTimeStamp,
             duration: duration,
             frameProperties: nil,
+            sourceFrameRefcon: refconValue,
+            infoFlagsOut: nil
+        )
+    }
+
+    /// Encode a CVPixelBuffer directly (used by CGDisplayStream capture)
+    func encode(pixelBuffer: CVPixelBuffer, presentationTimeStamp: CMTime) {
+        guard let session = compressionSession else { return }
+
+        let duration = CMTime(value: 1, timescale: CMTimeScale(frameRate))
+
+        let captureNanos = UInt64(CMTimeGetSeconds(presentationTimeStamp) * 1_000_000_000)
+        let refconValue = UnsafeMutableRawPointer.allocate(byteCount: 8, alignment: 8)
+        refconValue.storeBytes(of: captureNanos, as: UInt64.self)
+
+        var frameProps: CFDictionary? = nil
+        if forceNextKeyframe {
+            forceNextKeyframe = false
+            frameProps = [kVTEncodeFrameOptionKey_ForceKeyFrame: true] as CFDictionary
+            debugLog("🔑 Forcing keyframe")
+        }
+
+        VTCompressionSessionEncodeFrame(
+            session,
+            imageBuffer: pixelBuffer,
+            presentationTimeStamp: presentationTimeStamp,
+            duration: duration,
+            frameProperties: frameProps,
             sourceFrameRefcon: refconValue,
             infoFlagsOut: nil
         )

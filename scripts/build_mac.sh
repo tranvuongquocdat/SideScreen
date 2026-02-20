@@ -72,13 +72,15 @@ cat > "$APP_DIR/Contents/Info.plist" << EOF
     <true/>
     <key>NSSupportsAutomaticGraphicsSwitching</key>
     <true/>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>Side Screen needs screen recording access to capture your virtual display and stream it to your Android device.</string>
 </dict>
 </plist>
 EOF
 
 # Ad-hoc code sign to prevent Gatekeeper "damaged" error
 echo "Code signing (ad-hoc)..."
-codesign --force --deep --sign - "$APP_DIR"
+codesign --force --deep --sign - --entitlements "$ROOT_DIR/MacHost/SideScreen.entitlements" "$APP_DIR"
 echo "  ✓ App signed"
 
 echo ""
