@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Website
+- Streamlined landing page — removed redundant sections for a leaner layout
+- 4 alternating feature showcase blocks with large screenshots
+- Gatekeeper warning added to download section
+- Dark/light theme toggle restored
+- Removed press carousel, privacy section, compact cards, and community section
+
 ### Planned
 - WiFi Direct support (wireless mode)
 - Audio streaming
@@ -65,7 +72,7 @@ Performance overhaul targeting sub-30ms end-to-end latency.
 - SwiftLint integration for macOS codebase
 - ktlint integration for Android codebase
 - GitHub Actions CI/CD for automated builds and lint checks
-- DockDoor-style README with badges, hero section, and structured docs
+- Professional README with badges, hero section, and structured docs
 
 ### Website
 - Updated performance claims to reflect <30ms latency target

@@ -1,8 +1,7 @@
 // Side Screen Website JavaScript
 
-// ==================== Theme Toggle (runs before DOMContentLoaded) ====================
+// ==================== Theme Toggle (runs early to prevent flash) ====================
 (function() {
-    // Check for saved theme preference or default to system preference
     const savedTheme = localStorage.getItem('theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
@@ -41,14 +40,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 navLinks.classList.contains('active'));
         });
 
-        // Close mobile menu when clicking on a link
         document.querySelectorAll('.nav-link').forEach(link => {
             link.addEventListener('click', () => {
                 navLinks.classList.remove('active');
             });
         });
 
-        // Close mobile menu when clicking outside
         document.addEventListener('click', (e) => {
             if (!navLinks.contains(e.target) && !mobileMenuBtn.contains(e.target)) {
                 navLinks.classList.remove('active');
@@ -79,7 +76,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // ==================== Scroll Animations ====================
     function animateOnScroll() {
         const elements = document.querySelectorAll(
-            '.feature-card, .step, .privacy-feature, .requirement-card, .download-card, .faq-item'
+            '.special-feature-item, .step, .download-card, .faq-item'
         );
 
         if ('IntersectionObserver' in window) {
@@ -93,11 +90,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
 
             elements.forEach((element, index) => {
-                element.style.transitionDelay = `${index * 0.03}s`;
+                element.style.transitionDelay = `${index * 0.05}s`;
                 observer.observe(element);
             });
         } else {
-            // Fallback for browsers without IntersectionObserver
             elements.forEach(element => {
                 element.classList.add('animate-in');
             });
@@ -105,28 +101,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     animateOnScroll();
-
-    // ==================== Copy to Clipboard ====================
-    document.querySelectorAll('.copy-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const textToCopy = this.getAttribute('data-copy');
-            if (textToCopy) {
-                navigator.clipboard.writeText(textToCopy).then(() => {
-                    // Show feedback
-                    const originalHTML = this.innerHTML;
-                    this.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>';
-                    this.classList.add('copied');
-
-                    setTimeout(() => {
-                        this.innerHTML = originalHTML;
-                        this.classList.remove('copied');
-                    }, 2000);
-                }).catch(err => {
-                    console.error('Failed to copy:', err);
-                });
-            }
-        });
-    });
 
     // ==================== Donation Modal ====================
     const donationModal = document.getElementById('donation-modal');
@@ -149,11 +123,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 
-    // Show modal when clicking download buttons (optional - comment out if not needed)
     downloadBtns.forEach(btn => {
         btn.addEventListener('click', function(e) {
             const href = this.getAttribute('href');
-            // Only show modal for actual download links, not anchor links
             if (href && !href.startsWith('#') && donationModal) {
                 e.preventDefault();
                 downloadUrl = href;
@@ -183,7 +155,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Close modal with Escape key
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape' && donationModal?.classList.contains('active')) {
             closeModal();
@@ -207,7 +178,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const details = this.parentElement;
             const allDetails = document.querySelectorAll('.faq-item');
 
-            // Close other open FAQs (optional - remove if you want multiple open)
             allDetails.forEach(item => {
                 if (item !== details && item.hasAttribute('open')) {
                     item.removeAttribute('open');
@@ -231,16 +201,12 @@ document.addEventListener('DOMContentLoaded', function() {
         `;
 
         toastContainer.appendChild(toast);
-
-        // Show the toast
         setTimeout(() => toast.classList.add('show'), 100);
 
-        // Handle close button
         toast.querySelector('.toast-close').addEventListener('click', () => {
             hideToast(toast);
         });
 
-        // Auto hide after 5 seconds
         setTimeout(() => hideToast(toast), 5000);
     }
 
@@ -249,15 +215,5 @@ document.addEventListener('DOMContentLoaded', function() {
         setTimeout(() => toast.remove(), 300);
     }
 
-    // Make createToast available globally
     window.createToast = createToast;
-
-    // ==================== Contributors Image Lazy Load ====================
-    const contributorsImg = document.querySelector('.contributors-img');
-    if (contributorsImg) {
-        contributorsImg.addEventListener('error', () => {
-            // Hide if image fails to load (e.g., repo doesn't exist yet)
-            contributorsImg.style.display = 'none';
-        });
-    }
 });
