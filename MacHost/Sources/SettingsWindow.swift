@@ -285,6 +285,30 @@ struct SettingsView: View {
                             }
                         }
 
+                        // Touch Control
+                        FrostedGroupBox(title: "Touch Control", icon: "hand.tap") {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Enable Touch Input")
+                                            .font(.system(size: 12, weight: .medium))
+                                        Text("Control Mac from tablet touch")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    Toggle("", isOn: $settings.touchEnabled)
+                                        .labelsHidden()
+                                }
+
+                                if !settings.touchEnabled {
+                                    Text("Touch input is disabled — tablet is display-only")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.orange)
+                                }
+                            }
+                        }
+
                         // Network Settings
                         FrostedGroupBox(title: "Network Settings", icon: "network") {
                             VStack(alignment: .leading, spacing: 8) {
@@ -831,6 +855,9 @@ class DisplaySettings: ObservableObject {
     @Published var customHeight: Int {
         didSet { save("customHeight", customHeight) }
     }
+    @Published var touchEnabled: Bool {
+        didSet { save("touchEnabled", touchEnabled) }
+    }
 
     // Runtime state (not persisted)
     @Published var displayCreated = false
@@ -855,6 +882,7 @@ class DisplaySettings: ObservableObject {
         self.showAllResolutions = defaults.bool(forKey: keyPrefix + "showAllResolutions")
         self.customWidth = defaults.object(forKey: keyPrefix + "customWidth") as? Int ?? 1920
         self.customHeight = defaults.object(forKey: keyPrefix + "customHeight") as? Int ?? 1200
+        self.touchEnabled = defaults.object(forKey: keyPrefix + "touchEnabled") as? Bool ?? true
 
         print("Loaded settings: \(resolution) @ \(refreshRate)Hz, bitrate=\(bitrate), quality=\(quality)")
     }
@@ -918,7 +946,7 @@ class DisplaySettings: ObservableObject {
     func resetToDefaults() {
         let keys = ["resolution", "refreshRate", "hiDPI", "bitrate", "quality",
                     "gamingBoost", "port", "rotation", "showAllResolutions",
-                    "customWidth", "customHeight"]
+                    "customWidth", "customHeight", "touchEnabled"]
         for key in keys {
             defaults.removeObject(forKey: keyPrefix + key)
         }
@@ -934,6 +962,7 @@ class DisplaySettings: ObservableObject {
         showAllResolutions = false
         customWidth = 1920
         customHeight = 1200
+        touchEnabled = true
 
         print("Settings reset to defaults")
     }
@@ -969,7 +998,7 @@ class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         window.title = "Side Screen"
         window.titlebarAppearsTransparent = true
-        window.backgroundColor = .clear
+        window.backgroundColor = .windowBackgroundColor
         window.isMovableByWindowBackground = true
         window.center()
         window.contentView = NSHostingView(rootView: SettingsView(settings: settings))

@@ -50,6 +50,9 @@ dist/
 .env.local
 *.pem
 
+# Docs (local design docs)
+docs/
+
 # Temporary
 tmp/
 temp/

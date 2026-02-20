@@ -93,11 +93,11 @@ Use your tablet's touchscreen to interact with macOS. Touch prediction compensat
 
 ### Gaming Mode
 
-Enable Gaming Boost for optimized settings: 50 Mbps bitrate, ultra-low quality encoding, up to 120 FPS.
+Enable Gaming Boost for optimized settings: 1 Gbps bitrate, ultra-low latency encoding, 120 FPS.
 
 ### Customizable
 
-Configure resolution (up to 1920x1200), frame rate (30–120 FPS), bitrate (10–50 Mbps), and quality presets from either the Mac or Android app.
+Configure resolution (up to 4K/8K), frame rate (30–120 FPS), bitrate (20–5000 Mbps), and quality presets from the Mac app.
 
 <!-- PLACEHOLDER: Settings screenshots side by side
      📸 CAPTURE INSTRUCTIONS:
@@ -165,11 +165,12 @@ cd AndroidClient && ./gradlew assembleDebug
 
 | Setting | Options | Default |
 |---------|---------|---------|
-| Resolution | 1920x1200, 1920x1080, custom | 1920x1200 |
-| Frame Rate | 30, 60, 90, 120 FPS | 60 |
-| Bitrate | 10–50 Mbps | 20 Mbps |
-| Quality | Low, Medium, High | Medium |
-| Gaming Boost | On/Off | Off |
+| Resolution | 720p to 8K, 30+ presets + custom | 1920x1200 |
+| Frame Rate | 30, 60, 90, 120 FPS | 120 |
+| Bitrate | 20–5000 Mbps | 1000 Mbps |
+| Quality | Ultra Low, Low, Medium, High | Ultra Low |
+| Gaming Boost | On/Off (1 Gbps, 120 Hz) | Off |
+| Touch Input | On/Off | On |
 
 ---
 

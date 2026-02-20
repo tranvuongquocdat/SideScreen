@@ -443,6 +443,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Touch Entry Point
 
     func handleTouch(x: Float, y: Float, action: Int, pointerCount: Int = 1, x2: Float = 0, y2: Float = 0) {
+        guard settings.touchEnabled else { return }
+
         if !AXIsProcessTrusted() {
             if !accessibilityWarningShown {
                 accessibilityWarningShown = true
@@ -622,10 +624,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         case 0: // Down
             cancelLongPressTimer()
             stopMomentumScroll()
+            gestureState = .idle  // Reset so 2-finger detection starts fresh
             initialPinchDistance = distance
             lastPinchDistance = distance
             touchLastPosition = midpoint
-            // Don't set state yet - wait for move to determine scroll vs pinch
 
         case 1: // Move
             let distanceChange = abs(distance - initialPinchDistance)
@@ -663,6 +665,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         case 2: // Up
             gestureState = .idle
+            // Reset 1-finger tracking so leftover moves don't trigger scroll
+            touchStartPosition = .zero
+            touchLastPosition = .zero
 
         default:
             break
