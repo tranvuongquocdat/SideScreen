@@ -21,31 +21,27 @@ func debugLog(_ message: String) {
     }
 }
 
-// MARK: - Simple Touch State (optimized to use nanoseconds instead of Date)
-struct TouchState {
-    var startPosition: CGPoint
-    var lastPosition: CGPoint
-    var startTime: UInt64  // nanoseconds
-    var lastMoveTime: UInt64  // nanoseconds
-    var isTap: Bool = true
-    var lastDeltaX: CGFloat = 0
-    var lastDeltaY: CGFloat = 0
+// MARK: - Gesture State Machine
 
-    init(position: CGPoint) {
-        let now = DispatchTime.now().uptimeNanoseconds
-        self.startPosition = position
-        self.lastPosition = position
-        self.startTime = now
-        self.lastMoveTime = now
-    }
+enum GestureState {
+    case idle
+    case pending          // Touch down, waiting to determine gesture
+    case scrolling        // 1-finger scroll
+    case longPressReady   // Long press detected, waiting for drag or release
+    case dragging         // Long press + drag (left mouse drag)
+    case twoFingerScroll  // 2-finger scroll
+    case pinching         // Pinch zoom
 }
 
-// MARK: - Simple Thresholds
 struct GestureThresholds {
     static let tapMaxDistance: CGFloat = 15
-    static let tapMaxTime: UInt64 = 250_000_000  // 250ms in nanoseconds
+    static let tapMaxTime: UInt64 = 250_000_000       // 250ms
+    static let doubleTapMaxTime: UInt64 = 400_000_000  // 400ms
+    static let doubleTapMaxDistance: CGFloat = 20
+    static let longPressTime: UInt64 = 500_000_000     // 500ms
     static let scrollSensitivity: CGFloat = 1.2
-    static let minTouchInterval: UInt64 = 8_000_000  // ~120Hz throttle (8ms in nanoseconds)
+    static let pinchMinDistance: CGFloat = 20
+    static let minTouchInterval: UInt64 = 8_000_000    // ~120Hz
 }
 
 @available(macOS 14.0, *)
@@ -354,8 +350,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
 
-            streamingServer?.onTouchEvent = { [weak self] x, y, action in
-                self?.handleTouch(x: x, y: y, action: action)
+            streamingServer?.onTouchEvent = { [weak self] x, y, action, pointerCount, x2, y2 in
+                self?.handleTouch(x: x, y: y, action: action, pointerCount: pointerCount, x2: x2, y2: y2)
             }
 
             streamingServer?.onStats = { [weak self] fps, mbps in
@@ -412,25 +408,45 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         print("⏹️ Server stopped")
     }
 
-    private var lastMousePosition: CGPoint = .zero
+    // MARK: - Gesture Properties
+
     private let eventSource = CGEventSource(stateID: .hidSystemState)
     private var accessibilityWarningShown = false
-    private var touchState: TouchState?
-    private var lastTouchTime: UInt64 = 0  // For throttling
+    private var gestureState: GestureState = .idle
+    private var lastTouchTime: UInt64 = 0
 
-    // Momentum scrolling - use CVDisplayLink for smoother animation
+    // Touch tracking
+    private var touchStartPosition: CGPoint = .zero
+    private var touchLastPosition: CGPoint = .zero
+    private var touchStartTime: UInt64 = 0
+    private var touchLastMoveTime: UInt64 = 0
+    private var lastScrollDeltaX: CGFloat = 0
+    private var lastScrollDeltaY: CGFloat = 0
+
+    // Double tap tracking
+    private var lastTapTime: UInt64 = 0
+    private var lastTapPosition: CGPoint = .zero
+
+    // Long press timer
+    private var longPressTimer: DispatchWorkItem?
+
+    // 2-finger tracking
+    private var initialPinchDistance: CGFloat = 0
+    private var lastPinchDistance: CGFloat = 0
+
+    // Momentum scrolling
     private var momentumTimer: Timer?
     private var momentumVelocityX: CGFloat = 0
     private var momentumVelocityY: CGFloat = 0
     private var lastMomentumPosition: CGPoint = .zero
 
-    func handleTouch(x: Float, y: Float, action: Int) {
-        // Check Accessibility permission before injecting events
+    // MARK: - Touch Entry Point
+
+    func handleTouch(x: Float, y: Float, action: Int, pointerCount: Int = 1, x2: Float = 0, y2: Float = 0) {
         if !AXIsProcessTrusted() {
             if !accessibilityWarningShown {
                 accessibilityWarningShown = true
-                print("⚠️  Accessibility permission not granted - touch events will be ignored")
-                print("💡 Grant permission in System Settings > Privacy & Security > Accessibility")
+                print("⚠️  Accessibility not granted - touch ignored")
                 Task { @MainActor in
                     settings.hasAccessibilityPermission = false
                 }
@@ -438,179 +454,338 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        guard let displayID = virtualDisplayManager?.displayID else {
-            print("❌ handleTouch: displayID is nil")
-            return
-        }
-
+        guard let displayID = virtualDisplayManager?.displayID else { return }
         let bounds = CGDisplayBounds(displayID)
 
-        // Calculate absolute position on the virtual display
-        let absoluteX = bounds.origin.x + (CGFloat(x) * bounds.width)
-        let absoluteY = bounds.origin.y + (CGFloat(y) * bounds.height)
-        let point = CGPoint(x: absoluteX, y: absoluteY)
+        let p1 = CGPoint(
+            x: bounds.origin.x + CGFloat(x) * bounds.width,
+            y: bounds.origin.y + CGFloat(y) * bounds.height
+        )
+        let p2 = CGPoint(
+            x: bounds.origin.x + CGFloat(x2) * bounds.width,
+            y: bounds.origin.y + CGFloat(y2) * bounds.height
+        )
 
+        if pointerCount >= 2 {
+            handleTwoFingerTouch(p1: p1, p2: p2, action: action)
+        } else {
+            handleOneFingerTouch(at: p1, action: action)
+        }
+    }
+
+    // MARK: - 1-Finger Gesture State Machine
+
+    private func handleOneFingerTouch(at point: CGPoint, action: Int) {
         switch action {
-        case 0: handleTouchDown(at: point)
-        case 1: handleTouchMove(to: point)
-        case 2: handleTouchUp(at: point)
+        case 0: oneFingerDown(at: point)
+        case 1: oneFingerMove(to: point)
+        case 2: oneFingerUp(at: point)
         default: break
         }
     }
 
-    // MARK: - Simple Gesture Handling
-
-    private func handleTouchDown(at point: CGPoint) {
-        // Stop any ongoing momentum scroll
+    private func oneFingerDown(at point: CGPoint) {
         stopMomentumScroll()
+        cancelLongPressTimer()
 
-        // Initialize touch state - assume tap until proven otherwise
-        touchState = TouchState(position: point)
-        lastMousePosition = point
+        touchStartPosition = point
+        touchLastPosition = point
+        touchStartTime = DispatchTime.now().uptimeNanoseconds
+        touchLastMoveTime = touchStartTime
+        gestureState = .pending
 
-        // Move cursor to position
-        if let moveEvent = CGEvent(mouseEventSource: eventSource, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left) {
-            moveEvent.post(tap: .cghidEventTap)
+        // Move cursor to touch position (absolute)
+        moveCursor(to: point)
+
+        // Start long press timer
+        let timer = DispatchWorkItem { [weak self] in
+            guard let self, self.gestureState == .pending else { return }
+            self.gestureState = .longPressReady
         }
+        longPressTimer = timer
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + .nanoseconds(Int(GestureThresholds.longPressTime)),
+            execute: timer
+        )
     }
 
-    private func handleTouchMove(to point: CGPoint) {
-        guard var state = touchState else { return }
-
+    private func oneFingerMove(to point: CGPoint) {
         let now = DispatchTime.now().uptimeNanoseconds
-
-        // Throttle touch move events to ~120Hz max
-        if now - lastTouchTime < GestureThresholds.minTouchInterval {
-            return
-        }
+        if now - lastTouchTime < GestureThresholds.minTouchInterval { return }
         lastTouchTime = now
 
-        let deltaX = point.x - state.lastPosition.x
-        let deltaY = point.y - state.lastPosition.y
-        let totalDistance = hypot(point.x - state.startPosition.x, point.y - state.startPosition.y)
+        let deltaX = point.x - touchLastPosition.x
+        let deltaY = point.y - touchLastPosition.y
+        let totalDistance = hypot(point.x - touchStartPosition.x, point.y - touchStartPosition.y)
 
-        // Check if movement exceeds tap threshold
-        if totalDistance > GestureThresholds.tapMaxDistance {
-            state.isTap = false
-        }
-
-        // If not a tap anymore, treat as scroll
-        if !state.isTap {
-            let scrollDeltaX = deltaX * GestureThresholds.scrollSensitivity
-            let scrollDeltaY = deltaY * GestureThresholds.scrollSensitivity
-
-            injectScrollEvent(deltaX: scrollDeltaX, deltaY: scrollDeltaY, at: point)
-
-            // Track last delta for momentum (using nanoseconds)
-            let timeDelta = now - state.lastMoveTime
-            if timeDelta > 0 && timeDelta < 100_000_000 {  // Within 100ms
-                state.lastDeltaX = scrollDeltaX
-                state.lastDeltaY = scrollDeltaY
+        switch gestureState {
+        case .pending:
+            if totalDistance > GestureThresholds.tapMaxDistance {
+                cancelLongPressTimer()
+                gestureState = .scrolling
+                let sx = deltaX * GestureThresholds.scrollSensitivity
+                let sy = deltaY * GestureThresholds.scrollSensitivity
+                injectScrollEvent(deltaX: sx, deltaY: sy, at: point)
+                lastScrollDeltaX = sx
+                lastScrollDeltaY = sy
             }
-            state.lastMoveTime = now
+
+        case .longPressReady:
+            if totalDistance > GestureThresholds.tapMaxDistance {
+                // Long press + drag → left mouse drag
+                gestureState = .dragging
+                injectMouseDown(at: touchStartPosition)
+                injectMouseDragged(to: point)
+            }
+
+        case .scrolling:
+            let sx = deltaX * GestureThresholds.scrollSensitivity
+            let sy = deltaY * GestureThresholds.scrollSensitivity
+            injectScrollEvent(deltaX: sx, deltaY: sy, at: point)
+            let timeDelta = now - touchLastMoveTime
+            if timeDelta > 0 && timeDelta < 100_000_000 {
+                lastScrollDeltaX = sx
+                lastScrollDeltaY = sy
+            }
+
+        case .dragging:
+            injectMouseDragged(to: point)
+
+        default:
+            break
         }
 
-        state.lastPosition = point
-        touchState = state
-        lastMousePosition = point
+        touchLastPosition = point
+        touchLastMoveTime = now
     }
 
-    private func handleTouchUp(at point: CGPoint) {
-        guard let state = touchState else { return }
-
+    private func oneFingerUp(at point: CGPoint) {
+        cancelLongPressTimer()
         let now = DispatchTime.now().uptimeNanoseconds
-        let elapsed = now - state.startTime
+        let elapsed = now - touchStartTime
+        let distance = hypot(point.x - touchStartPosition.x, point.y - touchStartPosition.y)
 
-        // Simple logic: if still a tap (didn't move much) AND quick enough = click
-        if state.isTap && elapsed < GestureThresholds.tapMaxTime {
-            performClick(at: point)
-        } else if !state.isTap {
-            // Was scrolling - check if we should start momentum
-            let timeSinceLastMove = now - state.lastMoveTime
+        switch gestureState {
+        case .pending:
+            // Quick release, no movement → tap or double tap
+            if distance < GestureThresholds.tapMaxDistance && elapsed < GestureThresholds.tapMaxTime {
+                // Check double tap
+                let timeSinceLastTap = now - lastTapTime
+                let distFromLastTap = hypot(point.x - lastTapPosition.x, point.y - lastTapPosition.y)
 
-            // Only start momentum if finger was recently moving (within 50ms)
+                if timeSinceLastTap < GestureThresholds.doubleTapMaxTime
+                    && distFromLastTap < GestureThresholds.doubleTapMaxDistance {
+                    performDoubleClick(at: point)
+                    lastTapTime = 0  // Reset so triple tap doesn't trigger
+                } else {
+                    performClick(at: point)
+                    lastTapTime = now
+                    lastTapPosition = point
+                }
+            }
+
+        case .longPressReady:
+            // Held long but didn't drag → right click
+            performRightClick(at: point)
+
+        case .scrolling:
+            // Check momentum
+            let timeSinceLastMove = now - touchLastMoveTime
             if timeSinceLastMove < 50_000_000 {
-                let momentumThreshold: CGFloat = 2.0
-                if abs(state.lastDeltaX) > momentumThreshold || abs(state.lastDeltaY) > momentumThreshold {
-                    let momentumMultiplier: CGFloat = 6.0
+                let threshold: CGFloat = 2.0
+                if abs(lastScrollDeltaX) > threshold || abs(lastScrollDeltaY) > threshold {
                     startMomentumScroll(
-                        velocityX: state.lastDeltaX * momentumMultiplier,
-                        velocityY: state.lastDeltaY * momentumMultiplier,
+                        velocityX: lastScrollDeltaX * 6.0,
+                        velocityY: lastScrollDeltaY * 6.0,
                         at: point
                     )
                 }
             }
+
+        case .dragging:
+            injectMouseUp(at: point)
+
+        default:
+            break
         }
 
-        touchState = nil
+        gestureState = .idle
+    }
+
+    // MARK: - 2-Finger Gestures
+
+    private func handleTwoFingerTouch(p1: CGPoint, p2: CGPoint, action: Int) {
+        let distance = hypot(p2.x - p1.x, p2.y - p1.y)
+        let midpoint = CGPoint(x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2)
+
+        switch action {
+        case 0: // Down
+            cancelLongPressTimer()
+            stopMomentumScroll()
+            initialPinchDistance = distance
+            lastPinchDistance = distance
+            touchLastPosition = midpoint
+            // Don't set state yet - wait for move to determine scroll vs pinch
+
+        case 1: // Move
+            let distanceChange = abs(distance - initialPinchDistance)
+            let midDelta = hypot(midpoint.x - touchLastPosition.x, midpoint.y - touchLastPosition.y)
+
+            // Determine mode if not yet decided
+            if gestureState != .twoFingerScroll && gestureState != .pinching {
+                if distanceChange > GestureThresholds.pinchMinDistance {
+                    gestureState = .pinching
+                } else if midDelta > GestureThresholds.tapMaxDistance {
+                    gestureState = .twoFingerScroll
+                }
+            }
+
+            switch gestureState {
+            case .twoFingerScroll:
+                let dx = (midpoint.x - touchLastPosition.x) * GestureThresholds.scrollSensitivity
+                let dy = (midpoint.y - touchLastPosition.y) * GestureThresholds.scrollSensitivity
+                injectScrollEvent(deltaX: dx, deltaY: dy, at: midpoint)
+
+            case .pinching:
+                let scaleDelta = distance - lastPinchDistance
+                // Cmd + scroll = zoom in most Mac apps
+                let zoomAmount = Int32(scaleDelta * 0.5)
+                if zoomAmount != 0 {
+                    injectZoomEvent(delta: zoomAmount, at: midpoint)
+                }
+                lastPinchDistance = distance
+
+            default:
+                break
+            }
+
+            touchLastPosition = midpoint
+
+        case 2: // Up
+            gestureState = .idle
+
+        default:
+            break
+        }
+    }
+
+    // MARK: - Event Injection
+
+    private func moveCursor(to point: CGPoint) {
+        if let event = CGEvent(mouseEventSource: eventSource, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left) {
+            event.post(tap: .cghidEventTap)
+        }
     }
 
     private func performClick(at point: CGPoint) {
-        // Mouse down
-        if let downEvent = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left) {
-            downEvent.setIntegerValueField(.mouseEventClickState, value: 1)
-            downEvent.post(tap: .cghidEventTap)
+        if let down = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left) {
+            down.setIntegerValueField(.mouseEventClickState, value: 1)
+            down.post(tap: .cghidEventTap)
         }
+        if let up = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) {
+            up.setIntegerValueField(.mouseEventClickState, value: 1)
+            up.post(tap: .cghidEventTap)
+        }
+    }
 
-        // Mouse up
-        if let upEvent = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) {
-            upEvent.setIntegerValueField(.mouseEventClickState, value: 1)
-            upEvent.post(tap: .cghidEventTap)
+    private func performDoubleClick(at point: CGPoint) {
+        if let down = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left) {
+            down.setIntegerValueField(.mouseEventClickState, value: 2)
+            down.post(tap: .cghidEventTap)
+        }
+        if let up = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) {
+            up.setIntegerValueField(.mouseEventClickState, value: 2)
+            up.post(tap: .cghidEventTap)
+        }
+    }
+
+    private func performRightClick(at point: CGPoint) {
+        if let down = CGEvent(mouseEventSource: eventSource, mouseType: .rightMouseDown, mouseCursorPosition: point, mouseButton: .right) {
+            down.post(tap: .cghidEventTap)
+        }
+        if let up = CGEvent(mouseEventSource: eventSource, mouseType: .rightMouseUp, mouseCursorPosition: point, mouseButton: .right) {
+            up.post(tap: .cghidEventTap)
+        }
+    }
+
+    private func injectMouseDown(at point: CGPoint) {
+        if let event = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left) {
+            event.setIntegerValueField(.mouseEventClickState, value: 1)
+            event.post(tap: .cghidEventTap)
+        }
+    }
+
+    private func injectMouseDragged(to point: CGPoint) {
+        if let event = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDragged, mouseCursorPosition: point, mouseButton: .left) {
+            event.post(tap: .cghidEventTap)
+        }
+    }
+
+    private func injectMouseUp(at point: CGPoint) {
+        if let event = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) {
+            event.post(tap: .cghidEventTap)
         }
     }
 
     private func injectScrollEvent(deltaX: CGFloat, deltaY: CGFloat, at position: CGPoint) {
-        // Natural scrolling - content moves with finger direction (like iOS/trackpad)
-        let scrollY = Int32(deltaY)
-        let scrollX = Int32(deltaX)
-
         guard let scrollEvent = CGEvent(
             scrollWheelEvent2Source: eventSource,
             units: .pixel,
             wheelCount: 2,
-            wheel1: scrollY,
-            wheel2: scrollX,
+            wheel1: Int32(deltaY),
+            wheel2: Int32(deltaX),
             wheel3: 0
-        ) else {
-            print("❌ Failed to create scroll event")
-            return
-        }
-
+        ) else { return }
         scrollEvent.location = position
-        scrollEvent.post(tap: CGEventTapLocation.cghidEventTap)
+        scrollEvent.post(tap: .cghidEventTap)
+    }
+
+    private func injectZoomEvent(delta: Int32, at position: CGPoint) {
+        guard let scrollEvent = CGEvent(
+            scrollWheelEvent2Source: eventSource,
+            units: .pixel,
+            wheelCount: 1,
+            wheel1: delta,
+            wheel2: 0,
+            wheel3: 0
+        ) else { return }
+        scrollEvent.location = position
+        // Set Cmd flag for zoom
+        scrollEvent.flags = .maskCommand
+        scrollEvent.post(tap: .cghidEventTap)
+    }
+
+    // MARK: - Long Press Timer
+
+    private func cancelLongPressTimer() {
+        longPressTimer?.cancel()
+        longPressTimer = nil
     }
 
     // MARK: - Momentum Scrolling
 
     private func startMomentumScroll(velocityX: CGFloat, velocityY: CGFloat, at position: CGPoint) {
-        stopMomentumScroll()  // Cancel any existing momentum
-
+        stopMomentumScroll()
         momentumVelocityX = velocityX
         momentumVelocityY = velocityY
         lastMomentumPosition = position
-
-        // Schedule timer on main run loop
         momentumTimer = Timer.scheduledTimer(withTimeInterval: 0.016, repeats: true) { [weak self] _ in
             self?.momentumTick()
         }
     }
 
     private func momentumTick() {
-        let decelerationRate: CGFloat = 0.92  // Slightly faster decay for snappier feel
+        let decay: CGFloat = 0.92
         let minVelocity: CGFloat = 0.5
 
-        // Stop if velocity is negligible
         if abs(momentumVelocityX) < minVelocity && abs(momentumVelocityY) < minVelocity {
             stopMomentumScroll()
             return
         }
 
-        // Inject scroll event
         injectScrollEvent(deltaX: momentumVelocityX, deltaY: momentumVelocityY, at: lastMomentumPosition)
-
-        // Decay velocity exponentially
-        momentumVelocityX *= decelerationRate
-        momentumVelocityY *= decelerationRate
+        momentumVelocityX *= decay
+        momentumVelocityY *= decay
     }
 
     private func stopMomentumScroll() {
@@ -618,7 +793,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         momentumTimer = nil
         momentumVelocityX = 0
         momentumVelocityY = 0
-        NSCursor.unhide()  // Show cursor when momentum ends
     }
 
     func applicationWillTerminate(_ notification: Notification) {

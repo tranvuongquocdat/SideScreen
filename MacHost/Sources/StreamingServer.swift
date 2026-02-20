@@ -7,7 +7,8 @@ class StreamingServer {
     private var connection: NWConnection?
     var onClientConnected: (() -> Void)?
     var onClientDisconnected: (() -> Void)?
-    var onTouchEvent: ((Float, Float, Int) -> Void)?
+    // Touch callback: (x1, y1, action, pointerCount, x2, y2)
+    var onTouchEvent: ((Float, Float, Int, Int, Float, Float) -> Void)?
     var onStats: ((Double, Double) -> Void)?
 
     private let frameQueue = DispatchQueue(label: "frameQueue", qos: .userInteractive)
@@ -148,8 +149,9 @@ class StreamingServer {
             return
         }
 
-        // Touch: 13 bytes (1 type + 4 x + 4 y + 4 action)
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 13) { [weak self] data, _, isComplete, error in
+        // New format: 1 type + 1 pointerCount + N*(4x+4y) + 4 action
+        // 1 finger: 14 bytes, 2 fingers: 22 bytes
+        connection.receive(minimumIncompleteLength: 2, maximumLength: 22) { [weak self] data, _, isComplete, error in
             guard let self = self, self.isReceiving, !self.isStopped else { return }
 
             if error != nil || isComplete {
@@ -157,18 +159,30 @@ class StreamingServer {
                 return
             }
 
-            if let data = data, data.count >= 13, data[0] == 2 {
-                let x = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 1, as: Float.self) }
-                let y = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 5, as: Float.self) }
-                let action = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 9, as: Int32.self) }
+            if let data = data, data.count >= 2, data[0] == 2 {
+                let pointerCount = Int(data[1])
+                let expectedSize = 2 + pointerCount * 8 + 4
 
-                // Dispatch to main thread for event handling
-                DispatchQueue.main.async {
-                    self.onTouchEvent?(x, y, Int(action))
+                if data.count >= expectedSize {
+                    let x1 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 2, as: Float.self) }
+                    let y1 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 6, as: Float.self) }
+
+                    var x2: Float = 0
+                    var y2: Float = 0
+                    if pointerCount >= 2 {
+                        x2 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 10, as: Float.self) }
+                        y2 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 14, as: Float.self) }
+                    }
+
+                    let actionOffset = 2 + pointerCount * 8
+                    let action = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: actionOffset, as: Int32.self) }
+
+                    DispatchQueue.main.async {
+                        self.onTouchEvent?(x1, y1, Int(action), pointerCount, x2, y2)
+                    }
                 }
             }
 
-            // Continue loop (non-recursive)
             self.receiveQueue.async {
                 self.touchReceiveLoop()
             }

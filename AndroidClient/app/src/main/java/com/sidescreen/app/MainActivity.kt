@@ -819,30 +819,50 @@ class MainActivity : AppCompatActivity() {
         view: View,
         event: MotionEvent,
     ) {
-        // Simple touch handling - no pinch/long press complexity
         val x = event.x / view.width.toFloat()
         val y = event.y / view.height.toFloat()
+        val pointerCount = event.pointerCount.coerceAtMost(2)
+
+        var x2 = 0f
+        var y2 = 0f
+        if (pointerCount >= 2) {
+            x2 = event.getX(1) / view.width.toFloat()
+            y2 = event.getY(1) / view.height.toFloat()
+        }
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 inputPredictor.reset()
                 inputPredictor.addSample(x, y)
-                streamClient?.sendTouch(x, y, 0)
+                streamClient?.sendTouch(x, y, 0, pointerCount, x2, y2)
+            }
+
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                streamClient?.sendTouch(x, y, 0, pointerCount, x2, y2)
             }
 
             MotionEvent.ACTION_MOVE -> {
-                inputPredictor.addSample(x, y)
-                val (predictedX, predictedY) = inputPredictor.predictPosition(12f)
-                streamClient?.sendTouch(predictedX, predictedY, 1)
+                if (pointerCount == 1) {
+                    inputPredictor.addSample(x, y)
+                    val (px, py) = inputPredictor.predictPosition(12f)
+                    streamClient?.sendTouch(px, py, 1, 1)
+                } else {
+                    streamClient?.sendTouch(x, y, 1, pointerCount, x2, y2)
+                }
             }
 
             MotionEvent.ACTION_UP -> {
                 inputPredictor.reset()
-                streamClient?.sendTouch(x, y, 2)
+                streamClient?.sendTouch(x, y, 2, 1)
+            }
+
+            MotionEvent.ACTION_POINTER_UP -> {
+                streamClient?.sendTouch(x, y, 2, pointerCount, x2, y2)
             }
 
             MotionEvent.ACTION_CANCEL -> {
                 inputPredictor.reset()
+                streamClient?.sendTouch(x, y, 2, 1)
             }
         }
     }

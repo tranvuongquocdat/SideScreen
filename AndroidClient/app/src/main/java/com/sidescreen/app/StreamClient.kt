@@ -157,16 +157,26 @@ class StreamClient(
         x: Float,
         y: Float,
         action: Int,
+        pointerCount: Int = 1,
+        x2: Float = 0f,
+        y2: Float = 0f,
     ) {
         if (!isConnected) return
 
         touchScope.launch {
             try {
                 socket?.getOutputStream()?.let { out ->
-                    val buffer = ByteBuffer.allocate(13).order(ByteOrder.LITTLE_ENDIAN)
+                    val count = pointerCount.coerceIn(1, 2)
+                    val size = 6 + count * 8 // 1 type + 1 count + N*(4x+4y) + 4 action
+                    val buffer = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN)
                     buffer.put(2.toByte())
+                    buffer.put(count.toByte())
                     buffer.putFloat(x)
                     buffer.putFloat(y)
+                    if (count == 2) {
+                        buffer.putFloat(x2)
+                        buffer.putFloat(y2)
+                    }
                     buffer.putInt(action)
                     out.write(buffer.array())
                     out.flush()
