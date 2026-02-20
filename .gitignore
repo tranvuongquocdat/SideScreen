@@ -13,6 +13,7 @@ AndroidClient/local.properties
 AndroidClient/.idea/
 *.apk
 *.aab
+*.dmg
 *.iml
 *.keystore
 
