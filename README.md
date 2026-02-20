@@ -30,16 +30,8 @@
 
 ---
 
-<!-- PLACEHOLDER: Hero screenshot or GIF
-     📸 CAPTURE INSTRUCTIONS:
-     - Show your Mac screen + Android tablet side by side
-     - Display should show a window dragged onto the tablet
-     - GIF is ideal: record ~5 seconds of dragging a window onto the tablet
-     - Resolution: 800-1000px wide
-     - Save to: resources/screenshots/hero.png (or hero.gif) -->
 <div align="center">
-  <!-- Replace with resources/screenshots/hero.png after capturing -->
-  <img src="resources/screenshots/hero-placeholder.svg" alt="Side Screen — Mac + Android tablet as second display" width="800"/>
+  <img src="resources/screenshots/hero_screenshot.jpeg" alt="Side Screen — Mac + Android tablet as second display" width="800"/>
 </div>
 
 ---
@@ -63,28 +55,16 @@
 
 Create a true virtual display on your Mac. Drag windows to your tablet like a real monitor — not mirroring, but extending.
 
-<!-- PLACEHOLDER: Virtual display screenshot
-     📸 CAPTURE INSTRUCTIONS:
-     - Show macOS Display Preferences with the virtual display appearing
-     - Or show a window being dragged from Mac to tablet
-     - Save to: resources/screenshots/feature-virtual-display.png -->
 <div align="center">
-  <!-- Replace with resources/screenshots/feature-virtual-display.png after capturing -->
-  <img src="resources/screenshots/feature-virtual-display-placeholder.svg" alt="Virtual Display" width="700"/>
+  <img src="resources/screenshots/feature_virtual_display.png" alt="Virtual Display in macOS Display Preferences" width="600"/>
 </div>
 
 ### Ultra-Low Latency
 
 Hardware-accelerated H.265 encoding on Mac and decoding on Android. Async pipeline architecture delivers frames in under 30ms.
 
-<!-- PLACEHOLDER: Performance stats screenshot
-     📸 CAPTURE INSTRUCTIONS:
-     - Show the stats overlay on the Android app while streaming
-     - Should display FPS, bitrate, and latency numbers
-     - Save to: resources/screenshots/feature-performance.png -->
 <div align="center">
-  <!-- Replace with resources/screenshots/feature-performance.png after capturing -->
-  <img src="resources/screenshots/feature-performance-placeholder.svg" alt="Low Latency Performance" width="500"/>
+  <img src="resources/screenshots/android_performance.png" alt="Low Latency Streaming with Stats Overlay" width="700"/>
 </div>
 
 ### Touch Support
@@ -99,17 +79,12 @@ Enable Gaming Boost for optimized settings: 1 Gbps bitrate, ultra-low latency en
 
 Configure resolution (up to 4K/8K), frame rate (30–120 FPS), bitrate (20–5000 Mbps), and quality presets from the Mac app.
 
-<!-- PLACEHOLDER: Settings screenshots side by side
-     📸 CAPTURE INSTRUCTIONS:
-     - Left: macOS settings window (the frosted glass one)
-     - Right: Android settings dialog
-     - Save to: resources/screenshots/settings-mac.png and settings-android.png -->
 <div align="center">
-  <!-- Replace with resources/screenshots/settings-mac.png after capturing -->
-  <img src="resources/screenshots/settings-mac-placeholder.svg" alt="macOS Settings" width="380"/>
+  <img src="resources/screenshots/mac_settings_1.png" alt="macOS Settings — Display & FPS" width="280"/>
   &nbsp;&nbsp;
-  <!-- Replace with resources/screenshots/settings-android.png after capturing -->
-  <img src="resources/screenshots/settings-android-placeholder.svg" alt="Android Settings" width="280"/>
+  <img src="resources/screenshots/mac_settings_2.png" alt="macOS Settings — Streaming & Status" width="280"/>
+  &nbsp;&nbsp;
+  <img src="resources/screenshots/android_settings.png" alt="Android — Connection Screen" width="200"/>
 </div>
 
 <p align="right"><a href="#readme-top">↑ Back to top</a></p>

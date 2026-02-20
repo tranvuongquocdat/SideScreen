@@ -499,6 +499,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         dialog.show()
+
+        // Cap dialog height to 85% of screen so content scrolls on smaller screens / landscape
+        dialog.window?.let { win ->
+            val maxH = (resources.displayMetrics.heightPixels * 0.85).toInt()
+            win.setLayout(WindowManager.LayoutParams.MATCH_PARENT, maxH)
+        }
     }
 
     private fun updateSettingsButtonOpacity(opacity: Float) {

@@ -12,6 +12,14 @@
     app:cardBackgroundColor="#E6000000"
     app:cardElevation="24dp">
 
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fillViewport="true"
+        android:fadeScrollbars="true"
+        android:scrollIndicators="bottom"
+        android:overScrollMode="ifContentScrolls">
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -351,4 +359,5 @@
             app:backgroundTint="#4CAF50" />
 
     </LinearLayout>
+    </ScrollView>
 </androidx.cardview.widget.CardView>
