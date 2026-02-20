@@ -17,9 +17,9 @@ AndroidClient/.idea/
 *.iml
 *.keystore
 
-# macOS build
-MacHost/.build/
-MacHost/.swiftpm/
+# macOS build (main + test apps)
+**/.build/
+**/.swiftpm/
 *.xcodeproj/xcuserdata/
 *.xcworkspace/xcuserdata/
 
