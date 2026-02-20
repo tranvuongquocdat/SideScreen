@@ -80,11 +80,11 @@ Enable Gaming Boost for optimized settings: 1 Gbps bitrate, ultra-low latency en
 Configure resolution (up to 4K/8K), frame rate (30–120 FPS), bitrate (20–5000 Mbps), and quality presets from the Mac app.
 
 <div align="center">
-  <img src="resources/screenshots/mac_settings_1.png" alt="macOS Settings — Display & FPS" width="280"/>
+  <img src="resources/screenshots/mac_settings_1.png" alt="macOS Settings — Display & FPS" height="500"/>
   &nbsp;&nbsp;
-  <img src="resources/screenshots/mac_settings_2.png" alt="macOS Settings — Streaming & Status" width="280"/>
+  <img src="resources/screenshots/mac_settings_2.png" alt="macOS Settings — Streaming & Status" height="500"/>
   &nbsp;&nbsp;
-  <img src="resources/screenshots/android_settings.png" alt="Android — Connection Screen" width="200"/>
+  <img src="resources/screenshots/android_settings.png" alt="Android — Connection Screen" height="500"/>
 </div>
 
 <p align="right"><a href="#readme-top">↑ Back to top</a></p>
