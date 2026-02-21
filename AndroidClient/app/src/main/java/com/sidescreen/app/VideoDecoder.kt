@@ -189,10 +189,11 @@ class VideoDecoder(
         }
 
         try {
-            val codec = decoder ?: run {
-                onFrameDecoded?.invoke(frameData)
-                return
-            }
+            val codec =
+                decoder ?: run {
+                    onFrameDecoded?.invoke(frameData)
+                    return
+                }
             val inputBuffer = codec.getInputBuffer(index)
             inputBuffer?.clear()
             inputBuffer?.put(frameData, 0, frameSize)

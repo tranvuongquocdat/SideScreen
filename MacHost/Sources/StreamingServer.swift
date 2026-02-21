@@ -24,7 +24,6 @@ class StreamingServer {
     private var isReceiving = false
     private var isStopped = false
 
-
     init(port: UInt16) {
         self.port = port
     }

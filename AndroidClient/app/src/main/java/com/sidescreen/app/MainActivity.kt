@@ -805,12 +805,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun startPingTimer() {
         stopPingTimer()
-        pingJob = lifecycleScope.launch(Dispatchers.IO) {
-            while (true) {
-                kotlinx.coroutines.delay(1000) // Ping every 1 second
-                streamClient?.sendPing()
+        pingJob =
+            lifecycleScope.launch(Dispatchers.IO) {
+                while (true) {
+                    kotlinx.coroutines.delay(1000) // Ping every 1 second
+                    streamClient?.sendPing()
+                }
             }
-        }
     }
 
     private fun stopPingTimer() {
