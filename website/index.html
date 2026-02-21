@@ -270,11 +270,12 @@
 
             <div class="download-note">
                 <p><strong>macOS Gatekeeper:</strong> Open DMG, drag to Applications. If macOS says "damaged":</p>
-                <code>sudo xattr -cr /Applications/SideScreen.app</code>
+                <code class="download-cmd">sudo xattr -cr /Applications/SideScreen.app</code>
                 <p style="margin-top: 1rem;"><strong>⚠️ ADB Required:</strong> The Mac app needs <code>adb</code> to communicate with your Android device. If the app doesn't show "Running", install ADB first:</p>
-                <code>/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"</code>
-                <p style="margin-top: 0.5rem;">Then install ADB:</p>
-                <code>brew install --cask android-platform-tools</code>
+                <p style="margin-top: 0.5rem;">1. Install Homebrew (if you don't have it):</p>
+                <code class="download-cmd">/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"</code>
+                <p style="margin-top: 0.5rem;">2. Install ADB:</p>
+                <code class="download-cmd">brew install --cask android-platform-tools</code>
             </div>
 
             <div class="download-requirements">
