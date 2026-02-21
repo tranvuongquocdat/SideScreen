@@ -270,12 +270,12 @@
 
             <div class="download-note">
                 <p><strong>macOS Gatekeeper:</strong> Open DMG, drag to Applications. If macOS says "damaged":</p>
-                <code class="download-cmd">sudo xattr -cr /Applications/SideScreen.app</code>
+                <div class="download-cmd"><code>sudo xattr -cr /Applications/SideScreen.app</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></div>
                 <p style="margin-top: 1rem;"><strong>⚠️ ADB Required:</strong> The Mac app needs <code>adb</code> to communicate with your Android device. If the app doesn't show "Running", install ADB first:</p>
                 <p style="margin-top: 0.5rem;">1. Install Homebrew (if you don't have it):</p>
-                <code class="download-cmd">/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"</code>
+                <div class="download-cmd"><code>/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></div>
                 <p style="margin-top: 0.5rem;">2. Install ADB:</p>
-                <code class="download-cmd">brew install --cask android-platform-tools</code>
+                <div class="download-cmd"><code>brew install --cask android-platform-tools</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></div>
             </div>
 
             <div class="download-requirements">
@@ -368,6 +368,15 @@
     <div class="toast-container"></div>
 
     <script src="scripts.js"></script>
+    <script>
+        function copyCmd(btn) {
+            const code = btn.parentElement.querySelector('code');
+            navigator.clipboard.writeText(code.textContent).then(() => {
+                btn.textContent = 'Copied';
+                setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+            });
+        }
+    </script>
     <script>
         fetch('https://api.github.com/repos/tranvuongquocdat/SideScreen/releases/latest')
             .then(r => r.json())

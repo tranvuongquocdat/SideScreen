@@ -708,23 +708,56 @@ a:hover {
 
 .download-note code {
     padding: 2px 6px;
-    background: var(--color-bg-dark);
-    color: #a8e6cf;
+    background: var(--color-border-light);
+    color: var(--color-text);
     border-radius: var(--border-radius-sm);
     font-family: 'SF Mono', monospace;
     font-size: 0.85rem;
 }
 
 .download-note .download-cmd {
+    position: relative;
     display: block;
-    padding: 8px 12px;
-    font-size: 0.8rem;
-    user-select: all;
+    padding: 10px 56px 10px 14px;
+    margin-top: 8px;
+    background: var(--color-bg-alt);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius);
     overflow-x: auto;
+    text-align: left;
+}
+
+.download-note .download-cmd code {
+    display: inline;
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--color-text);
+    font-size: 0.8rem;
     word-break: break-all;
     white-space: pre-wrap;
-    text-align: left;
-    margin-top: 8px;
+    user-select: all;
+}
+
+.download-note .copy-btn {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
+    background: none;
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-sm);
+    color: var(--color-text-secondary);
+    font-size: 0.7rem;
+    padding: 3px 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+}
+
+.download-note .copy-btn:hover {
+    background: var(--color-border-light);
+    color: var(--color-text);
 }
 
 .download-requirements {
