@@ -707,14 +707,18 @@ a:hover {
 }
 
 .download-note code {
-    display: inline-block;
-    padding: 4px 12px;
+    display: block;
+    padding: 8px 12px;
     background: var(--color-bg-dark);
     color: #a8e6cf;
     border-radius: var(--border-radius-sm);
     font-family: 'SF Mono', monospace;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     user-select: all;
+    overflow-x: auto;
+    word-break: break-all;
+    white-space: pre-wrap;
+    text-align: left;
 }
 
 .download-requirements {
