@@ -8,8 +8,7 @@ import android.os.Process
 import android.util.Log
 import android.view.Display
 import android.view.Surface
-import java.util.concurrent.ArrayBlockingQueue
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.ConcurrentLinkedQueue
 
 class VideoDecoder(
     private val surface: Surface,
@@ -30,21 +29,14 @@ class VideoDecoder(
     private var currentWidth = 1920
     private var currentHeight = 1200
 
-    private val maxFrameAgeNs = 60_000_000L
-
     @Volatile private var isRunning = false
 
     var onFrameRendered: ((Long) -> Unit)? = null
     var onFrameStats: ((fps: Double, variance: Double) -> Unit)? = null
     var onFrameDecoded: ((ByteArray) -> Unit)? = null
 
-    private val pendingFrames = ArrayBlockingQueue<FrameData>(2)
-
-    private data class FrameData(
-        val data: ByteArray,
-        val size: Int,
-        val timestamp: Long,
-    )
+    // Available input buffer indices — fed by onInputBufferAvailable callback
+    private val availableInputBuffers = ConcurrentLinkedQueue<Int>()
 
     init {
         setupDecoder()
@@ -74,7 +66,9 @@ class VideoDecoder(
                     codec: MediaCodec,
                     index: Int,
                 ) {
-                    handleInputBuffer(codec, index)
+                    // Just record that this buffer is available
+                    // The network receive thread will use it directly
+                    availableInputBuffers.offer(index)
                 }
 
                 override fun onOutputBufferAvailable(
@@ -179,51 +173,34 @@ class VideoDecoder(
         frameSize: Int = frameData.size,
         frameTimestamp: Long = System.nanoTime(),
     ) {
-        val now = System.nanoTime()
-        val frameAge = now - frameTimestamp
-        if (frameAge > maxFrameAgeNs) {
+        if (!isRunning) {
+            onFrameDecoded?.invoke(frameData)
+            return
+        }
+
+        // Direct feed: grab an available input buffer and queue immediately
+        // No intermediate queue, no thread handoff — minimum latency
+        val index = availableInputBuffers.poll()
+        if (index == null) {
+            // No input buffer available — codec is busy, drop frame
             droppedFrames++
             onFrameDecoded?.invoke(frameData)
             return
         }
 
-        if (!pendingFrames.offer(FrameData(frameData, frameSize, frameTimestamp))) {
-            val dropped = pendingFrames.poll()
-            if (dropped != null) {
-                droppedFrames++
-                onFrameDecoded?.invoke(dropped.data)
-            }
-            pendingFrames.offer(FrameData(frameData, frameSize, frameTimestamp))
-        }
-    }
-
-    private fun handleInputBuffer(
-        codec: MediaCodec,
-        index: Int,
-    ) {
-        // Block until a frame is available.
-        // In async mode, onInputBufferAvailable fires ONCE per buffer.
-        // If we return without queueing, that buffer is lost forever.
-        var frame: FrameData? = null
-        while (frame == null && isRunning) {
-            try {
-                frame = pendingFrames.poll(500, TimeUnit.MILLISECONDS)
-            } catch (_: InterruptedException) {
+        try {
+            val codec = decoder ?: run {
+                onFrameDecoded?.invoke(frameData)
                 return
             }
-        }
-
-        if (frame == null) return
-
-        try {
             val inputBuffer = codec.getInputBuffer(index)
             inputBuffer?.clear()
-            inputBuffer?.put(frame.data, 0, frame.size)
-            codec.queueInputBuffer(index, 0, frame.size, frame.timestamp / 1000, 0)
+            inputBuffer?.put(frameData, 0, frameSize)
+            codec.queueInputBuffer(index, 0, frameSize, frameTimestamp / 1000, 0)
         } catch (e: Exception) {
-            Log.e(TAG, "handleInputBuffer error", e)
+            Log.e(TAG, "decode direct feed error", e)
         } finally {
-            onFrameDecoded?.invoke(frame.data)
+            onFrameDecoded?.invoke(frameData)
         }
     }
 
@@ -274,7 +251,7 @@ class VideoDecoder(
     fun release() {
         isRunning = false
         try {
-            pendingFrames.clear()
+            availableInputBuffers.clear()
             decoder?.stop()
             decoder?.release()
             decoder = null

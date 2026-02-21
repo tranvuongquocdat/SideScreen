@@ -11,18 +11,6 @@ class VideoEncoder {
     private var quality: String = "medium"
     private var gamingBoost: Bool = false
     private var frameRate: Int = 60
-    private var forceNextKeyframe = false
-
-    /// Force the next encoded frame to be a keyframe (call when client connects)
-    func requestKeyframe() {
-        forceNextKeyframe = true
-        debugLog("🔑 Keyframe requested")
-    }
-
-    // Pre-allocated buffer for frame data (reduces allocations)
-    private var frameBuffer = Data(capacity: 512 * 1024)  // 512KB initial
-    private static let startCode: [UInt8] = [0, 0, 0, 1]
-
     init(width: Int, height: Int, bitrateMbps: Int = 20, quality: String = "ultralow", gamingBoost: Bool = false, frameRate: Int = 60) {
         self.width = width
         self.height = height
@@ -74,19 +62,21 @@ class VideoEncoder {
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ProfileLevel, value: kVTProfileLevel_HEVC_Main_AutoLevel)
 
         // Dynamic bitrate - remove strict rate limiting for smoother streaming
-        let bitrateBps = bitrateMbps * 1_000_000
+        // All-intra needs higher bitrate for text sharpness
+        // USB-C supports 5Gbps, so 80-100Mbps is fine
+        let effectiveBitrate = gamingBoost ? bitrateMbps : max(bitrateMbps, 60)
+        let bitrateBps = effectiveBitrate * 1_000_000
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: bitrateBps as CFNumber)
         // Removed DataRateLimits - was causing bursty traffic and buffer stalls
 
         // Frame rate settings
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: frameRate as CFNumber)
 
-        // Keyframe interval: 0.5 second (balance between error recovery and bandwidth)
-        // 1s was too long - when P-frames are lost, artifacts persist until next keyframe
-        // 0.5s provides faster error recovery while avoiding bandwidth bursts of 0.1s
-        let keyframeInterval = frameRate / 2  // 0.5 second (30 frames at 60fps)
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: keyframeInterval as CFNumber)
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, value: 0.5 as CFNumber)
+        // All-intra: every frame is a keyframe
+        // Eliminates P-frame dependency → no corruption from frame loss
+        // Higher bitrate (~3x) but USB-C has plenty of bandwidth
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: 1 as CFNumber)
+        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, value: 0.0 as CFNumber)
 
         // Critical for low latency - NO frame reordering (no B-frames)
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse)
@@ -100,11 +90,11 @@ class VideoEncoder {
             qualityValue = 0.3  // Ultra low quality for maximum speed
         } else {
             qualityValue = switch quality {
-            case "ultralow": 0.3  // Fastest encoding, lowest latency
-            case "low": 0.5
-            case "medium": 0.7
-            case "high": 0.85
-            default: 0.3  // Default to ultralow
+            case "ultralow": 0.5  // Still fast but better text readability
+            case "low": 0.65
+            case "medium": 0.8   // Sharp text for productivity
+            case "high": 0.9     // Very sharp, higher bitrate
+            default: 0.5
             }
         }
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_Quality, value: qualityValue as CFNumber)
@@ -119,54 +109,22 @@ class VideoEncoder {
         print("✅ VideoToolbox encoder configured (H.265, \(bitrateMbps)Mbps, \(frameRate)fps, \(mode))")
     }
 
-    func encode(sampleBuffer: CMSampleBuffer) {
-        guard let session = compressionSession,
-              let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
-            return
-        }
-
-        let presentationTimeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-        let duration = CMSampleBufferGetDuration(sampleBuffer)
-
-        // Pass capture timestamp as refcon for accurate frame age tracking
-        let captureNanos = UInt64(CMTimeGetSeconds(presentationTimeStamp) * 1_000_000_000)
-        let refconValue = UnsafeMutableRawPointer.allocate(byteCount: 8, alignment: 8)
-        refconValue.storeBytes(of: captureNanos, as: UInt64.self)
-
-        VTCompressionSessionEncodeFrame(
-            session,
-            imageBuffer: imageBuffer,
-            presentationTimeStamp: presentationTimeStamp,
-            duration: duration,
-            frameProperties: nil,
-            sourceFrameRefcon: refconValue,
-            infoFlagsOut: nil
-        )
-    }
-
-    /// Encode a CVPixelBuffer directly (used by CGDisplayStream capture)
     func encode(pixelBuffer: CVPixelBuffer, presentationTimeStamp: CMTime) {
         guard let session = compressionSession else { return }
 
         let duration = CMTime(value: 1, timescale: CMTimeScale(frameRate))
 
-        let captureNanos = UInt64(CMTimeGetSeconds(presentationTimeStamp) * 1_000_000_000)
+        // Use system uptime clock — MUST match DispatchTime.now().uptimeNanoseconds
+        let captureNanos = DispatchTime.now().uptimeNanoseconds
         let refconValue = UnsafeMutableRawPointer.allocate(byteCount: 8, alignment: 8)
         refconValue.storeBytes(of: captureNanos, as: UInt64.self)
-
-        var frameProps: CFDictionary?
-        if forceNextKeyframe {
-            forceNextKeyframe = false
-            frameProps = [kVTEncodeFrameOptionKey_ForceKeyFrame: true] as CFDictionary
-            debugLog("🔑 Forcing keyframe")
-        }
 
         VTCompressionSessionEncodeFrame(
             session,
             imageBuffer: pixelBuffer,
             presentationTimeStamp: presentationTimeStamp,
             duration: duration,
-            frameProperties: frameProps,
+            frameProperties: nil,
             sourceFrameRefcon: refconValue,
             infoFlagsOut: nil
         )

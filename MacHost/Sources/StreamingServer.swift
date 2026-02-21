@@ -24,11 +24,6 @@ class StreamingServer {
     private var isReceiving = false
     private var isStopped = false
 
-    // Frame dropping for latency control
-    // 50ms frame age - balanced with client's 60ms tolerance
-    // Lower = less latency, but may drop more P-frames during encoding spikes
-    private let maxFrameAge: UInt64 = 50_000_000  // 50ms in nanoseconds - drop older frames
-    private var canSendNextFrame = true  // Simple backpressure
 
     init(port: UInt16) {
         self.port = port
@@ -79,7 +74,6 @@ class StreamingServer {
         }
 
         connection = newConnection
-        canSendNextFrame = true
         droppedFrames = 0
 
         connection?.stateUpdateHandler = { [weak self] state in
@@ -159,27 +153,39 @@ class StreamingServer {
                 return
             }
 
-            if let data = data, data.count >= 2, data[0] == 2 {
-                let pointerCount = Int(data[1])
-                let expectedSize = 2 + pointerCount * 8 + 4
+            if let data = data, data.count >= 1 {
+                let msgType = data[0]
 
-                if data.count >= expectedSize {
-                    let x1 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 2, as: Float.self) }
-                    let y1 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 6, as: Float.self) }
+                if msgType == 2 && data.count >= 2 {
+                    // Touch event
+                    let pointerCount = Int(data[1])
+                    let expectedSize = 2 + pointerCount * 8 + 4
 
-                    var x2: Float = 0
-                    var y2: Float = 0
-                    if pointerCount >= 2 {
-                        x2 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 10, as: Float.self) }
-                        y2 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 14, as: Float.self) }
+                    if data.count >= expectedSize {
+                        let x1 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 2, as: Float.self) }
+                        let y1 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 6, as: Float.self) }
+
+                        var x2: Float = 0
+                        var y2: Float = 0
+                        if pointerCount >= 2 {
+                            x2 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 10, as: Float.self) }
+                            y2 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 14, as: Float.self) }
+                        }
+
+                        let actionOffset = 2 + pointerCount * 8
+                        let action = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: actionOffset, as: Int32.self) }
+
+                        DispatchQueue.main.async {
+                            self.onTouchEvent?(x1, y1, Int(action), pointerCount, x2, y2)
+                        }
                     }
-
-                    let actionOffset = 2 + pointerCount * 8
-                    let action = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: actionOffset, as: Int32.self) }
-
-                    DispatchQueue.main.async {
-                        self.onTouchEvent?(x1, y1, Int(action), pointerCount, x2, y2)
-                    }
+                } else if msgType == 4 && data.count >= 9 {
+                    // Ping from client — echo back as pong (type=5) with client's timestamp
+                    let clientTimestamp = data.subdata(in: 1..<9)
+                    var pong = Data(capacity: 9)
+                    pong.append(5) // Type: Pong
+                    pong.append(clientTimestamp)
+                    connection.send(content: pong, completion: .contentProcessed { _ in })
                 }
             }
 
@@ -192,25 +198,11 @@ class StreamingServer {
     func sendFrame(_ data: Data, timestamp: UInt64, isKeyframe: Bool = false) {
         guard let connection = connection, !isStopped else { return }
 
-        // GOP-aware frame dropping: NEVER drop keyframes
-        if !isKeyframe {
-            let now = DispatchTime.now().uptimeNanoseconds
-            // Guard against arithmetic overflow when timestamp uses a different epoch
-            let frameAge = now >= timestamp ? now - timestamp : 0
-            if frameAge > maxFrameAge {
-                droppedFrames += 1
-                return
-            }
-        }
-
+        // With all-intra encoding, every frame is independently decodable.
+        // No frame-age dropping or backpressure — send everything immediately.
+        // The encode queue depth limit (2 pending) in ScreenCapture handles flow control.
         frameQueue.async { [weak self] in
             guard let self = self else { return }
-
-            // Backpressure check inside frameQueue for thread safety
-            if !isKeyframe && !self.canSendNextFrame {
-                self.droppedFrames += 1
-                return
-            }
 
             var packet = Data(capacity: data.count + 5)
             packet.append(0) // Type: Video frame
@@ -218,40 +210,49 @@ class StreamingServer {
             withUnsafeBytes(of: &frameSize) { packet.append(contentsOf: $0) }
             packet.append(data)
 
-            self.canSendNextFrame = false
-
-            connection.send(content: packet, completion: .contentProcessed { [weak self] error in
-                self?.frameQueue.async {
-                    self?.canSendNextFrame = true
-                }
+            connection.send(content: packet, completion: .contentProcessed { error in
                 if error != nil {
-                    self?.droppedFrames += 1
+                    self.droppedFrames += 1
                 }
             })
 
-            self.updateStats(bytes: data.count)
+            // Track frame age at send time for pipeline profiling
+            let sendAge = DispatchTime.now().uptimeNanoseconds - timestamp
+            self.updateStats(bytes: data.count, frameAgeNs: sendAge)
         }
     }
 
-    private func updateStats(bytes: Int) {
+    // Pipeline profiling: track frame age at send time
+    private var totalFrameAgeNs: UInt64 = 0
+    private var profiledFrameCount: UInt64 = 0
+
+    private func updateStats(bytes: Int, frameAgeNs: UInt64 = 0) {
         bytesSent += UInt64(bytes)
         frameCount += 1
+        if frameAgeNs > 0 {
+            totalFrameAgeNs += frameAgeNs
+            profiledFrameCount += 1
+        }
 
         let now = DispatchTime.now()
         let elapsed = Double(now.uptimeNanoseconds - lastStatsTime.uptimeNanoseconds) / 1_000_000_000
 
-        if elapsed >= 1.0 {  // Update stats every 1 second for more responsive display
+        if elapsed >= 1.0 {
             let mbps = Double(bytesSent * 8) / elapsed / 1_000_000
             let fps = Double(frameCount) / elapsed
             onStats?(fps, mbps)
 
-            if droppedFrames > 0 {
-                print("⚠️ Dropped \(droppedFrames) frames in last interval")
+            // Log pipeline latency profile
+            if profiledFrameCount > 0 {
+                let avgAgeMs = Double(totalFrameAgeNs) / Double(profiledFrameCount) / 1_000_000.0
+                print("📊 Pipeline: \(String(format: "%.1f", fps))fps, \(String(format: "%.1f", mbps))Mbps, avg frame age: \(String(format: "%.1f", avgAgeMs))ms, dropped: \(droppedFrames)")
             }
 
             bytesSent = 0
             frameCount = 0
             droppedFrames = 0
+            totalFrameAgeNs = 0
+            profiledFrameCount = 0
             lastStatsTime = now
         }
     }

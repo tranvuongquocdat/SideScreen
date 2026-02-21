@@ -142,6 +142,14 @@ class StreamClient(
                             onDisplaySize?.invoke(width, height, rotation)
                             Log.d(TAG, "Display config: ${width}x$height @ $rotation°")
                         }
+
+                        5 -> { // Pong response — measure round-trip latency
+                            val buf = ByteArray(8)
+                            input.readFully(buf)
+                            val sentTime = ByteBuffer.wrap(buf).order(ByteOrder.LITTLE_ENDIAN).long
+                            val rtt = (System.nanoTime() - sentTime) / 1_000_000.0 // ms
+                            onLatencyMeasured?.invoke(rtt)
+                        }
                     }
                 }
             } catch (e: IOException) {
@@ -178,6 +186,28 @@ class StreamClient(
                         buffer.putFloat(y2)
                     }
                     buffer.putInt(action)
+                    out.write(buffer.array())
+                    out.flush()
+                }
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    // Callback for latency measurement (round-trip ping/pong)
+    var onLatencyMeasured: ((Double) -> Unit)? = null
+
+    /**
+     * Send a ping to measure round-trip latency through the USB connection
+     */
+    fun sendPing() {
+        if (!isConnected) return
+        touchScope.launch {
+            try {
+                socket?.getOutputStream()?.let { out ->
+                    val buffer = ByteBuffer.allocate(9).order(ByteOrder.LITTLE_ENDIAN)
+                    buffer.put(4.toByte()) // Type 4: ping
+                    buffer.putLong(System.nanoTime())
                     out.write(buffer.array())
                     out.flush()
                 }

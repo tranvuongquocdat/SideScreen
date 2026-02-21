@@ -343,10 +343,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             streamingServer = StreamingServer(port: settings.port)
             streamingServer?.setDisplaySize(width: size.width, height: size.height, rotation: settings.rotation)
             streamingServer?.onClientConnected = { [weak self] in
-                let captured = self
-                captured?.screenCapture?.requestKeyframe()
                 Task { @MainActor in
-                    captured?.settings.clientConnected = true
+                    self?.settings.clientConnected = true
                 }
             }
 

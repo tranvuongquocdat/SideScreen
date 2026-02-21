@@ -69,7 +69,7 @@ class ScreenCapture {
         config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(fps))
         config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
         config.showsCursor = true
-        config.queueDepth = 3
+        config.queueDepth = 4
         config.capturesAudio = false
         config.backgroundColor = .clear
         config.scalesToFit = false
@@ -92,6 +92,9 @@ class ScreenCapture {
 
         let encodeQueue = DispatchQueue(label: "encodeQueue", qos: .userInteractive)
 
+        // Encode queue depth limit — drop frames if encoder falls behind
+        var pendingEncodes: Int32 = 0
+
         // Cache last valid pixel buffer for re-encoding when SCStream sends idle frames
         var lastPixelBuffer: CVPixelBuffer?
 
@@ -99,16 +102,27 @@ class ScreenCapture {
             guard let self = self else { return }
             let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
 
+            // Backpressure: skip if encode queue already has 2+ frames pending
+            let pending = OSAtomicAdd32(0, &pendingEncodes)
+            if pending >= 2 {
+                return
+            }
+
             if let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
-                if let copy = self.copyPixelBuffer(imageBuffer) {
-                    lastPixelBuffer = copy
-                    encodeQueue.async {
-                        self.encoder?.encode(pixelBuffer: copy, presentationTimeStamp: pts)
-                    }
+                // Pass IOSurface-backed buffer directly to encoder — no copy needed.
+                // VTCompressionSession retains the pixel buffer during encoding.
+                // queueDepth=4 ensures SCStream has spare slots while encoder holds buffers.
+                lastPixelBuffer = imageBuffer
+                OSAtomicIncrement32(&pendingEncodes)
+                encodeQueue.async {
+                    self.encoder?.encode(pixelBuffer: imageBuffer, presentationTimeStamp: pts)
+                    OSAtomicDecrement32(&pendingEncodes)
                 }
             } else if let cached = lastPixelBuffer {
+                OSAtomicIncrement32(&pendingEncodes)
                 encodeQueue.async {
                     self.encoder?.encode(pixelBuffer: cached, presentationTimeStamp: pts)
+                    OSAtomicDecrement32(&pendingEncodes)
                 }
             }
         }
@@ -121,55 +135,6 @@ class ScreenCapture {
                 debugLog("Failed to start capture: \(error)")
             }
         }
-    }
-
-    /// Deep copy a CVPixelBuffer so SCStream can't recycle the underlying IOSurface
-    private func copyPixelBuffer(_ source: CVPixelBuffer) -> CVPixelBuffer? {
-        let width = CVPixelBufferGetWidth(source)
-        let height = CVPixelBufferGetHeight(source)
-        let pixelFormat = CVPixelBufferGetPixelFormatType(source)
-
-        var copy: CVPixelBuffer?
-        let status = CVPixelBufferCreate(kCFAllocatorDefault, width, height, pixelFormat, nil, &copy)
-        guard status == kCVReturnSuccess, let dest = copy else { return nil }
-
-        CVPixelBufferLockBaseAddress(source, .readOnly)
-        CVPixelBufferLockBaseAddress(dest, [])
-
-        let planeCount = CVPixelBufferGetPlaneCount(source)
-        if planeCount > 0 {
-            for plane in 0..<planeCount {
-                let srcAddr = CVPixelBufferGetBaseAddressOfPlane(source, plane)
-                let dstAddr = CVPixelBufferGetBaseAddressOfPlane(dest, plane)
-                let srcBytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(source, plane)
-                let dstBytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(dest, plane)
-                let height = CVPixelBufferGetHeightOfPlane(source, plane)
-                if let srcAddr = srcAddr, let dstAddr = dstAddr {
-                    for row in 0..<height {
-                        memcpy(dstAddr + row * dstBytesPerRow, srcAddr + row * srcBytesPerRow, min(srcBytesPerRow, dstBytesPerRow))
-                    }
-                }
-            }
-        } else {
-            let srcAddr = CVPixelBufferGetBaseAddress(source)
-            let dstAddr = CVPixelBufferGetBaseAddress(dest)
-            let srcBytes = CVPixelBufferGetBytesPerRow(source)
-            let dstBytes = CVPixelBufferGetBytesPerRow(dest)
-            if let srcAddr = srcAddr, let dstAddr = dstAddr {
-                for row in 0..<height {
-                    memcpy(dstAddr + row * dstBytes, srcAddr + row * srcBytes, min(srcBytes, dstBytes))
-                }
-            }
-        }
-
-        CVPixelBufferUnlockBaseAddress(dest, [])
-        CVPixelBufferUnlockBaseAddress(source, .readOnly)
-        return dest
-    }
-
-    /// Force next frame to be a keyframe (call when client connects)
-    func requestKeyframe() {
-        encoder?.requestKeyframe()
     }
 
     func updateEncoderSettings(bitrateMbps: Int, quality: String, gamingBoost: Bool) {

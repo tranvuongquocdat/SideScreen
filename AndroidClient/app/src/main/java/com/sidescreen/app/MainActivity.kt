@@ -45,6 +45,7 @@ class MainActivity : AppCompatActivity() {
     private var displayHeight = 1080
     private var displayRotation = 0 // 0, 90, 180, 270 degrees
     private var wakeLock: PowerManager.WakeLock? = null
+    private var pingJob: kotlinx.coroutines.Job? = null
 
     // For dragging stats overlay
     private var isDraggingOverlay = false
@@ -679,6 +680,13 @@ class MainActivity : AppCompatActivity() {
                     streamClient?.releaseBuffer(buffer)
                 }
 
+                // Latency measurement via ping/pong
+                streamClient?.onLatencyMeasured = { rttMs ->
+                    runOnUiThread {
+                        binding.latencyText.text = String.format("%.1f ms", rttMs)
+                    }
+                }
+
                 streamClient?.onConnectionStatus = { connected ->
                     runOnUiThread {
                         // Update connection state flag
@@ -703,6 +711,9 @@ class MainActivity : AppCompatActivity() {
                         )
 
                         if (connected) {
+                            // Start periodic ping for latency measurement
+                            startPingTimer()
+
                             // Stop checklist updates when connected (prevents socket conflicts)
                             stopChecklistUpdates()
 
@@ -714,6 +725,9 @@ class MainActivity : AppCompatActivity() {
                             restoreSettingsButtonPosition()
                             updateOverlayVisibility(prefs.showStatsOverlay)
                         } else {
+                            // Stop ping timer
+                            stopPingTimer()
+
                             // Exit fullscreen mode when disconnected
                             disableFullscreenMode()
 
@@ -784,8 +798,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun disconnect() {
+        stopPingTimer()
         streamClient?.disconnect()
         log("Disconnected")
+    }
+
+    private fun startPingTimer() {
+        stopPingTimer()
+        pingJob = lifecycleScope.launch(Dispatchers.IO) {
+            while (true) {
+                kotlinx.coroutines.delay(1000) // Ping every 1 second
+                streamClient?.sendPing()
+            }
+        }
+    }
+
+    private fun stopPingTimer() {
+        pingJob?.cancel()
+        pingJob = null
     }
 
     private fun cleanup() {
@@ -807,18 +837,6 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             log("⚠️ Cleanup error: ${e.message}")
         }
-    }
-
-    override fun onStop() {
-        super.onStop()
-        // No sustained performance mode to reset - we don't use it anymore
-        // This method kept for potential future cleanup needs
-    }
-
-    override fun onRestart() {
-        super.onRestart()
-        // No sustained performance mode to re-enable - we don't use it anymore
-        // Wake lock will auto-renew if still within timeout
     }
 
     private fun handleTouch(
