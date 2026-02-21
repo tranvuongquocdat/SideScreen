@@ -682,8 +682,9 @@ a:hover {
 .download-code {
     display: block;
     padding: 12px;
-    background: var(--color-bg-dark);
-    color: #a8e6cf;
+    background: var(--color-bg);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
     border-radius: var(--border-radius-sm);
     font-family: 'SF Mono', monospace;
     font-size: 0.85rem;
@@ -717,18 +718,19 @@ a:hover {
 
 .download-note .download-cmd {
     position: relative;
-    display: block;
-    padding: 10px 56px 10px 14px;
+    display: flex;
+    align-items: center;
+    padding: 10px 14px;
     margin-top: 8px;
     background: var(--color-bg-alt);
     border: 1px solid var(--color-border);
     border-radius: var(--border-radius);
-    overflow-x: auto;
     text-align: left;
+    gap: 8px;
 }
 
 .download-note .download-cmd code {
-    display: inline;
+    flex: 1;
     padding: 0;
     background: none;
     border: none;
@@ -740,19 +742,17 @@ a:hover {
 }
 
 .download-note .copy-btn {
-    position: absolute;
-    top: 50%;
-    right: 8px;
-    transform: translateY(-50%);
-    background: none;
+    flex-shrink: 0;
+    background: var(--color-bg);
     border: 1px solid var(--color-border);
     border-radius: var(--border-radius-sm);
     color: var(--color-text-secondary);
     font-size: 0.7rem;
-    padding: 3px 8px;
+    padding: 4px 10px;
     cursor: pointer;
     transition: all 0.2s;
     user-select: none;
+    white-space: nowrap;
 }
 
 .download-note .copy-btn:hover {
