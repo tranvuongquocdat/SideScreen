@@ -44,7 +44,7 @@ While Apple's Sidecar only works with iPads, millions of Android tablets sit unu
 
 Built entirely open-source, Side Screen is designed to be fast, lightweight, and seamlessly integrated.
 
-For full details, features, and documentation, please visit **[sidescreen.app](https://sidescreen.app)**
+For full details, features, and documentation, please visit **[sidescreen.dev](https://sidescreen.dev)**
 
 <p align="right"><a href="#readme-top">↑ Back to top</a></p>
 
