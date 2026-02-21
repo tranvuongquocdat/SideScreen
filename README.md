@@ -107,9 +107,26 @@ Configure resolution (up to 4K/8K), frame rate (30–120 FPS), bitrate (20–500
 Download the latest release from [**GitHub Releases**](https://github.com/tranvuongquocdat/SideScreen/releases):
 
 - **macOS**: Download `.dmg`, open it, drag Side Screen to Applications
-- **Android**: Download `.apk`, install on your tablet
+- **Android**: Download `.apk`, install on your tablet (enable "Unknown sources" if needed). Port forwarding is handled automatically by the Mac app.
 
-> **Note**: On first launch, if macOS says "damaged", run: `sudo xattr -cr /Applications/SideScreen.app`
+> **⚠️ macOS Gatekeeper**
+> If macOS says the app is "damaged", open Terminal and run:
+> ```bash
+> sudo xattr -cr /Applications/SideScreen.app
+> ```
+> Then open the app again. This is needed because the app is not notarized with an Apple Developer certificate.
+
+> **⚠️ ADB Required**
+> The Mac app needs `adb` to communicate with your Android device. If the app doesn't show "Running" after launch, you likely need to install ADB:
+>
+> 1. Install Homebrew (if you don't have it):
+>    ```bash
+>    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+>    ```
+> 2. Install ADB:
+>    ```bash
+>    brew install --cask android-platform-tools
+>    ```
 
 <details>
 <summary><strong>Build from source (for developers)</strong></summary>

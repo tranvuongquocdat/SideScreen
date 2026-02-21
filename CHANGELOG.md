@@ -9,18 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Website
-- Streamlined landing page — removed redundant sections for a leaner layout
-- 4 alternating feature showcase blocks with large screenshots
-- Gatekeeper warning added to download section
-- Dark/light theme toggle restored
-- Removed press carousel, privacy section, compact cards, and community section
-
 ### Planned
 - WiFi Direct support (wireless mode)
 - Audio streaming
 - Multi-touch gestures
 - Stylus/pen support
+
+---
+
+<a id="0.5.2"></a>
+## [0.5.2] - 2026-02-21
+
+Documentation update — ADB prerequisite instructions.
+
+### Added
+- ADB installation guide in README and website for users who don't have `adb` installed (Homebrew + `android-platform-tools`)
+- Clarified that the Mac app requires `adb` to show "Running" status
+
+### Website
+- Added ADB prerequisite note to download section
 
 ---
 
@@ -144,7 +151,8 @@ Each release follows this format:
 
 ---
 
-[Unreleased]: https://github.com/tranvuongquocdat/SideScreen/compare/0.2.3...HEAD
+[Unreleased]: https://github.com/tranvuongquocdat/SideScreen/compare/0.5.2...HEAD
+[0.5.2]: https://github.com/tranvuongquocdat/SideScreen/compare/0.2.3...0.5.2
 [0.2.3]: https://github.com/tranvuongquocdat/SideScreen/compare/0.2.2...0.2.3
 [0.2.2]: https://github.com/tranvuongquocdat/SideScreen/compare/0.2.1...0.2.2
 [0.2.1]: https://github.com/tranvuongquocdat/SideScreen/compare/0.2.0...0.2.1
