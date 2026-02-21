@@ -38,12 +38,13 @@
 
 ## About
 
-**Side Screen** extends your Mac workspace to your Android tablet over USB-C. Unlike wireless solutions that introduce lag, Side Screen uses a direct wired connection with hardware-accelerated H.265 streaming for a responsive, near-native second display experience.
+Side Screen brings true second-display functionality to your Android tablet over USB-C, something macOS doesn't natively support.
 
-- **H.265/HEVC** hardware encoding (Mac) & decoding (Android)
-- **< 30ms latency** over USB-C — smooth enough for productivity and gaming
-- **Touch input** with prediction for responsive interaction
-- **Zero cloud dependency** — everything runs locally, 100% private
+While Apple's Sidecar only works with iPads, millions of Android tablets sit unused as potential workstations. Side Screen bridges that gap with hardware-accelerated H.265 streaming, sub-16ms pipeline latency, and full touch input — making your tablet feel like a real monitor, not a laggy mirror.
+
+Built entirely open-source, Side Screen is designed to be fast, lightweight, and seamlessly integrated.
+
+For full details, features, and documentation, please visit **[sidescreen.app](https://sidescreen.app)**
 
 <p align="right"><a href="#readme-top">↑ Back to top</a></p>
 
