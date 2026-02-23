@@ -5,6 +5,7 @@
 #include <QFormLayout>
 #include <QFont>
 #include <QString>
+#include <QStandardItemModel>
 
 SettingsWindow::SettingsWindow(DisplaySettings& settings, QWidget* parent)
     : QWidget(parent), settings_(settings)

@@ -681,12 +681,13 @@ void TouchHandler::startLongPressTimer() {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     });
-    longPressThread_.detach();
 }
 
 void TouchHandler::cancelLongPressTimer() {
     longPressActive_.store(false);
-    // The thread is detached; setting the atomic flag is sufficient to stop it.
+    if (longPressThread_.joinable()) {
+        longPressThread_.join();
+    }
 }
 
 // ---------------------------------------------------------------------------

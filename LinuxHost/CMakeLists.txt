@@ -13,8 +13,9 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(PIPEWIRE libpipewire-0.3)
 if(PIPEWIRE_FOUND)
+    find_package(Qt6 REQUIRED COMPONENTS DBus)
     add_definitions(-DHAS_PIPEWIRE)
-    message(STATUS "PipeWire found")
+    message(STATUS "PipeWire found (with Qt6::DBus for portal)")
 else()
     message(STATUS "PipeWire not found, PipeWire capture disabled")
 endif()
@@ -61,7 +62,6 @@ endif()
 set(SOURCES
     src/main.cpp
     src/AppController.cpp
-    src/AdbManager.cpp
     src/streaming/StreamingServer.cpp
     src/capture/ScreenCapture.cpp
     src/capture/PipeWireCapture.cpp
@@ -78,7 +78,6 @@ set(SOURCES
 set(HEADERS
     src/Config.h
     src/AppController.h
-    src/AdbManager.h
     src/streaming/StreamingServer.h
     src/capture/ScreenCapture.h
     src/capture/PipeWireCapture.h
@@ -106,7 +105,7 @@ target_link_libraries(SideScreen PRIVATE
 
 if(PIPEWIRE_FOUND)
     target_include_directories(SideScreen PRIVATE ${PIPEWIRE_INCLUDE_DIRS})
-    target_link_libraries(SideScreen PRIVATE ${PIPEWIRE_LIBRARIES})
+    target_link_libraries(SideScreen PRIVATE ${PIPEWIRE_LIBRARIES} Qt6::DBus)
 endif()
 
 if(VAAPI_FOUND)

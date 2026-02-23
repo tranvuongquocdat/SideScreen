@@ -10,6 +10,7 @@ AppController::AppController(QObject* parent) : QObject(parent) {}
 AppController::~AppController() {
     stopServer();
     delete settingsWindow_;
+    delete trayMenu_;
 }
 
 void AppController::initialize() {
@@ -193,7 +194,7 @@ void AppController::stopServer() {
 
     printf("[App] Stopping server...\n");
 
-    statsTimer_->stop();
+    if (statsTimer_) statsTimer_->stop();
 
     // Stop in reverse order
     if (server_) server_->stop();

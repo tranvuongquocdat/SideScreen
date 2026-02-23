@@ -276,6 +276,17 @@ bool VaapiEncoder::initialize(int width, int height, int fps, int bitrateMbps)
     m_initialized = true;
     m_frameIndex  = 0;
 
+    // Check if driver supports packed headers (for manual VPS/SPS/PPS insertion)
+    VAConfigAttrib packedAttrib = {};
+    packedAttrib.type = VAConfigAttribEncPackedHeaders;
+    vaGetConfigAttributes(m_vaDisplay, VAProfileHEVCMain,
+                          VAEntrypointEncSlice, &packedAttrib, 1);
+    if (packedAttrib.value & VA_ENC_PACKED_HEADER_SEQUENCE) {
+        printf("[VA-API] Driver supports packed headers — parameter sets will be included\n");
+    } else {
+        printf("[VA-API] Driver handles parameter sets automatically\n");
+    }
+
     printf("[VA-API] Initialized: %dx%d @ %dfps, %d Mbps, HEVC Main, all-intra\n",
            width, height, fps, bitrateMbps);
     return true;
@@ -541,12 +552,69 @@ bool VaapiEncoder::executeEncode(uint64_t timestampNs)
         output = std::move(combined);
     }
 
+    // On first frame, cache parameter sets from driver output for future use
+    if (m_frameIndex == 0 && needParamSets == false && m_parameterSets.empty()) {
+        buildParameterSets(output);
+    }
+
     if (!output.empty()) {
         deliverOutput(output.data(), output.size(), timestampNs, true /* always IDR */);
     }
 
     m_frameIndex++;
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// buildParameterSets — extract VPS/SPS/PPS NAL units from encoded output
+// ---------------------------------------------------------------------------
+bool VaapiEncoder::buildParameterSets(const std::vector<uint8_t>& encodedOutput)
+{
+    // Scan through the Annex-B stream and extract VPS (32), SPS (33), PPS (34)
+    m_parameterSets.clear();
+    size_t pos = 0;
+    while (pos + 4 < encodedOutput.size()) {
+        // Find start code
+        if (encodedOutput[pos] != 0x00 || encodedOutput[pos + 1] != 0x00 ||
+            encodedOutput[pos + 2] != 0x00 || encodedOutput[pos + 3] != 0x01) {
+            ++pos;
+            continue;
+        }
+        // Find next start code to determine NAL unit size
+        size_t nalStart = pos;
+        size_t nalHeaderPos = pos + 4;
+        if (nalHeaderPos >= encodedOutput.size()) break;
+
+        uint8_t nalType = (encodedOutput[nalHeaderPos] >> 1) & 0x3F;
+
+        // Find next start code
+        size_t nextStart = nalHeaderPos + 1;
+        while (nextStart + 3 < encodedOutput.size()) {
+            if (encodedOutput[nextStart] == 0x00 && encodedOutput[nextStart + 1] == 0x00 &&
+                encodedOutput[nextStart + 2] == 0x00 && encodedOutput[nextStart + 3] == 0x01) {
+                break;
+            }
+            ++nextStart;
+        }
+        if (nextStart + 3 >= encodedOutput.size()) {
+            nextStart = encodedOutput.size();
+        }
+
+        // VPS=32, SPS=33, PPS=34
+        if (nalType >= 32 && nalType <= 34) {
+            m_parameterSets.insert(m_parameterSets.end(),
+                                   encodedOutput.begin() + static_cast<long>(nalStart),
+                                   encodedOutput.begin() + static_cast<long>(nextStart));
+        }
+
+        pos = (nextStart < encodedOutput.size()) ? nextStart : encodedOutput.size();
+    }
+
+    if (!m_parameterSets.empty()) {
+        printf("[VA-API] Cached %zu bytes of VPS/SPS/PPS parameter sets\n",
+               m_parameterSets.size());
+    }
+    return !m_parameterSets.empty();
 }
 
 // ---------------------------------------------------------------------------

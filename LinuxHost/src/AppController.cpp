@@ -97,6 +97,7 @@ AppController::AppController(QObject* parent) : QObject(parent) {}
 AppController::~AppController() {
     stopServer();
     delete settingsWindow_;
+    delete trayMenu_;
 }
 
 void AppController::initialize() {
@@ -286,7 +287,7 @@ void AppController::stopServer() {
 
     printf("[App] Stopping server...\n");
 
-    statsTimer_->stop();
+    if (statsTimer_) statsTimer_->stop();
 
     // Stop in reverse order
     if (server_) server_->stop();
@@ -328,14 +329,17 @@ void AppController::connectPipeline() {
     // Capture -> Encoder (Linux: raw pixels, not D3D11 texture)
     capture_->setFrameCallback(
         [this](const uint8_t* data, int w, int h, int stride, uint64_t ts) {
-            if (encoder_) {
+            if (encoder_ && capture_) {
+                capture_->pendingEncodes.fetch_add(1, std::memory_order_relaxed);
                 encoder_->encode(data, w, h, stride, ts);
+                capture_->pendingEncodes.fetch_sub(1, std::memory_order_relaxed);
             }
         });
 
     // Encoder -> Server
     encoder_->setOutputCallback(
         [this](const uint8_t* data, size_t size, uint64_t timestampNs, bool isKeyframe) {
+            (void)timestampNs; (void)isKeyframe;
             if (server_) {
                 server_->sendFrame(data, size);
             }

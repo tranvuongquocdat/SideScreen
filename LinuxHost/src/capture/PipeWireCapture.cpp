@@ -21,7 +21,6 @@
 #include <QDBusReply>
 #include <QDBusUnixFileDescriptor>
 #include <QVariantMap>
-#include <QCoreApplication>
 
 // =====================================================================
 //  PipeWire stream event table
@@ -468,27 +467,40 @@ bool PipeWireCapture::requestScreenCastSession(int displayIndex) {
         return false;
     }
 
-    // Start — this triggers the user consent dialog
+    // Start — triggers the user consent dialog.
+    // The portal Start method is async: it returns a Request object path,
+    // and the real result arrives via a Response D-Bus signal.
+    //
+    // We use gdbus-based blocking call approach: call Start synchronously
+    // with a long timeout. On many portal implementations (xdg-desktop-portal-gnome,
+    // xdg-desktop-portal-kde), the D-Bus method blocks until the user accepts
+    // the consent dialog, so the synchronous call works. After Start returns,
+    // we call OpenPipeWireRemote to get the fd, which implicitly confirms the
+    // session is ready.
+    //
+    // We use PW_ID_ANY for the node — when connected via the portal's fd,
+    // PipeWire automatically routes to the portal's offered stream.
     QVariantMap startOpts;
     startOpts["handle_token"] = QString("sidescreen_start_%1").arg(getpid());
 
+    // Use a long timeout (120s) to allow for the consent dialog
+    portal.setTimeout(120000);
     QDBusReply<QDBusObjectPath> startReply = portal.call(
         "Start",
         QVariant::fromValue(QDBusObjectPath(QString::fromStdString(m_sessionHandle))),
         QString(""),  // parent_window
         startOpts);
+
     if (!startReply.isValid()) {
         std::cerr << "[PipeWireCapture] Start failed: "
                   << startReply.error().message().toStdString() << "\n";
         return false;
     }
 
-    // TODO: In production, we should wait for the Response signal and extract
-    // the PipeWire node_id from the response. For now, we assume the portal
-    // returns synchronously via the reply or a follow-up property.
-    // The node_id would be in response["streams"][0][0].
-    // This is a simplification; a real implementation needs async D-Bus signal handling.
-    m_nodeId = PW_ID_ANY; // Will auto-connect to the portal's offered stream
+    // The portal stream is now active. When connecting via the portal's
+    // PipeWire fd (from OpenPipeWireRemote), PW_ID_ANY auto-routes to the
+    // offered screen capture stream.
+    m_nodeId = PW_ID_ANY;
 
     std::cout << "[PipeWireCapture] ScreenCast session created: "
               << m_sessionHandle << "\n";

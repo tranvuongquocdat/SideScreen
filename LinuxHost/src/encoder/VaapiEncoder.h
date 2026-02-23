@@ -37,8 +37,8 @@ public:
 private:
     void destroy();
 
-    /// Build VPS/SPS/PPS NAL units and pack them into Annex-B format.
-    bool buildParameterSets();
+    /// Extract and cache VPS/SPS/PPS NAL units from encoded Annex-B output.
+    bool buildParameterSets(const std::vector<uint8_t>& encodedOutput);
 
     /// Upload BGRA pixels to the VA surface (NV12 conversion).
     bool uploadFrame(const uint8_t* pixelData, int width, int height, int stride);

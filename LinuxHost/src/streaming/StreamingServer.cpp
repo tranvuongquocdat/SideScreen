@@ -143,6 +143,7 @@ void StreamingServer::sendFrame(const uint8_t* data, size_t size) {
     if (!sendAll(sock, header, sizeof(header)) ||
         !sendAll(sock, data, size)) {
         // Send failed, client likely disconnected
+        m_clientConnected.store(false);
         return;
     }
 

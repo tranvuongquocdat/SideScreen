@@ -6,6 +6,8 @@
 #include <atomic>
 #include <string>
 
+#include "Config.h"
+
 /**
  * ScreenCapture — abstract interface for screen capture on Linux.
  *
@@ -78,7 +80,7 @@ public:
 
     /** Convenience: true when the encoder queue is full. */
     bool isBackpressured() const {
-        return pendingEncodes.load(std::memory_order_relaxed) >= 2; // ENCODER_QUEUE_DEPTH
+        return pendingEncodes.load(std::memory_order_relaxed) >= Config::ENCODER_QUEUE_DEPTH;
     }
 
 protected:
