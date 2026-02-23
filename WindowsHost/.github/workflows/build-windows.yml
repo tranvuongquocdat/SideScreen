@@ -1,0 +1,36 @@
+name: Build Windows
+
+on:
+  push:
+    branches: [main, feature/windows-host]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt 6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2022_64'
+
+      - name: Configure CMake
+        working-directory: WindowsHost
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Build
+        working-directory: WindowsHost
+        run: cmake --build build --config Release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SideScreen-Windows
+          path: WindowsHost/build/Release/SideScreen.exe
