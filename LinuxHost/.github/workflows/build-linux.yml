@@ -1,0 +1,41 @@
+name: Build Linux
+
+on:
+  push:
+    branches: [main, feature/windows-host]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            qt6-base-dev \
+            libpipewire-0.3-dev \
+            libva-dev \
+            libavcodec-dev libavutil-dev libswscale-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcomposite-dev libxfixes-dev \
+            libxdo-dev \
+            pkg-config \
+            cmake
+
+      - name: Configure CMake
+        working-directory: LinuxHost
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        working-directory: LinuxHost
+        run: cmake --build build -j$(nproc)
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SideScreen-Linux
+          path: LinuxHost/build/SideScreen
