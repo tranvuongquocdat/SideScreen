@@ -405,8 +405,32 @@ a:hover {
 
 .hero-actions {
     display: flex;
+    align-items: center;
     gap: 16px;
     margin-bottom: 40px;
+}
+
+.hero-download-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    background: var(--color-bg-alt);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-xl);
+    white-space: nowrap;
+}
+
+.hero-download-count svg {
+    opacity: 0.6;
+}
+
+.hero-download-count #download-count {
+    font-weight: 700;
+    color: var(--color-text);
 }
 
 .hero-visual {
@@ -692,27 +716,6 @@ a:hover {
     color: white;
     border-radius: var(--border-radius-sm);
     font-weight: 500;
-}
-
-.download-stats {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    margin-top: 16px;
-    font-size: 0.9rem;
-    color: var(--color-text-secondary);
-}
-
-.download-stats svg {
-    width: 16px;
-    height: 16px;
-    opacity: 0.7;
-}
-
-.download-count {
-    font-weight: 600;
-    color: var(--color-text);
 }
 
 .download-card.alt {
@@ -1293,6 +1296,10 @@ a:hover {
 
     .hero-actions .btn {
         width: 100%;
+    }
+
+    .hero-download-count {
+        justify-content: center;
     }
 
     .support-callout {
