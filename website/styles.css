@@ -62,8 +62,10 @@
     --shadow-xl: 0 20px 50px rgba(0, 0, 0, 0.6);
 }
 
-[data-theme="dark"] #header {
+[data-theme="dark"] #header,
+[data-theme="dark"] #header.scrolled {
     background: rgba(13, 13, 13, 0.8);
+    border-bottom-color: transparent;
 }
 
 [data-theme="dark"] .nav-links {
