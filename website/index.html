@@ -253,6 +253,10 @@
                     <h3>GitHub Releases</h3>
                     <p class="download-version-text">Download from GitHub</p>
                     <span class="download-action">Download</span>
+                    <div class="download-stats">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        <span><span class="download-count" id="download-count">—</span> downloads</span>
+                    </div>
                 </a>
 
                 <div class="download-card alt">
@@ -378,11 +382,25 @@
         }
     </script>
     <script>
+        // Fetch latest version
         fetch('https://api.github.com/repos/tranvuongquocdat/SideScreen/releases/latest')
             .then(r => r.json())
             .then(d => {
                 const el = document.querySelector('.download-version-text');
                 if (el && d.tag_name) el.textContent = 'Download v' + d.tag_name + ' from GitHub';
+            })
+            .catch(() => {});
+
+        // Fetch total download count across all releases
+        fetch('https://api.github.com/repos/tranvuongquocdat/SideScreen/releases')
+            .then(r => r.json())
+            .then(releases => {
+                let total = 0;
+                releases.forEach(r => {
+                    r.assets.forEach(a => { total += a.download_count; });
+                });
+                const el = document.getElementById('download-count');
+                if (el && total > 0) el.textContent = total.toLocaleString();
             })
             .catch(() => {});
     </script>

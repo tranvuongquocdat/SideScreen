@@ -68,6 +68,25 @@
 
 [data-theme="dark"] .nav-links {
     background: rgba(28, 28, 30, 0.95);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .nav-link {
+    color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .nav-link:hover {
+    color: var(--color-text-light);
+}
+
+[data-theme="dark"] .btn-outline {
+    border-color: var(--color-border);
+    color: var(--color-text);
+}
+
+[data-theme="dark"] .btn-outline:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--color-text-secondary);
 }
 
 /* Theme Toggle Button */
@@ -673,6 +692,27 @@ a:hover {
     color: white;
     border-radius: var(--border-radius-sm);
     font-weight: 500;
+}
+
+.download-stats {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 16px;
+    font-size: 0.9rem;
+    color: var(--color-text-secondary);
+}
+
+.download-stats svg {
+    width: 16px;
+    height: 16px;
+    opacity: 0.7;
+}
+
+.download-count {
+    font-weight: 600;
+    color: var(--color-text);
 }
 
 .download-card.alt {
@@ -1336,7 +1376,7 @@ a:hover {
         top: 100%;
         left: 0;
         right: 0;
-        background: rgba(255, 255, 255, 0.95);
+        background: rgba(250, 250, 250, 0.95);
         backdrop-filter: blur(20px);
         -webkit-backdrop-filter: blur(20px);
         flex-direction: column;
@@ -1344,6 +1384,11 @@ a:hover {
         gap: 16px;
         box-shadow: var(--shadow-lg);
         border-bottom: 1px solid var(--color-border);
+    }
+
+    [data-theme="dark"] .nav-links {
+        background: rgba(28, 28, 30, 0.95);
+        border-bottom-color: var(--color-border);
     }
 
     .nav-links.active {
