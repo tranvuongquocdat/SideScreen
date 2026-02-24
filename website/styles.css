@@ -64,7 +64,7 @@
 
 [data-theme="dark"] #header,
 [data-theme="dark"] #header.scrolled {
-    background: rgba(13, 13, 13, 0.8);
+    background: rgba(13, 13, 13, 0.98);
     border-bottom-color: transparent;
 }
 
