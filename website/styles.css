@@ -68,7 +68,7 @@
 
 [data-theme="dark"] .nav-links {
     background: rgba(28, 28, 30, 0.95);
-    border-color: var(--color-border);
+    border-color: transparent;
 }
 
 [data-theme="dark"] .nav-link {
@@ -80,13 +80,19 @@
 }
 
 [data-theme="dark"] .btn-outline {
-    border-color: var(--color-border);
+    border-color: transparent;
+    background: rgba(255, 255, 255, 0.06);
     color: var(--color-text);
 }
 
 [data-theme="dark"] .btn-outline:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: var(--color-text-secondary);
+    background: rgba(255, 255, 255, 0.12);
+    border-color: transparent;
+}
+
+[data-theme="dark"] .theme-toggle {
+    border-color: transparent;
+    background: rgba(255, 255, 255, 0.06);
 }
 
 /* Theme Toggle Button */
