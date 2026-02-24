@@ -64,8 +64,11 @@
 
 [data-theme="dark"] #header,
 [data-theme="dark"] #header.scrolled {
-    background: rgba(13, 13, 13, 0.98);
-    border-bottom-color: transparent;
+    background: #0D0D0D;
+    border-bottom: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 [data-theme="dark"] .nav-links {
