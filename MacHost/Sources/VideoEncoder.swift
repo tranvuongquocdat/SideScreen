@@ -51,7 +51,7 @@ class VideoEncoder {
         )
 
         guard status == noErr, let session = session else {
-            print("❌ Failed to create compression session: \(status)")
+            debugLog("Failed to create compression session: \(status)")
             return
         }
 
@@ -106,7 +106,7 @@ class VideoEncoder {
         VTCompressionSessionPrepareToEncodeFrames(session)
 
         let mode = gamingBoost ? "🎮 GAMING BOOST" : quality.uppercased()
-        print("✅ VideoToolbox encoder configured (H.265, \(bitrateMbps)Mbps, \(frameRate)fps, \(mode))")
+        debugLog("VideoToolbox encoder configured (H.265, \(bitrateMbps)Mbps, \(frameRate)fps, \(mode))")
     }
 
     func encode(pixelBuffer: CVPixelBuffer, presentationTimeStamp: CMTime) {
