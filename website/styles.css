@@ -71,11 +71,6 @@
     -webkit-backdrop-filter: none;
 }
 
-[data-theme="dark"] .nav-links {
-    background: rgba(28, 28, 30, 0.95);
-    border-color: transparent;
-}
-
 [data-theme="dark"] .nav-link {
     color: var(--color-text-secondary);
 }
@@ -99,7 +94,6 @@
     border-color: transparent;
     background: rgba(255, 255, 255, 0.06);
 }
-
 /* Theme Toggle Button */
 .theme-toggle {
     display: flex;
