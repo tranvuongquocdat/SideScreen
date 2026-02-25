@@ -1,6 +1,7 @@
 package com.sidescreen.app
 
 import android.media.MediaCodec
+import android.media.MediaCodecList
 import android.media.MediaFormat
 import android.os.Handler
 import android.os.HandlerThread
@@ -8,11 +9,32 @@ import android.os.Process
 import android.util.Log
 import android.view.Display
 import android.view.Surface
+import java.io.File
 import java.util.concurrent.ConcurrentLinkedQueue
+
+private fun diagLog(msg: String) {
+    Log.d("VideoDecoder", msg)
+    try {
+        // Try multiple paths since /data/data may not match /data/user/0
+        for (path in listOf(
+            "/data/user/0/com.sidescreen.app/files/diag.log",
+            "/data/data/com.sidescreen.app/files/diag.log"
+        )) {
+            try {
+                val f = File(path)
+                f.parentFile?.mkdirs()
+                f.appendText("[${System.currentTimeMillis()}] $msg\n")
+                return
+            } catch (_: Exception) {}
+        }
+    } catch (_: Exception) {}
+}
 
 class VideoDecoder(
     private val surface: Surface,
     private val display: Display? = null,
+    initialWidth: Int = 1920,
+    initialHeight: Int = 1200,
 ) {
     private var decoder: MediaCodec? = null
     private var decoderThread: HandlerThread? = null
@@ -21,13 +43,15 @@ class VideoDecoder(
     private var frameCount = 0L
     private var droppedFrames = 0L
     private var lastStatsTime = System.currentTimeMillis()
+    private var inputFrameCount = 0L
+    private var outputFrameCount = 0L
 
     private val frameTimes = ArrayDeque<Long>(120)
 
     private val displayRefreshRate = display?.refreshRate ?: 60f
 
-    private var currentWidth = 1920
-    private var currentHeight = 1200
+    private var currentWidth = initialWidth
+    private var currentHeight = initialHeight
 
     @Volatile private var isRunning = false
 
@@ -58,7 +82,15 @@ class VideoDecoder(
         decoderThread = HandlerThread("DecoderThread", Process.THREAD_PRIORITY_DISPLAY).also { it.start() }
         decoderHandler = Handler(decoderThread!!.looper)
 
-        val codec = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_HEVC)
+        // Find a decoder that supports our resolution (prefer HW, fallback to SW)
+        val decoderName = findBestDecoder(currentWidth, currentHeight)
+        diagLog("setupDecoder: ${currentWidth}x$currentHeight, decoder=$decoderName")
+
+        val codec = if (decoderName != null) {
+            MediaCodec.createByCodecName(decoderName)
+        } else {
+            MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_HEVC)
+        }
 
         val callback =
             object : MediaCodec.Callback() {
@@ -66,8 +98,6 @@ class VideoDecoder(
                     codec: MediaCodec,
                     index: Int,
                 ) {
-                    // Just record that this buffer is available
-                    // The network receive thread will use it directly
                     availableInputBuffers.offer(index)
                 }
 
@@ -83,6 +113,7 @@ class VideoDecoder(
                     codec: MediaCodec,
                     e: MediaCodec.CodecException,
                 ) {
+                    diagLog("Codec error: ${e.diagnosticInfo}")
                     Log.e(TAG, "Codec error: ${e.diagnosticInfo}", e)
                 }
 
@@ -90,13 +121,11 @@ class VideoDecoder(
                     codec: MediaCodec,
                     format: MediaFormat,
                 ) {
-                    Log.d(TAG, "Output format: $format")
+                    diagLog("Output format changed: $format")
                 }
             }
         codec.setCallback(callback, decoderHandler)
 
-        // Try configure with low-latency keys first, fallback without them
-        // Some chipsets (e.g. MediaTek) throw IllegalArgumentException with certain keys
         val format =
             MediaFormat.createVideoFormat(
                 MediaFormat.MIMETYPE_VIDEO_HEVC,
@@ -114,8 +143,9 @@ class VideoDecoder(
             format.setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
             codec.configure(format, surface, null, 0)
             configured = true
+            diagLog("Configured with full low-latency")
         } catch (e: Exception) {
-            Log.w(TAG, "Full low-latency config failed, trying fallback: ${e.message}")
+            diagLog("Full low-latency config failed: ${e.message}")
             codec.reset()
             codec.setCallback(callback, decoderHandler)
         }
@@ -133,8 +163,9 @@ class VideoDecoder(
                 basicFormat.setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
                 codec.configure(basicFormat, surface, null, 0)
                 configured = true
+                diagLog("Configured with basic format")
             } catch (e: Exception) {
-                Log.w(TAG, "Basic config failed, trying minimal: ${e.message}")
+                diagLog("Basic config failed: ${e.message}")
                 codec.reset()
                 codec.setCallback(callback, decoderHandler)
             }
@@ -151,7 +182,9 @@ class VideoDecoder(
                     )
                 codec.configure(minimalFormat, surface, null, 0)
                 configured = true
+                diagLog("Configured with minimal format")
             } catch (e: Exception) {
+                diagLog("All configure attempts failed: ${e.message}")
                 Log.e(TAG, "All configure attempts failed", e)
                 codec.release()
                 decoderThread?.quitSafely()
@@ -165,7 +198,57 @@ class VideoDecoder(
         isRunning = true
         codec.start()
         decoder = codec
-        Log.d(TAG, "Decoder started: ${currentWidth}x$currentHeight @ ${displayRefreshRate}Hz")
+        diagLog("Decoder started: ${currentWidth}x$currentHeight @ ${displayRefreshRate}Hz, surface=$surface, valid=${surface.isValid}")
+    }
+
+    /**
+     * Find the best HEVC decoder for the given resolution.
+     * Prefers hardware decoders, falls back to software if HW can't handle the resolution.
+     * Returns codec name to use with MediaCodec.createByCodecName(), or null for default.
+     */
+    private fun findBestDecoder(width: Int, height: Int): String? {
+        try {
+            val codecList = MediaCodecList(MediaCodecList.ALL_CODECS)
+            var hwDecoder: String? = null
+            var swDecoder: String? = null
+
+            for (info in codecList.codecInfos) {
+                if (info.isEncoder) continue
+                val caps = try {
+                    info.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_HEVC)
+                } catch (_: Exception) { continue }
+
+                val videoCaps = caps.videoCapabilities ?: continue
+                val isHardware = !info.name.startsWith("c2.android.") &&
+                    !info.name.startsWith("OMX.google.")
+                val supported = videoCaps.isSizeSupported(width, height)
+
+                diagLog("HEVC decoder '${info.name}': " +
+                    "width=${videoCaps.supportedWidths}, " +
+                    "height=${videoCaps.supportedHeights}, " +
+                    "hw=$isHardware, supports ${width}x$height=$supported")
+
+                if (supported) {
+                    if (isHardware && hwDecoder == null) {
+                        hwDecoder = info.name
+                    } else if (!isHardware && swDecoder == null) {
+                        swDecoder = info.name
+                    }
+                }
+            }
+
+            // Prefer hardware, fall back to software
+            val chosen = hwDecoder ?: swDecoder
+            if (chosen != null) {
+                diagLog("Selected decoder: $chosen (hw=${chosen == hwDecoder})")
+            } else {
+                diagLog("No decoder supports ${width}x$height — will use default")
+            }
+            return chosen
+        } catch (e: Exception) {
+            diagLog("Decoder search failed: ${e.message}")
+        }
+        return null
     }
 
     fun decode(
@@ -174,8 +257,18 @@ class VideoDecoder(
         frameTimestamp: Long = System.nanoTime(),
     ) {
         if (!isRunning) {
+            diagLog("decode called but isRunning=false")
             onFrameDecoded?.invoke(frameData)
             return
+        }
+
+        inputFrameCount++
+        if (inputFrameCount == 1L) {
+            val header = frameData.take(minOf(16, frameSize)).joinToString(" ") { String.format("%02x", it) }
+            diagLog("First frame: size=$frameSize, header=[$header], surface=$surface, valid=${surface.isValid}")
+        }
+        if (inputFrameCount % 60L == 0L) {
+            diagLog("Decode stats: input=$inputFrameCount, output=$outputFrameCount, dropped=$droppedFrames, availBufs=${availableInputBuffers.size}")
         }
 
         // Direct feed: grab an available input buffer and queue immediately
@@ -184,6 +277,9 @@ class VideoDecoder(
         if (index == null) {
             // No input buffer available — codec is busy, drop frame
             droppedFrames++
+            if (droppedFrames <= 3L || droppedFrames % 60L == 0L) {
+                diagLog("No input buffer — dropping (total dropped: $droppedFrames)")
+            }
             onFrameDecoded?.invoke(frameData)
             return
         }
@@ -191,6 +287,7 @@ class VideoDecoder(
         try {
             val codec =
                 decoder ?: run {
+                    diagLog("decoder is null in decode()")
                     onFrameDecoded?.invoke(frameData)
                     return
                 }
@@ -211,10 +308,18 @@ class VideoDecoder(
         info: MediaCodec.BufferInfo,
     ) {
         try {
+            outputFrameCount++
+            if (outputFrameCount == 1L) {
+                diagLog("First output frame! size=${info.size}, flags=${info.flags}")
+            }
+            if (outputFrameCount % 60L == 0L) {
+                diagLog("Output #$outputFrameCount rendered")
+            }
             codec.releaseOutputBuffer(index, true)
             trackFrameTiming(System.nanoTime())
             updateStats()
         } catch (e: Exception) {
+            Log.e(TAG, "releaseOutputBuffer failed", e)
             try {
                 codec.releaseOutputBuffer(index, false)
             } catch (_: Exception) {
