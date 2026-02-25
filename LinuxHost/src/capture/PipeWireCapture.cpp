@@ -14,6 +14,7 @@
 #include <thread>
 #include <sched.h>
 #include <sys/resource.h>
+#include <unistd.h>
 
 // D-Bus interaction via QDBus (Qt already required by the project)
 #include <QDBusConnection>
@@ -531,9 +532,16 @@ bool PipeWireCapture::openPipeWireRemote() {
         return false;
     }
 
-    m_pipewireFd = reply.value().fileDescriptor();
-    if (m_pipewireFd < 0) {
+    int rawFd = reply.value().fileDescriptor();
+    if (rawFd < 0) {
         std::cerr << "[PipeWireCapture] Invalid PipeWire fd\n";
+        return false;
+    }
+    // dup() because QDBusUnixFileDescriptor closes rawFd when reply goes out
+    // of scope, and pw_context_connect_fd() also takes ownership — double-close.
+    m_pipewireFd = dup(rawFd);
+    if (m_pipewireFd < 0) {
+        std::cerr << "[PipeWireCapture] dup() failed for PipeWire fd\n";
         return false;
     }
 
