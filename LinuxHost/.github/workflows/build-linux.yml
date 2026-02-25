@@ -34,8 +34,56 @@ jobs:
         working-directory: LinuxHost
         run: cmake --build build -j$(nproc)
 
-      - name: Upload artifact
+      # --- Packaging ---
+
+      - name: Extract version from CMakeLists.txt
+        id: version
+        working-directory: LinuxHost
+        run: |
+          VERSION=$(grep 'project(SideScreen VERSION' CMakeLists.txt | sed 's/.*VERSION \([0-9.]*\).*/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Detected version: $VERSION"
+
+      - name: Build .deb package
+        working-directory: LinuxHost
+        run: |
+          chmod +x packaging/build-deb.sh
+          packaging/build-deb.sh "${{ steps.version.outputs.version }}"
+
+      - name: Build AppImage
+        working-directory: LinuxHost
+        run: |
+          # Install FUSE for AppImage
+          sudo apt-get install -y libfuse2
+
+          # Download linuxdeploy and Qt plugin
+          curl -fSL -o build/linuxdeploy-x86_64.AppImage \
+            "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
+          chmod +x build/linuxdeploy-x86_64.AppImage
+
+          curl -fSL -o build/linuxdeploy-plugin-qt-x86_64.AppImage \
+            "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
+          chmod +x build/linuxdeploy-plugin-qt-x86_64.AppImage
+
+          chmod +x packaging/build-appimage.sh
+          packaging/build-appimage.sh
+
+      # --- Upload artifacts ---
+
+      - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
           name: SideScreen-Linux
           path: LinuxHost/build/SideScreen
+
+      - name: Upload .deb package
+        uses: actions/upload-artifact@v4
+        with:
+          name: SideScreen-deb
+          path: LinuxHost/build/sidescreen_${{ steps.version.outputs.version }}_amd64.deb
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: SideScreen-AppImage
+          path: LinuxHost/build/SideScreen-x86_64.AppImage

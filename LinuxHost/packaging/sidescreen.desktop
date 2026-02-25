@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Side Screen
+GenericName=Virtual Display
+Comment=Use your Android tablet as a second display
+Exec=sidescreen
+Icon=sidescreen
+Categories=Utility;System;
+Terminal=false
+StartupNotify=true

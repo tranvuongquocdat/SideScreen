@@ -29,8 +29,22 @@ jobs:
         working-directory: WindowsHost
         run: cmake --build build --config Release
 
-      - name: Upload artifact
+      - name: Prepare dist with windeployqt
+        working-directory: WindowsHost
+        shell: cmd
+        run: |
+          mkdir installer\dist
+          copy build\Release\SideScreen.exe installer\dist\
+          windeployqt --release --no-translations --no-opengl-sw installer\dist\SideScreen.exe
+
+      - name: Build installer with Inno Setup
+        working-directory: WindowsHost/installer
+        shell: cmd
+        run: |
+          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" sidescreen.iss
+
+      - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SideScreen-Windows
-          path: WindowsHost/build/Release/SideScreen.exe
+          name: SideScreen-Windows-Installer
+          path: WindowsHost/installer/output/SideScreen-Setup.exe
