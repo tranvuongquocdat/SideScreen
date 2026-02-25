@@ -121,10 +121,6 @@
 
                 <div class="hero-actions">
                     <a href="#download" class="btn btn-primary btn-large download-btn">Get It Now</a>
-                    <span class="hero-download-count" id="hero-download-count">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        <span id="download-count">—</span> downloads
-                    </span>
                     <a href="#features" class="btn btn-outline btn-large">See Features</a>
                 </div>
 
@@ -391,18 +387,6 @@
             })
             .catch(() => {});
 
-        // Fetch total download count across all releases
-        fetch('https://api.github.com/repos/tranvuongquocdat/SideScreen/releases')
-            .then(r => r.json())
-            .then(releases => {
-                let total = 0;
-                releases.forEach(r => {
-                    r.assets.forEach(a => { total += a.download_count; });
-                });
-                const el = document.getElementById('download-count');
-                if (el && total > 0) el.textContent = total.toLocaleString();
-            })
-            .catch(() => {});
     </script>
 </body>
 
