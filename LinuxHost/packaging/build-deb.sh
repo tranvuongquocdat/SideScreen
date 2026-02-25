@@ -52,7 +52,7 @@ Priority: optional
 Architecture: ${ARCH}
 Depends: libqt6widgets6 (>= 6.2) | qt6-base-dev (>= 6.2), libqt6network6 (>= 6.2)
 Recommends: libpipewire-0.3-0, libva2, ffmpeg, libxdo3
-Maintainer: SideScreen Team <sidescreen@example.com>
+Maintainer: tranvuongquocdat <tranvuongquocdat@users.noreply.github.com>
 Description: Use your Android tablet as a second display
  SideScreen creates a virtual display on your Linux computer and
  streams it to an Android tablet, effectively turning it into a
