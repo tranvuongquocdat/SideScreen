@@ -32,6 +32,7 @@ class StreamClient(
 
     private var bytesReceived = 0L
     private var framesReceived = 0L
+    private var diagFrameCount = 0L
     private var lastStatsTime = System.currentTimeMillis()
 
     // Buffer pooling to reduce GC pressure from per-frame allocations
@@ -98,7 +99,7 @@ class StreamClient(
                 outputStream = java.io.DataOutputStream(socket?.getOutputStream())
                 isConnected = true
 
-                Log.d(TAG, "✅ Connected to $host:$port")
+                diagLog("Connected to $host:$port")
                 onConnectionStatus?.invoke(true)
 
                 receiveData()
@@ -131,6 +132,13 @@ class StreamClient(
 
                             // Capture timestamp after full frame received for accurate age tracking
                             val receiveTimestamp = System.nanoTime()
+                            diagFrameCount++
+                            if (diagFrameCount == 1L) {
+                                diagLog("First video frame: size=$frameSize, callback=${onFrameReceived != null}")
+                            }
+                            if (diagFrameCount % 60L == 0L) {
+                                diagLog("Frames received: $diagFrameCount")
+                            }
                             onFrameReceived?.invoke(frameData, frameSize, receiveTimestamp)
                             updateStats(frameSize)
                         }
@@ -139,8 +147,8 @@ class StreamClient(
                             val width = input.readInt()
                             val height = input.readInt()
                             val rotation = input.readInt()
+                            diagLog("Display config: ${width}x$height @ $rotation°")
                             onDisplaySize?.invoke(width, height, rotation)
-                            Log.d(TAG, "Display config: ${width}x$height @ $rotation°")
                         }
 
                         5 -> { // Pong response — measure round-trip latency
@@ -149,6 +157,14 @@ class StreamClient(
                             val sentTime = ByteBuffer.wrap(buf).order(ByteOrder.LITTLE_ENDIAN).long
                             val rtt = (System.nanoTime() - sentTime) / 1_000_000.0 // ms
                             onLatencyMeasured?.invoke(rtt)
+                        }
+
+                        else -> {
+                            Log.e(
+                                TAG,
+                                "Unknown message type: ${type.toInt()}, stream may be misaligned — disconnecting",
+                            )
+                            break
                         }
                     }
                 }
@@ -266,6 +282,8 @@ class StreamClient(
         inputStream = null
         socket = null
     }
+
+    private fun diagLog(msg: String) = DiagLog.log("SC", msg)
 
     companion object {
         private const val TAG = "StreamClient"

@@ -9,15 +9,15 @@
 <p><em>Turn your Android tablet into a second display for macOS via USB-C</em></p>
 
 <p>
-  <img src="https://img.shields.io/github/v/release/tranvuongquocdat/SideScreen?style=flat-square&label=version&color=blue" alt="Version">
-  <a href="https://github.com/tranvuongquocdat/SideScreen/releases/latest">
-    <img src="https://img.shields.io/github/v/release/tranvuongquocdat/SideScreen?style=flat-square&label=Download&color=007AFF" alt="Download">
-  </a>
+  <img src="https://img.shields.io/github/v/release/tranvuongquocdat/SideScreen?style=for-the-badge&label=version&color=blue" alt="Version">
   <a href="https://github.com/tranvuongquocdat/SideScreen/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/tranvuongquocdat/SideScreen?style=flat-square&color=34C759" alt="License">
+    <img src="https://img.shields.io/github/license/tranvuongquocdat/SideScreen?style=for-the-badge&color=34C759" alt="License">
   </a>
   <a href="https://github.com/tranvuongquocdat/SideScreen/stargazers">
-    <img src="https://img.shields.io/github/stars/tranvuongquocdat/SideScreen?style=flat-square&color=FF9500" alt="Stars">
+    <img src="https://img.shields.io/github/stars/tranvuongquocdat/SideScreen?style=for-the-badge&color=FF9500" alt="Stars">
+  </a>
+  <a href="https://github.com/tranvuongquocdat/SideScreen/releases">
+    <img src="https://img.shields.io/github/downloads/tranvuongquocdat/SideScreen/total?style=for-the-badge&color=8E44AD&label=downloads" alt="Downloads">
   </a>
   <a href="https://github.com/tranvuongquocdat/SideScreen/releases">
     <img src="https://img.shields.io/github/downloads/tranvuongquocdat/SideScreen/total?style=flat-square&color=8E44AD&label=downloads" alt="Downloads">

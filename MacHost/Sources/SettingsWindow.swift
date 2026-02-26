@@ -472,18 +472,27 @@ struct SettingsView: View {
                             VStack(alignment: .leading, spacing: 12) {
                                 StatusRow(title: "Virtual Display", status: settings.displayCreated ? "Active" : "Inactive", color: settings.displayCreated ? .green : .secondary)
                                 StatusRow(title: "Client Connected", status: settings.clientConnected ? "Yes" : "No", color: settings.clientConnected ? .green : .secondary)
-                                StatusRow(title: "Screen Recording", status: settings.hasScreenRecordingPermission ? "Granted" : "Required", color: settings.hasScreenRecordingPermission ? .green : .red)
+                                StatusRow(
+                                    title: ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26 ? "Screen & System Audio" : "Screen Recording",
+                                    status: settings.hasScreenRecordingPermission ? "Granted" : "Required",
+                                    color: settings.hasScreenRecordingPermission ? .green : .red
+                                )
                                 StatusRow(title: "Accessibility", status: settings.hasAccessibilityPermission ? "Granted" : "Optional", color: settings.hasAccessibilityPermission ? .green : .orange)
+                                if settings.isRunning {
+                                    StatusRow(title: "Capture Method", status: settings.captureMethod, color: settings.captureMethod.contains("fallback") ? .orange : .green)
+                                }
 
                                 if !settings.hasScreenRecordingPermission {
                                     VStack(alignment: .leading, spacing: 8) {
                                         HStack(spacing: 6) {
                                             Image(systemName: "exclamationmark.triangle.fill")
                                                 .foregroundColor(.orange)
-                                            Text("Screen Recording Required")
+                                            Text(ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26 ? "Screen & System Audio Recording Required" : "Screen Recording Required")
                                                 .font(.system(size: 12, weight: .medium))
                                         }
-                                        Text("Required to capture the virtual display.")
+                                        Text(ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26
+                                            ? "Required to capture the virtual display. Go to System Settings > Privacy & Security > Screen & System Audio Recording."
+                                            : "Required to capture the virtual display.")
                                             .font(.system(size: 11))
                                             .foregroundColor(.secondary)
                                         Button(action: {
@@ -867,6 +876,7 @@ class DisplaySettings: ObservableObject {
     @Published var isRunning = false
     @Published var currentFPS: Double = 0
     @Published var currentBitrate: Double = 0
+    @Published var captureMethod: String = "Initializing..."
 
     var onToggleServer: (() -> Void)?
 

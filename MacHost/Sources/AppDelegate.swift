@@ -3,6 +3,7 @@ import SwiftUI
 import Combine
 import ApplicationServices
 import os.log
+@preconcurrency import ScreenCaptureKit
 
 // Debug file logger - writes to /tmp/sidescreen.log
 func debugLog(_ message: String) {
@@ -160,15 +161,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func checkPermissions() async {
+        let version = ProcessInfo.processInfo.operatingSystemVersion
+        debugLog("checkPermissions — macOS \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)")
+
         // Check Screen Recording permission using CoreGraphics API
         let hasScreenCapture = CGPreflightScreenCaptureAccess()
         await MainActor.run {
             settings.hasScreenRecordingPermission = hasScreenCapture
         }
         if hasScreenCapture {
-            print("✅ Screen recording permission granted")
+            debugLog("Screen recording permission granted (CGPreflight)")
+
+            // On macOS 26+, also verify ScreenCaptureKit is actually functional
+            if version.majorVersion >= 26 {
+                do {
+                    let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+                    debugLog("SCShareableContent verification OK — \(content.displays.count) displays found")
+                } catch {
+                    debugLog("WARNING: CGPreflight OK but SCShareableContent failed on macOS 26: \(error.localizedDescription)")
+                    debugLog("CGDisplayStream fallback will likely activate at capture time")
+                }
+            }
         } else {
-            print("⚠️  Screen recording permission not granted yet")
+            debugLog("Screen recording permission not granted yet")
             // Prompt user to grant permission
             CGRequestScreenCaptureAccess()
         }
@@ -285,9 +300,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     func showPermissionAlert() {
+        let version = ProcessInfo.processInfo.operatingSystemVersion
+        let isMacOS26 = version.majorVersion >= 26
+
         let alert = NSAlert()
-        alert.messageText = "Screen Recording Permission Required"
-        alert.informativeText = "Please grant Screen Recording permission in System Settings > Privacy & Security."
+        if isMacOS26 {
+            alert.messageText = "Screen & System Audio Recording Permission Required"
+            alert.informativeText = "Please grant Screen & System Audio Recording permission in System Settings > Privacy & Security."
+        } else {
+            alert.messageText = "Screen Recording Permission Required"
+            alert.informativeText = "Please grant Screen Recording permission in System Settings > Privacy & Security."
+        }
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Open System Settings")
         alert.addButton(withTitle: "Later")
@@ -334,9 +357,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             virtualDisplayManager?.restoreDisplayPosition()
 
+            // Verify display is registered in the system
+            if let vdm = virtualDisplayManager {
+                let registered = vdm.verifyDisplayRegistered()
+                if !registered {
+                    debugLog("WARNING: Virtual display not found in online display list — capture may fail")
+                }
+            }
+
             // Setup capture
             guard let displayID = virtualDisplayManager?.displayID else { return }
             screenCapture = try await ScreenCapture()
+            screenCapture?.onCaptureMethodChanged = { [weak self] method in
+                guard let self = self else { return }
+                debugLog("Capture method: \(method)")
+                Task { @MainActor in
+                    self.settings.captureMethod = method
+                }
+            }
             try await screenCapture?.setupForVirtualDisplay(displayID, refreshRate: settings.effectiveRefreshRate)
 
             // Setup server

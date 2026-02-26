@@ -378,6 +378,7 @@
         }
     </script>
     <script>
+        // Fetch latest version
         fetch('https://api.github.com/repos/tranvuongquocdat/SideScreen/releases/latest')
             .then(r => r.json())
             .then(d => {
@@ -385,6 +386,7 @@
                 if (el && d.tag_name) el.textContent = 'Download v' + d.tag_name + ' from GitHub';
             })
             .catch(() => {});
+
     </script>
 </body>
 

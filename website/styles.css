@@ -62,14 +62,38 @@
     --shadow-xl: 0 20px 50px rgba(0, 0, 0, 0.6);
 }
 
-[data-theme="dark"] #header {
-    background: rgba(13, 13, 13, 0.8);
+[data-theme="dark"] #header,
+[data-theme="dark"] #header.scrolled {
+    background: #0D0D0D;
+    border-bottom: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
-[data-theme="dark"] .nav-links {
-    background: rgba(28, 28, 30, 0.95);
+[data-theme="dark"] .nav-link {
+    color: var(--color-text-secondary);
 }
 
+[data-theme="dark"] .nav-link:hover {
+    color: var(--color-text-light);
+}
+
+[data-theme="dark"] .btn-outline {
+    border-color: transparent;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--color-text);
+}
+
+[data-theme="dark"] .btn-outline:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: transparent;
+}
+
+[data-theme="dark"] .theme-toggle {
+    border-color: transparent;
+    background: rgba(255, 255, 255, 0.06);
+}
 /* Theme Toggle Button */
 .theme-toggle {
     display: flex;
@@ -386,8 +410,32 @@ a:hover {
 
 .hero-actions {
     display: flex;
+    align-items: center;
     gap: 16px;
     margin-bottom: 40px;
+}
+
+.hero-download-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    background: var(--color-bg-alt);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-xl);
+    white-space: nowrap;
+}
+
+.hero-download-count svg {
+    opacity: 0.6;
+}
+
+.hero-download-count #download-count {
+    font-weight: 700;
+    color: var(--color-text);
 }
 
 .hero-visual {
@@ -1255,6 +1303,10 @@ a:hover {
         width: 100%;
     }
 
+    .hero-download-count {
+        justify-content: center;
+    }
+
     .support-callout {
         margin-top: 24px;
     }
@@ -1336,7 +1388,7 @@ a:hover {
         top: 100%;
         left: 0;
         right: 0;
-        background: rgba(255, 255, 255, 0.95);
+        background: rgba(250, 250, 250, 0.95);
         backdrop-filter: blur(20px);
         -webkit-backdrop-filter: blur(20px);
         flex-direction: column;
@@ -1344,6 +1396,11 @@ a:hover {
         gap: 16px;
         box-shadow: var(--shadow-lg);
         border-bottom: 1px solid var(--color-border);
+    }
+
+    [data-theme="dark"] .nav-links {
+        background: rgba(28, 28, 30, 0.95);
+        border-bottom-color: var(--color-border);
     }
 
     .nav-links.active {
