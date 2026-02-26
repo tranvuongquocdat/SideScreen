@@ -19,9 +19,6 @@
   <a href="https://github.com/tranvuongquocdat/SideScreen/releases">
     <img src="https://img.shields.io/github/downloads/tranvuongquocdat/SideScreen/total?style=for-the-badge&color=8E44AD&label=downloads" alt="Downloads">
   </a>
-  <a href="https://github.com/tranvuongquocdat/SideScreen/releases">
-    <img src="https://img.shields.io/github/downloads/tranvuongquocdat/SideScreen/total?style=flat-square&color=8E44AD&label=downloads" alt="Downloads">
-  </a>
 </p>
 
 ![Swift](https://img.shields.io/badge/Swift-FA7343?style=for-the-badge&logo=swift&logoColor=white)
