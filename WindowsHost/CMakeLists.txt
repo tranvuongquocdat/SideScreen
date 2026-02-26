@@ -66,8 +66,11 @@ set(HEADERS
     src/ui/DisplaySettings.h
 )
 
+# Application icon (Windows resource file)
+set(RC_FILE resources/sidescreen.rc)
+
 # Main executable
-add_executable(SideScreen WIN32 ${SOURCES} ${HEADERS})
+add_executable(SideScreen WIN32 ${SOURCES} ${HEADERS} ${RC_FILE})
 
 target_include_directories(SideScreen PRIVATE
     ${CMAKE_SOURCE_DIR}/src

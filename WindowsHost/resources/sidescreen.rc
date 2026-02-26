@@ -1,0 +1,2 @@
+// Application icon — shown in taskbar, title bar, and file explorer
+IDI_ICON1 ICON "icons/sidescreen.ico"
