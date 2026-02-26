@@ -9,26 +9,9 @@ import android.os.Process
 import android.util.Log
 import android.view.Display
 import android.view.Surface
-import java.io.File
 import java.util.concurrent.ConcurrentLinkedQueue
 
-private fun diagLog(msg: String) {
-    Log.d("VideoDecoder", msg)
-    try {
-        // Try multiple paths since /data/data may not match /data/user/0
-        for (path in listOf(
-            "/data/user/0/com.sidescreen.app/files/diag.log",
-            "/data/data/com.sidescreen.app/files/diag.log"
-        )) {
-            try {
-                val f = File(path)
-                f.parentFile?.mkdirs()
-                f.appendText("[${System.currentTimeMillis()}] $msg\n")
-                return
-            } catch (_: Exception) {}
-        }
-    } catch (_: Exception) {}
-}
+private fun diagLog(msg: String) = DiagLog.log("VD", msg)
 
 class VideoDecoder(
     private val surface: Surface,

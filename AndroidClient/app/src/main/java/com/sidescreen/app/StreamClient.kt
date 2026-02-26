@@ -10,7 +10,6 @@ import kotlinx.coroutines.withContext
 import java.io.DataInputStream
 import java.io.IOException
 import java.net.Socket
-import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.Executors
@@ -33,6 +32,7 @@ class StreamClient(
 
     private var bytesReceived = 0L
     private var framesReceived = 0L
+    private var diagFrameCount = 0L
     private var lastStatsTime = System.currentTimeMillis()
 
     // Buffer pooling to reduce GC pressure from per-frame allocations
@@ -132,12 +132,12 @@ class StreamClient(
 
                             // Capture timestamp after full frame received for accurate age tracking
                             val receiveTimestamp = System.nanoTime()
-                            framesReceived++
-                            if (framesReceived == 1L) {
+                            diagFrameCount++
+                            if (diagFrameCount == 1L) {
                                 diagLog("First video frame: size=$frameSize, callback=${onFrameReceived != null}")
                             }
-                            if (framesReceived % 60L == 0L) {
-                                diagLog("Frames received: $framesReceived")
+                            if (diagFrameCount % 60L == 0L) {
+                                diagLog("Frames received: $diagFrameCount")
                             }
                             onFrameReceived?.invoke(frameData, frameSize, receiveTimestamp)
                             updateStats(frameSize)
@@ -280,22 +280,7 @@ class StreamClient(
         socket = null
     }
 
-    private fun diagLog(msg: String) {
-        Log.d(TAG, msg)
-        try {
-            for (path in listOf(
-                "/data/user/0/com.sidescreen.app/files/diag.log",
-                "/data/data/com.sidescreen.app/files/diag.log"
-            )) {
-                try {
-                    val f = File(path)
-                    f.parentFile?.mkdirs()
-                    f.appendText("[${System.currentTimeMillis()}] SC: $msg\n")
-                    return
-                } catch (_: Exception) {}
-            }
-        } catch (_: Exception) {}
-    }
+    private fun diagLog(msg: String) = DiagLog.log("SC", msg)
 
     companion object {
         private const val TAG = "StreamClient"

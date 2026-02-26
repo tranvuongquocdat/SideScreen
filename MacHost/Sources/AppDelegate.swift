@@ -317,11 +317,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let response = alert.runModal()
         if response == .alertFirstButtonReturn {
-            if isMacOS26 {
-                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
-            } else {
-                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
-            }
+            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
         }
     }
 

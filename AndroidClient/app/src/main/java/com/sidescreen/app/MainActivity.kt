@@ -33,17 +33,10 @@ import com.google.android.material.switchmaterial.SwitchMaterial
 import com.sidescreen.app.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.io.File
 import java.net.InetSocketAddress
 import java.net.Socket
 
-private fun mainDiag(msg: String) {
-    try {
-        val f = File("/data/user/0/com.sidescreen.app/files/diag.log")
-        f.parentFile?.mkdirs()
-        f.appendText("[${System.currentTimeMillis()}] MA: $msg\n")
-    } catch (_: Exception) {}
-}
+private fun mainDiag(msg: String) = DiagLog.log("MA", msg)
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -73,6 +66,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        DiagLog.init(applicationContext)
         prefs = PreferencesManager(this)
 
         // Allow rotation based on device sensor when not connected
@@ -797,7 +791,12 @@ class MainActivity : AppCompatActivity() {
                         val holder = currentSurfaceHolder
                         if (holder != null && holder.surface.isValid) {
                             mainDiag("Display config arrived, initializing decoder ${width}x$height")
-                            runOnUiThread { initializeDecoder(holder) }
+                            runOnUiThread {
+                                // Re-check under UI thread to prevent race with surfaceChanged
+                                if (videoDecoder == null) {
+                                    initializeDecoder(holder)
+                                }
+                            }
                         } else {
                             mainDiag("Display config arrived but no valid surface yet")
                         }

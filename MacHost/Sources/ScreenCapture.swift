@@ -5,6 +5,7 @@ import CoreMedia
 import CoreGraphics
 import CoreVideo
 import IOSurface
+import os
 
 // MARK: - SCStreamDelegate
 
@@ -29,15 +30,21 @@ class ScreenCapture {
     private var virtualDisplayID: CGDirectDisplayID?
     private var refreshRate: Int = 60
 
-    // Continuous frame-flow monitor
-    private var lastFrameTime: DispatchTime?
+    // Thread-safe state for cross-thread access (frame output queue + main queue)
+    private let stateLock = OSAllocatedUnfairLock(initialState: FrameMonitorState())
+
+    private struct FrameMonitorState {
+        var lastFrameTime: DispatchTime?
+        var hasReceivedFirstFrame = false
+        var fallbackActive = false
+    }
+
+    // Main-thread-only state
     private var frameMonitorTimer: DispatchSourceTimer?
-    private var hasReceivedFirstFrame = false
     private var restartAttempted = false
 
     // CGDisplayStream fallback
     private var cgDisplayStream: CGDisplayStream?
-    private var fallbackActive = false
 
     // Streaming parameters (saved for restart)
     private weak var currentServer: StreamingServer?
@@ -45,6 +52,11 @@ class ScreenCapture {
     private var currentQuality: String = "medium"
     private var currentGamingBoost: Bool = false
     private var currentFrameRate: Int = 60
+
+    // Encoding pipeline state (captured by frame handler closure)
+    private var encodeQueue: DispatchQueue?
+    private var pendingEncodes: Int32 = 0
+    private var lastPixelBuffer: CVPixelBuffer?
 
     /// Callback when capture method changes (e.g. SCStream → CGDisplayStream fallback)
     var onCaptureMethodChanged: ((String) -> Void)?
@@ -141,7 +153,8 @@ class ScreenCapture {
         delegate.onStreamError = { [weak self] error in
             guard let self = self else { return }
             debugLog("StreamDelegate error callback — attempting fallback")
-            if !self.fallbackActive {
+            let alreadyActive = self.stateLock.withLock { $0.fallbackActive }
+            if !alreadyActive {
                 self.attemptFallbackCapture()
             }
         }
@@ -167,6 +180,57 @@ class ScreenCapture {
         debugLog("Stream configured: \(width)x\(height) @ \(fps)fps (with delegate)")
     }
 
+    // MARK: - Shared frame handler (used by both startStreaming and restartStream)
+
+    private func configureFrameHandler(label: String) {
+        let queue = DispatchQueue(label: "encodeQueue.\(label)", qos: .userInteractive)
+        encodeQueue = queue
+        pendingEncodes = 0
+        lastPixelBuffer = nil
+
+        streamOutput?.onFrameReceived = { [weak self] sampleBuffer in
+            guard let self = self else { return }
+
+            // Thread-safe update of frame monitor state
+            let isFirst = self.stateLock.withLock { state -> Bool in
+                state.lastFrameTime = DispatchTime.now()
+                if !state.hasReceivedFirstFrame {
+                    state.hasReceivedFirstFrame = true
+                    return true
+                }
+                return false
+            }
+
+            if isFirst {
+                debugLog("First frame received from SCStream (\(label))")
+                self.onCaptureMethodChanged?("SCStream")
+            }
+
+            let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+
+            // Backpressure: skip if encode queue already has 2+ frames pending
+            let pending = OSAtomicAdd32(0, &self.pendingEncodes)
+            if pending >= 2 {
+                return
+            }
+
+            if let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
+                self.lastPixelBuffer = imageBuffer
+                OSAtomicIncrement32(&self.pendingEncodes)
+                queue.async {
+                    self.encoder?.encode(pixelBuffer: imageBuffer, presentationTimeStamp: pts)
+                    OSAtomicDecrement32(&self.pendingEncodes)
+                }
+            } else if let cached = self.lastPixelBuffer {
+                OSAtomicIncrement32(&self.pendingEncodes)
+                queue.async {
+                    self.encoder?.encode(pixelBuffer: cached, presentationTimeStamp: pts)
+                    OSAtomicDecrement32(&self.pendingEncodes)
+                }
+            }
+        }
+    }
+
     // MARK: - Start streaming
 
     func startStreaming(to server: StreamingServer?, bitrateMbps: Int = 20, quality: String = "medium", gamingBoost: Bool = false, frameRate: Int = 60) {
@@ -185,56 +249,13 @@ class ScreenCapture {
             server?.sendFrame(data, timestamp: timestamp, isKeyframe: isKeyframe)
         }
 
-        let encodeQueue = DispatchQueue(label: "encodeQueue", qos: .userInteractive)
-
-        // Encode queue depth limit — drop frames if encoder falls behind
-        var pendingEncodes: Int32 = 0
-
-        // Cache last valid pixel buffer for re-encoding when SCStream sends idle frames
-        var lastPixelBuffer: CVPixelBuffer?
-
         // Reset frame monitor state
-        lastFrameTime = nil
-        hasReceivedFirstFrame = false
-
-        streamOutput?.onFrameReceived = { [weak self] sampleBuffer in
-            guard let self = self else { return }
-
-            // Update frame timestamp on every frame for flow monitor
-            self.lastFrameTime = DispatchTime.now()
-
-            if !self.hasReceivedFirstFrame {
-                self.hasReceivedFirstFrame = true
-                debugLog("First frame received from SCStream")
-                self.onCaptureMethodChanged?("SCStream")
-            }
-
-            let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-
-            // Backpressure: skip if encode queue already has 2+ frames pending
-            let pending = OSAtomicAdd32(0, &pendingEncodes)
-            if pending >= 2 {
-                return
-            }
-
-            if let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
-                // Pass IOSurface-backed buffer directly to encoder — no copy needed.
-                // VTCompressionSession retains the pixel buffer during encoding.
-                // queueDepth=4 ensures SCStream has spare slots while encoder holds buffers.
-                lastPixelBuffer = imageBuffer
-                OSAtomicIncrement32(&pendingEncodes)
-                encodeQueue.async {
-                    self.encoder?.encode(pixelBuffer: imageBuffer, presentationTimeStamp: pts)
-                    OSAtomicDecrement32(&pendingEncodes)
-                }
-            } else if let cached = lastPixelBuffer {
-                OSAtomicIncrement32(&pendingEncodes)
-                encodeQueue.async {
-                    self.encoder?.encode(pixelBuffer: cached, presentationTimeStamp: pts)
-                    OSAtomicDecrement32(&pendingEncodes)
-                }
-            }
+        stateLock.withLock { state in
+            state.lastFrameTime = nil
+            state.hasReceivedFirstFrame = false
         }
+
+        configureFrameHandler(label: "initial")
 
         Task {
             do {
@@ -257,13 +278,17 @@ class ScreenCapture {
         let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.main)
         timer.schedule(deadline: .now() + 3.0, repeating: 3.0)
         timer.setEventHandler { [weak self] in
-            guard let self = self, !self.fallbackActive else {
-                self?.stopFrameMonitor()
+            guard let self = self else { return }
+
+            let isFallback = self.stateLock.withLock { $0.fallbackActive }
+            guard !isFallback else {
+                self.stopFrameMonitor()
                 return
             }
 
             let stalled: Bool
-            if let last = self.lastFrameTime {
+            let lastTime = self.stateLock.withLock { $0.lastFrameTime }
+            if let last = lastTime {
                 let elapsed = Double(DispatchTime.now().uptimeNanoseconds - last.uptimeNanoseconds) / 1_000_000_000
                 stalled = elapsed > 5.0
                 if stalled {
@@ -298,7 +323,7 @@ class ScreenCapture {
 
     private func restartStream() {
         restartAttempted = true
-        hasReceivedFirstFrame = false
+        stateLock.withLock { $0.hasReceivedFirstFrame = false }
 
         Task {
             do {
@@ -313,41 +338,8 @@ class ScreenCapture {
                 try await setupDisplay()
                 try await setupStream()
 
-                // Re-attach encoding pipeline
-                let encodeQueue = DispatchQueue(label: "encodeQueue.restart", qos: .userInteractive)
-                var pendingEncodes: Int32 = 0
-                var lastPixelBuffer: CVPixelBuffer?
-
-                streamOutput?.onFrameReceived = { [weak self] sampleBuffer in
-                    guard let self = self else { return }
-
-                    self.lastFrameTime = DispatchTime.now()
-
-                    if !self.hasReceivedFirstFrame {
-                        self.hasReceivedFirstFrame = true
-                        debugLog("First frame received after SCStream restart")
-                        self.onCaptureMethodChanged?("SCStream")
-                    }
-
-                    let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-                    let pending = OSAtomicAdd32(0, &pendingEncodes)
-                    if pending >= 2 { return }
-
-                    if let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
-                        lastPixelBuffer = imageBuffer
-                        OSAtomicIncrement32(&pendingEncodes)
-                        encodeQueue.async {
-                            self.encoder?.encode(pixelBuffer: imageBuffer, presentationTimeStamp: pts)
-                            OSAtomicDecrement32(&pendingEncodes)
-                        }
-                    } else if let cached = lastPixelBuffer {
-                        OSAtomicIncrement32(&pendingEncodes)
-                        encodeQueue.async {
-                            self.encoder?.encode(pixelBuffer: cached, presentationTimeStamp: pts)
-                            OSAtomicDecrement32(&pendingEncodes)
-                        }
-                    }
-                }
+                // Re-attach encoding pipeline using shared handler
+                configureFrameHandler(label: "restart")
 
                 try await stream?.startCapture()
                 debugLog("SCStream restarted — starting frame flow monitor")
@@ -362,13 +354,24 @@ class ScreenCapture {
     // MARK: - CGDisplayStream fallback
 
     private func attemptFallbackCapture() {
-        guard let displayID = virtualDisplayID, !fallbackActive else {
-            debugLog("Fallback skipped — no displayID or already active")
+        guard let displayID = virtualDisplayID else {
+            debugLog("Fallback skipped — no displayID")
             return
         }
-        fallbackActive = true
 
-        // Stop SCStream if still running
+        // Thread-safe check-and-set for fallbackActive
+        let alreadyActive = stateLock.withLock { state -> Bool in
+            if state.fallbackActive { return true }
+            state.fallbackActive = true
+            return false
+        }
+        guard !alreadyActive else {
+            debugLog("Fallback skipped — already active")
+            return
+        }
+
+        // Stop SCStream synchronously (nil out output first to prevent new frames)
+        streamOutput?.onFrameReceived = nil
         Task {
             try? await stream?.stopCapture()
             stream = nil
@@ -407,12 +410,13 @@ class ScreenCapture {
 
                 guard cvReturn == kCVReturnSuccess, let pb = unmanagedPB?.takeRetainedValue() else { return }
 
-                let pts = CMTime(value: CMTimeValue(displayTime), timescale: 1_000_000_000)
+                // Use CMClock for accurate timestamps instead of raw Mach time
+                let pts = CMClockGetTime(CMClockGetHostTimeClock())
                 self.encoder?.encode(pixelBuffer: pb, presentationTimeStamp: pts)
             }
         ) else {
             debugLog("Failed to create CGDisplayStream — fallback unavailable")
-            fallbackActive = false
+            stateLock.withLock { $0.fallbackActive = false }
             return
         }
 
@@ -423,7 +427,7 @@ class ScreenCapture {
             onCaptureMethodChanged?("CGDisplayStream (fallback)")
         } else {
             debugLog("CGDisplayStream.start() failed: \(startResult)")
-            fallbackActive = false
+            stateLock.withLock { $0.fallbackActive = false }
         }
     }
 
@@ -449,16 +453,19 @@ class ScreenCapture {
         }
 
         // Stop CGDisplayStream fallback
-        if fallbackActive {
+        let wasFallback = stateLock.withLock { $0.fallbackActive }
+        if wasFallback {
             cgDisplayStream?.stop()
             cgDisplayStream = nil
-            fallbackActive = false
             debugLog("CGDisplayStream fallback stopped")
         }
 
         // Reset state
-        lastFrameTime = nil
-        hasReceivedFirstFrame = false
+        stateLock.withLock { state in
+            state.lastFrameTime = nil
+            state.hasReceivedFirstFrame = false
+            state.fallbackActive = false
+        }
         restartAttempted = false
     }
 }
