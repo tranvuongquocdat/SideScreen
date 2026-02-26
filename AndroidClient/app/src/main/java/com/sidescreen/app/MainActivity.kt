@@ -44,8 +44,8 @@ class MainActivity : AppCompatActivity() {
     private var videoDecoder: VideoDecoder? = null
     private var streamClient: StreamClient? = null
     private var currentSurfaceHolder: SurfaceHolder? = null
-    private var displayWidth = 0   // 0 = no config received yet
-    private var displayHeight = 0  // 0 = no config received yet
+    private var displayWidth = 0 // 0 = no config received yet
+    private var displayHeight = 0 // 0 = no config received yet
     private var displayRotation = 0 // 0, 90, 180, 270 degrees
     private var wakeLock: PowerManager.WakeLock? = null
     private var pingJob: kotlinx.coroutines.Job? = null
@@ -660,7 +660,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initializeDecoder(holder: SurfaceHolder) {
-        mainDiag("initializeDecoder called, surface=${holder.surface}, valid=${holder.surface.isValid}, res=${displayWidth}x$displayHeight")
+        mainDiag(
+            "initializeDecoder called, surface=${holder.surface}, " +
+                "valid=${holder.surface.isValid}, res=${displayWidth}x$displayHeight",
+        )
         if (displayWidth <= 0 || displayHeight <= 0) {
             mainDiag("initializeDecoder skipped — no display config yet")
             return

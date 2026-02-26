@@ -21,7 +21,10 @@ object DiagLog {
         logFile = File(context.filesDir, LOG_FILE)
     }
 
-    fun log(tag: String, msg: String) {
+    fun log(
+        tag: String,
+        msg: String,
+    ) {
         Log.d(tag, msg)
         val f = logFile ?: return
         try {
@@ -32,6 +35,7 @@ object DiagLog {
                 f.renameTo(backup)
             }
             f.appendText("[${System.currentTimeMillis()}] $tag: $msg\n")
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+        }
     }
 }

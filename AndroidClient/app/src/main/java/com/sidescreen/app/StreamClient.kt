@@ -160,7 +160,10 @@ class StreamClient(
                         }
 
                         else -> {
-                            Log.e(TAG, "Unknown message type: ${type.toInt()}, stream may be misaligned — disconnecting")
+                            Log.e(
+                                TAG,
+                                "Unknown message type: ${type.toInt()}, stream may be misaligned — disconnecting",
+                            )
                             break
                         }
                     }

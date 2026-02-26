@@ -69,11 +69,12 @@ class VideoDecoder(
         val decoderName = findBestDecoder(currentWidth, currentHeight)
         diagLog("setupDecoder: ${currentWidth}x$currentHeight, decoder=$decoderName")
 
-        val codec = if (decoderName != null) {
-            MediaCodec.createByCodecName(decoderName)
-        } else {
-            MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_HEVC)
-        }
+        val codec =
+            if (decoderName != null) {
+                MediaCodec.createByCodecName(decoderName)
+            } else {
+                MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_HEVC)
+            }
 
         val callback =
             object : MediaCodec.Callback() {
@@ -181,7 +182,10 @@ class VideoDecoder(
         isRunning = true
         codec.start()
         decoder = codec
-        diagLog("Decoder started: ${currentWidth}x$currentHeight @ ${displayRefreshRate}Hz, surface=$surface, valid=${surface.isValid}")
+        diagLog(
+            "Decoder started: ${currentWidth}x$currentHeight @ ${displayRefreshRate}Hz, " +
+                "surface=$surface, valid=${surface.isValid}",
+        )
     }
 
     /**
@@ -189,7 +193,10 @@ class VideoDecoder(
      * Prefers hardware decoders, falls back to software if HW can't handle the resolution.
      * Returns codec name to use with MediaCodec.createByCodecName(), or null for default.
      */
-    private fun findBestDecoder(width: Int, height: Int): String? {
+    private fun findBestDecoder(
+        width: Int,
+        height: Int,
+    ): String? {
         try {
             val codecList = MediaCodecList(MediaCodecList.ALL_CODECS)
             var hwDecoder: String? = null
@@ -197,19 +204,25 @@ class VideoDecoder(
 
             for (info in codecList.codecInfos) {
                 if (info.isEncoder) continue
-                val caps = try {
-                    info.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_HEVC)
-                } catch (_: Exception) { continue }
+                val caps =
+                    try {
+                        info.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_HEVC)
+                    } catch (_: Exception) {
+                        continue
+                    }
 
                 val videoCaps = caps.videoCapabilities ?: continue
-                val isHardware = !info.name.startsWith("c2.android.") &&
-                    !info.name.startsWith("OMX.google.")
+                val isHardware =
+                    !info.name.startsWith("c2.android.") &&
+                        !info.name.startsWith("OMX.google.")
                 val supported = videoCaps.isSizeSupported(width, height)
 
-                diagLog("HEVC decoder '${info.name}': " +
-                    "width=${videoCaps.supportedWidths}, " +
-                    "height=${videoCaps.supportedHeights}, " +
-                    "hw=$isHardware, supports ${width}x$height=$supported")
+                diagLog(
+                    "HEVC decoder '${info.name}': " +
+                        "width=${videoCaps.supportedWidths}, " +
+                        "height=${videoCaps.supportedHeights}, " +
+                        "hw=$isHardware, supports ${width}x$height=$supported",
+                )
 
                 if (supported) {
                     if (isHardware && hwDecoder == null) {
@@ -247,11 +260,19 @@ class VideoDecoder(
 
         inputFrameCount++
         if (inputFrameCount == 1L) {
-            val header = frameData.take(minOf(16, frameSize)).joinToString(" ") { String.format("%02x", it) }
-            diagLog("First frame: size=$frameSize, header=[$header], surface=$surface, valid=${surface.isValid}")
+            val header =
+                frameData.take(minOf(16, frameSize))
+                    .joinToString(" ") { String.format("%02x", it) }
+            diagLog(
+                "First frame: size=$frameSize, header=[$header], " +
+                    "surface=$surface, valid=${surface.isValid}",
+            )
         }
         if (inputFrameCount % 60L == 0L) {
-            diagLog("Decode stats: input=$inputFrameCount, output=$outputFrameCount, dropped=$droppedFrames, availBufs=${availableInputBuffers.size}")
+            diagLog(
+                "Decode stats: input=$inputFrameCount, output=$outputFrameCount, " +
+                    "dropped=$droppedFrames, availBufs=${availableInputBuffers.size}",
+            )
         }
 
         // Direct feed: grab an available input buffer and queue immediately

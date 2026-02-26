@@ -150,7 +150,7 @@ class ScreenCapture {
         streamOutput = StreamOutput()
 
         let delegate = StreamDelegate()
-        delegate.onStreamError = { [weak self] error in
+        delegate.onStreamError = { [weak self] _ in
             guard let self = self else { return }
             debugLog("StreamDelegate error callback — attempting fallback")
             let alreadyActive = self.stateLock.withLock { $0.fallbackActive }
@@ -394,7 +394,7 @@ class ScreenCapture {
             pixelFormat: pixelFormat,
             properties: nil,
             queue: queue,
-            handler: { [weak self] status, displayTime, frameSurface, updateRef in
+            handler: { [weak self] _, _, frameSurface, _ in
                 guard let self = self, let surface = frameSurface else { return }
 
                 var unmanagedPB: Unmanaged<CVPixelBuffer>?
