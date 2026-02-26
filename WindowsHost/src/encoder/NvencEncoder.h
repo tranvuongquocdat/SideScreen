@@ -3,6 +3,11 @@
 #include "VideoEncoder.h"
 #include <vector>
 #include <cstdint>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
+#include <queue>
 
 // We load the NVENC API at runtime — only need the header types at compile time.
 // The CMakeLists.txt optionally provides the SDK path; if not available we define
@@ -363,6 +368,12 @@ public:
 private:
     void destroy();
 
+    /// Encode thread function — processes queued frames off the capture thread.
+    void encodeThreadFunc();
+
+    /// Perform the actual NVENC encode (called on encode thread).
+    bool encodeInternal(int stagingIdx, uint64_t timestampNs);
+
     // DLL / API
     HMODULE                     m_nvencLib   = nullptr;
     NV_ENCODE_API_FUNCTION_LIST m_nvenc      = {};
@@ -371,13 +382,24 @@ private:
     // D3D11 device (not owned)
     ID3D11Device*               m_device     = nullptr;
 
-    // Resources
-    void*  m_registeredResource = nullptr;
-    void*  m_bitstreamBuffer    = nullptr;
+    // Resources — double-buffered staging textures so capture can copy to
+    // texture[next] while NVENC encodes from texture[current].
+    static constexpr int kNumStaging = 2;
+    ID3D11Texture2D*  m_stagingTextures[kNumStaging] = { nullptr, nullptr };
+    void*             m_registeredResources[kNumStaging] = { nullptr, nullptr };
+    void*             m_bitstreamBuffers[kNumStaging]    = { nullptr, nullptr };
+    int               m_stagingWrite = 0;  // index capture thread writes to
 
-    // Staging texture (owned) — we copy the input texture here so NVENC can
-    // read from it even if the caller reuses the original.
-    ID3D11Texture2D*            m_stagingTexture = nullptr;
+    // Encode thread
+    std::thread              m_encodeThread;
+    std::mutex               m_encodeMutex;
+    std::condition_variable  m_encodeCV;
+    struct EncodeJob {
+        int stagingIdx;
+        uint64_t timestampNs;
+    };
+    std::queue<EncodeJob>    m_encodeQueue;
+    std::atomic<bool>        m_encodeRunning{false};
 
     // Encode config (kept for reconfigure)
     NV_ENC_INITIALIZE_PARAMS    m_initParams = {};

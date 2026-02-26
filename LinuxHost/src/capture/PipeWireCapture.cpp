@@ -332,36 +332,28 @@ void PipeWireCapture::handleProcess() {
     int h = m_height.load(std::memory_order_relaxed);
     int stride = m_stride;
 
-    // Timestamp: use PipeWire buffer timestamp if available, else monotonic clock
-    uint64_t tsNs = 0;
-    if (buf->datas[0].chunk && buf->datas[0].chunk->offset == 0) {
-        // Use monotonic clock as fallback
-        auto now = std::chrono::steady_clock::now();
-        tsNs = static_cast<uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(
-                now.time_since_epoch()).count());
-    } else {
-        auto now = std::chrono::steady_clock::now();
-        tsNs = static_cast<uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(
-                now.time_since_epoch()).count());
+    // Timestamp: monotonic clock
+    auto now = std::chrono::steady_clock::now();
+    uint64_t tsNs = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            now.time_since_epoch()).count());
+
+    // Deliver to callback directly from PipeWire buffer (zero-copy hot path).
+    // The PipeWire buffer is valid until we call pw_stream_queue_buffer().
+    {
+        std::lock_guard<std::mutex> lock(m_callbackMutex);
+        if (m_callback) {
+            m_callback(data, w, h, stride, tsNs);
+        }
     }
 
-    // Save last frame for idle re-send
+    // Save last frame for idle re-send (only copy needed for resend path)
     {
         std::lock_guard<std::mutex> lock(m_lastFrameMutex);
         size_t frameSize = static_cast<size_t>(stride * h);
         m_lastFrame.resize(frameSize);
         std::memcpy(m_lastFrame.data(), data, frameSize);
         m_lastFrameTs.store(tsNs, std::memory_order_release);
-    }
-
-    // Deliver to callback
-    {
-        std::lock_guard<std::mutex> lock(m_callbackMutex);
-        if (m_callback) {
-            m_callback(data, w, h, stride, tsNs);
-        }
     }
 
     pw_stream_queue_buffer(m_stream, pwBuf);

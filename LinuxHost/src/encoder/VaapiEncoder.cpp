@@ -198,7 +198,8 @@ bool VaapiEncoder::initialize(int width, int height, int fps, int bitrateMbps)
     }
 
     // --- 5. Create surfaces ---
-    // Source surface (NV12, where we upload pixels)
+    // Double-buffered source surfaces (NV12): upload to surface[cur] while
+    // GPU encodes from surface[prev], eliminating vaSyncSurface stall.
     VASurfaceAttrib surfAttrib = {};
     surfAttrib.type            = VASurfaceAttribPixelFormat;
     surfAttrib.flags           = VA_SURFACE_ATTRIB_SETTABLE;
@@ -206,7 +207,7 @@ bool VaapiEncoder::initialize(int width, int height, int fps, int bitrateMbps)
     surfAttrib.value.value.i   = VA_FOURCC_NV12;
 
     st = vaCreateSurfaces(m_vaDisplay, VA_RT_FORMAT_YUV420,
-                          width, height, &m_srcSurface, 1,
+                          width, height, m_srcSurfaces, kNumBuffers,
                           &surfAttrib, 1);
     if (st != VA_STATUS_SUCCESS) {
         printf("[VA-API] vaCreateSurfaces (src) failed: %s\n", vaErrorStr(st));
@@ -225,27 +226,34 @@ bool VaapiEncoder::initialize(int width, int height, int fps, int bitrateMbps)
     }
 
     // --- 6. Create context ---
-    VASurfaceID surfaces[] = { m_srcSurface, m_recSurface };
+    // All source surfaces + rec surface must be in the context
+    VASurfaceID allSurfaces[kNumBuffers + 1];
+    for (int i = 0; i < kNumBuffers; ++i) allSurfaces[i] = m_srcSurfaces[i];
+    allSurfaces[kNumBuffers] = m_recSurface;
     st = vaCreateContext(m_vaDisplay, m_vaConfig,
                          width, height, VA_PROGRESSIVE,
-                         surfaces, 2, &m_vaContext);
+                         allSurfaces, kNumBuffers + 1, &m_vaContext);
     if (st != VA_STATUS_SUCCESS) {
         printf("[VA-API] vaCreateContext failed: %s\n", vaErrorStr(st));
         destroy();
         return false;
     }
 
-    // --- 7. Create coded buffer ---
+    // --- 7. Create double-buffered coded buffers ---
     // Size: generous upper bound for one intra frame
     int codedBufSize = width * height * 2;
-    st = vaCreateBuffer(m_vaDisplay, m_vaContext,
-                        VAEncCodedBufferType, codedBufSize, 1,
-                        nullptr, &m_codedBuf);
-    if (st != VA_STATUS_SUCCESS) {
-        printf("[VA-API] vaCreateBuffer (coded) failed: %s\n", vaErrorStr(st));
-        destroy();
-        return false;
+    for (int i = 0; i < kNumBuffers; ++i) {
+        st = vaCreateBuffer(m_vaDisplay, m_vaContext,
+                            VAEncCodedBufferType, codedBufSize, 1,
+                            nullptr, &m_codedBufs[i]);
+        if (st != VA_STATUS_SUCCESS) {
+            printf("[VA-API] vaCreateBuffer (coded %d) failed: %s\n", i, vaErrorStr(st));
+            destroy();
+            return false;
+        }
     }
+    m_curBuf = 0;
+    m_prevPending = false;
 
     // --- 8. Build sequence parameters ---
     memset(&m_seqParam, 0, sizeof(m_seqParam));
@@ -299,7 +307,7 @@ bool VaapiEncoder::uploadFrame(const uint8_t* pixelData, int width,
                                int height, int stride)
 {
     VAImage vaImage = {};
-    VAStatus st = vaDeriveImage(m_vaDisplay, m_srcSurface, &vaImage);
+    VAStatus st = vaDeriveImage(m_vaDisplay, m_srcSurfaces[m_curBuf], &vaImage);
     if (st != VA_STATUS_SUCCESS) {
         printf("[VA-API] vaDeriveImage failed: %s\n", vaErrorStr(st));
         return false;
@@ -478,8 +486,28 @@ bool VaapiEncoder::executeEncode(uint64_t timestampNs)
         }
     }
 
-    // --- Begin picture / render / end picture ---
-    st = vaBeginPicture(m_vaDisplay, m_vaContext, m_srcSurface);
+    // --- Pipeline: sync+readout PREVIOUS frame while we submit CURRENT ---
+    // This overlaps GPU encode of frame N-1 with CPU upload of frame N,
+    // eliminating the vaSyncSurface stall from the critical path.
+    int prevBuf = 1 - m_curBuf;
+
+    if (m_prevPending) {
+        // Wait for previous frame's encode to finish
+        st = vaSyncSurface(m_vaDisplay, m_srcSurfaces[prevBuf]);
+        if (st != VA_STATUS_SUCCESS) {
+            printf("[VA-API] vaSyncSurface (prev) failed: %s\n", vaErrorStr(st));
+            // Non-fatal: continue to submit current frame
+        } else {
+            // Read out previous frame's bitstream
+            readoutBitstream(m_codedBufs[prevBuf], m_prevTimestampNs);
+        }
+        m_prevPending = false;
+    }
+
+    // --- Begin picture / render / end picture (current frame) ---
+    picParam.coded_buf = m_codedBufs[m_curBuf];
+
+    st = vaBeginPicture(m_vaDisplay, m_vaContext, m_srcSurfaces[m_curBuf]);
     if (st != VA_STATUS_SUCCESS) {
         printf("[VA-API] vaBeginPicture failed: %s\n", vaErrorStr(st));
         for (auto b : buffers) vaDestroyBuffer(m_vaDisplay, b);
@@ -500,50 +528,49 @@ bool VaapiEncoder::executeEncode(uint64_t timestampNs)
         return false;
     }
 
-    // --- Sync and extract bitstream ---
-    st = vaSyncSurface(m_vaDisplay, m_srcSurface);
-    if (st != VA_STATUS_SUCCESS) {
-        printf("[VA-API] vaSyncSurface failed: %s\n", vaErrorStr(st));
-        return false;
-    }
+    // Mark current buffer as pending, save timestamp for readout later
+    m_prevPending = true;
+    m_prevTimestampNs = timestampNs;
 
+    // Swap buffer index for next frame
+    m_curBuf = 1 - m_curBuf;
+
+    m_frameIndex++;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// readoutBitstream — extract encoded data from a coded buffer and deliver
+// ---------------------------------------------------------------------------
+void VaapiEncoder::readoutBitstream(VABufferID codedBuf, uint64_t timestampNs)
+{
     VACodedBufferSegment* segment = nullptr;
-    st = vaMapBuffer(m_vaDisplay, m_codedBuf, reinterpret_cast<void**>(&segment));
+    VAStatus st = vaMapBuffer(m_vaDisplay, codedBuf, reinterpret_cast<void**>(&segment));
     if (st != VA_STATUS_SUCCESS) {
         printf("[VA-API] vaMapBuffer (coded) failed: %s\n", vaErrorStr(st));
-        return false;
+        return;
     }
 
-    // Collect all coded segments and deliver as Annex-B
-    // VA-API HEVC encoder typically outputs Annex-B format already.
-    // We prepend VPS/SPS/PPS (from parameter sets) on every IDR frame.
     std::vector<uint8_t> output;
-
-    // Since every frame is IDR, always prepend parameter sets
-    // Note: some VA-API drivers include VPS/SPS/PPS automatically.
-    // We check if the output already starts with VPS NAL (nal_unit_type=32).
     bool needParamSets = true;
 
     while (segment) {
         auto* data = static_cast<const uint8_t*>(segment->buf);
         size_t size = segment->size;
 
-        // Check if data already contains VPS (NAL type 32 = 0x40 in first byte after start code)
+        // Check if data already contains VPS (NAL type 32)
         if (size >= 5 && data[0] == 0x00 && data[1] == 0x00 &&
             data[2] == 0x00 && data[3] == 0x01) {
             uint8_t nalType = (data[4] >> 1) & 0x3F;
-            if (nalType == 32) { // VPS
-                needParamSets = false;
-            }
+            if (nalType == 32) needParamSets = false;
         }
 
         output.insert(output.end(), data, data + size);
         segment = reinterpret_cast<VACodedBufferSegment*>(segment->next);
     }
 
-    vaUnmapBuffer(m_vaDisplay, m_codedBuf);
+    vaUnmapBuffer(m_vaDisplay, codedBuf);
 
-    // If the driver didn't include parameter sets, prepend them
     if (needParamSets && !m_parameterSets.empty()) {
         std::vector<uint8_t> combined;
         combined.reserve(m_parameterSets.size() + output.size());
@@ -552,17 +579,13 @@ bool VaapiEncoder::executeEncode(uint64_t timestampNs)
         output = std::move(combined);
     }
 
-    // On first frame, cache parameter sets from driver output for future use
-    if (m_frameIndex == 0 && needParamSets == false && m_parameterSets.empty()) {
+    if (m_parameterSets.empty() && !needParamSets) {
         buildParameterSets(output);
     }
 
     if (!output.empty()) {
         deliverOutput(output.data(), output.size(), timestampNs, true /* always IDR */);
     }
-
-    m_frameIndex++;
-    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -668,9 +691,15 @@ void VaapiEncoder::flush()
 {
     if (!m_initialized) return;
 
-    // With all-intra encoding, there are no buffered frames to flush.
-    // Just sync to ensure the last frame is complete.
-    vaSyncSurface(m_vaDisplay, m_srcSurface);
+    // Drain the pending pipelined frame
+    if (m_prevPending) {
+        int prevBuf = 1 - m_curBuf;
+        VAStatus st = vaSyncSurface(m_vaDisplay, m_srcSurfaces[prevBuf]);
+        if (st == VA_STATUS_SUCCESS) {
+            readoutBitstream(m_codedBufs[prevBuf], m_prevTimestampNs);
+        }
+        m_prevPending = false;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -679,17 +708,22 @@ void VaapiEncoder::flush()
 void VaapiEncoder::destroy()
 {
     if (m_vaDisplay) {
-        if (m_codedBuf != VA_INVALID_ID) {
-            vaDestroyBuffer(m_vaDisplay, m_codedBuf);
-            m_codedBuf = VA_INVALID_ID;
+        for (int i = 0; i < kNumBuffers; ++i) {
+            if (m_codedBufs[i] != VA_INVALID_ID) {
+                vaDestroyBuffer(m_vaDisplay, m_codedBufs[i]);
+                m_codedBufs[i] = VA_INVALID_ID;
+            }
         }
         if (m_vaContext != VA_INVALID_ID) {
             vaDestroyContext(m_vaDisplay, m_vaContext);
             m_vaContext = VA_INVALID_ID;
         }
-        if (m_srcSurface != VA_INVALID_SURFACE) {
-            vaDestroySurfaces(m_vaDisplay, &m_srcSurface, 1);
-            m_srcSurface = VA_INVALID_SURFACE;
+        // Destroy double-buffered source surfaces
+        for (int i = 0; i < kNumBuffers; ++i) {
+            if (m_srcSurfaces[i] != VA_INVALID_SURFACE) {
+                vaDestroySurfaces(m_vaDisplay, &m_srcSurfaces[i], 1);
+                m_srcSurfaces[i] = VA_INVALID_SURFACE;
+            }
         }
         if (m_recSurface != VA_INVALID_SURFACE) {
             vaDestroySurfaces(m_vaDisplay, &m_recSurface, 1);

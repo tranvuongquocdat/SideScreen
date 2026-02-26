@@ -46,6 +46,9 @@ private:
     /// Execute encode and extract Annex-B bitstream.
     bool executeEncode(uint64_t timestampNs);
 
+    /// Read out encoded bitstream from a coded buffer and deliver to output.
+    void readoutBitstream(VABufferID codedBuf, uint64_t timestampNs);
+
     // DRM file descriptor
     int m_drmFd = -1;
 
@@ -53,9 +56,17 @@ private:
     VADisplay   m_vaDisplay  = nullptr;
     VAConfigID  m_vaConfig   = VA_INVALID_ID;
     VAContextID m_vaContext  = VA_INVALID_ID;
-    VASurfaceID m_srcSurface = VA_INVALID_SURFACE;
+
+    // Double-buffered surfaces: upload frame N to surface[cur] while
+    // GPU encodes frame N-1 from surface[prev], eliminating vaSyncSurface stall.
+    static constexpr int kNumBuffers = 2;
+    VASurfaceID m_srcSurfaces[kNumBuffers] = { VA_INVALID_SURFACE, VA_INVALID_SURFACE };
+    VABufferID  m_codedBufs[kNumBuffers]   = { VA_INVALID_ID, VA_INVALID_ID };
+    int         m_curBuf = 0;       // index of surface being uploaded to
+    bool        m_prevPending = false; // true if previous frame needs sync+readout
+    uint64_t    m_prevTimestampNs = 0; // timestamp of the pending previous frame
+
     VASurfaceID m_recSurface = VA_INVALID_SURFACE;  // reconstructed (reference)
-    VABufferID  m_codedBuf   = VA_INVALID_ID;
 
     // Parameter set NALUs (Annex-B, prepended to every frame)
     std::vector<uint8_t> m_parameterSets;

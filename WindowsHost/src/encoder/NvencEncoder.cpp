@@ -183,8 +183,10 @@ bool NvencEncoder::initialize(ID3D11Device* device, int width, int height,
         return false;
     }
 
-    // --- 6. Create staging texture (BGRA, same size) ---
-    {
+    // --- 6. Create double-buffered staging textures ---
+    // Capture thread copies to staging[write] while encode thread reads from
+    // staging[other], eliminating the blocking stall on the capture thread.
+    for (int i = 0; i < kNumStaging; ++i) {
         D3D11_TEXTURE2D_DESC desc = {};
         desc.Width            = static_cast<UINT>(width);
         desc.Height           = static_cast<UINT>(height);
@@ -196,51 +198,53 @@ bool NvencEncoder::initialize(ID3D11Device* device, int width, int height,
         desc.BindFlags        = 0;
         desc.MiscFlags        = 0;
 
-        HRESULT hr = device->CreateTexture2D(&desc, nullptr, &m_stagingTexture);
+        HRESULT hr = device->CreateTexture2D(&desc, nullptr, &m_stagingTextures[i]);
         if (FAILED(hr)) {
-            printf("[NVENC] CreateTexture2D staging failed: 0x%lx\n", hr);
+            printf("[NVENC] CreateTexture2D staging[%d] failed: 0x%lx\n", i, hr);
             destroy();
             return false;
         }
-    }
 
-    // --- 7. Register the staging texture with NVENC ---
-    {
+        // Register with NVENC
         NV_ENC_REGISTER_RESOURCE regRes = {};
         regRes.version            = NV_ENC_REGISTER_RESOURCE_VER;
         regRes.resourceType       = NV_ENC_INPUT_RESOURCE_TYPE_DIRECTX;
-        regRes.resourceToRegister = m_stagingTexture;
+        regRes.resourceToRegister = m_stagingTextures[i];
         regRes.width              = static_cast<uint32_t>(width);
         regRes.height             = static_cast<uint32_t>(height);
         regRes.bufferFormat       = NV_ENC_BUFFER_FORMAT_ARGB;
-        regRes.bufferUsage        = 0; // input
+        regRes.bufferUsage        = 0;
 
         st = m_nvenc.nvEncRegisterResource(m_encoder, &regRes);
         if (st != NV_ENC_SUCCESS) {
-            printf("[NVENC] RegisterResource failed: %d\n", st);
+            printf("[NVENC] RegisterResource[%d] failed: %d\n", i, st);
             destroy();
             return false;
         }
-        m_registeredResource = regRes.registeredResource;
-    }
+        m_registeredResources[i] = regRes.registeredResource;
 
-    // --- 8. Create output bitstream buffer ---
-    {
+        // Create output bitstream buffer
         NV_ENC_CREATE_BITSTREAM_BUFFER bsBuf = {};
         bsBuf.version = NV_ENC_CREATE_BITSTREAM_BUFFER_VER;
 
         st = m_nvenc.nvEncCreateBitstreamBuffer(m_encoder, &bsBuf);
         if (st != NV_ENC_SUCCESS) {
-            printf("[NVENC] CreateBitstreamBuffer failed: %d\n", st);
+            printf("[NVENC] CreateBitstreamBuffer[%d] failed: %d\n", i, st);
             destroy();
             return false;
         }
-        m_bitstreamBuffer = bsBuf.bitstreamBuffer;
+        m_bitstreamBuffers[i] = bsBuf.bitstreamBuffer;
     }
 
+    m_stagingWrite = 0;
     m_initialized = true;
     m_frameIndex  = 0;
-    printf("[NVENC] Initialized: %dx%d @ %dfps, %d Mbps, HEVC Main, all-intra\n",
+
+    // Start encode thread
+    m_encodeRunning.store(true);
+    m_encodeThread = std::thread(&NvencEncoder::encodeThreadFunc, this);
+
+    printf("[NVENC] Initialized: %dx%d @ %dfps, %d Mbps, HEVC Main, all-intra (async)\n",
            width, height, fps, bitrateMbps);
     return true;
 }
@@ -252,17 +256,60 @@ bool NvencEncoder::encode(ID3D11Texture2D* inputTexture, uint64_t timestampNs)
 {
     if (!m_initialized || !inputTexture) return false;
 
-    // Copy caller's texture into our staging texture (avoids lifetime issues)
+    // Copy caller's texture into our staging texture (fast GPU-to-GPU copy).
+    // This returns immediately; the actual copy is queued on the GPU.
+    int idx = m_stagingWrite;
     ID3D11DeviceContext* ctx = nullptr;
     m_device->GetImmediateContext(&ctx);
     if (!ctx) return false;
-    ctx->CopyResource(m_stagingTexture, inputTexture);
+    ctx->CopyResource(m_stagingTextures[idx], inputTexture);
     ctx->Release();
 
-    // Map the registered resource
+    // Advance write index for next frame
+    m_stagingWrite = (m_stagingWrite + 1) % kNumStaging;
+
+    // Enqueue for encode thread — capture thread returns immediately
+    {
+        std::lock_guard<std::mutex> lock(m_encodeMutex);
+        // Drop oldest if queue is full (backpressure)
+        if (m_encodeQueue.size() >= kNumStaging) {
+            m_encodeQueue.pop();
+        }
+        m_encodeQueue.push({ idx, timestampNs });
+    }
+    m_encodeCV.notify_one();
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// encodeThreadFunc — runs on dedicated encode thread
+// ---------------------------------------------------------------------------
+void NvencEncoder::encodeThreadFunc()
+{
+    while (m_encodeRunning.load()) {
+        EncodeJob job;
+        {
+            std::unique_lock<std::mutex> lock(m_encodeMutex);
+            m_encodeCV.wait(lock, [this] {
+                return !m_encodeQueue.empty() || !m_encodeRunning.load();
+            });
+            if (!m_encodeRunning.load() && m_encodeQueue.empty()) break;
+            job = m_encodeQueue.front();
+            m_encodeQueue.pop();
+        }
+        encodeInternal(job.stagingIdx, job.timestampNs);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// encodeInternal — actual NVENC encode (called on encode thread)
+// ---------------------------------------------------------------------------
+bool NvencEncoder::encodeInternal(int stagingIdx, uint64_t timestampNs)
+{
+    // Map the registered resource for this staging texture
     NV_ENC_MAP_INPUT_RESOURCE mapRes = {};
     mapRes.version            = NV_ENC_MAP_INPUT_RESOURCE_VER;
-    mapRes.registeredResource = m_registeredResource;
+    mapRes.registeredResource = m_registeredResources[stagingIdx];
 
     NV_ENC_STATUS st = m_nvenc.nvEncMapInputResource(m_encoder, &mapRes);
     if (st != NV_ENC_SUCCESS) {
@@ -275,18 +322,16 @@ bool NvencEncoder::encode(ID3D11Texture2D* inputTexture, uint64_t timestampNs)
     picParams.version        = NV_ENC_PIC_PARAMS_VER;
     picParams.inputWidth     = static_cast<uint32_t>(m_width);
     picParams.inputHeight    = static_cast<uint32_t>(m_height);
-    picParams.inputPitch     = 0; // determined by registered resource
+    picParams.inputPitch     = 0;
     picParams.encodePicFlags = NV_ENC_PIC_FLAG_FORCEIDR | NV_ENC_PIC_FLAG_OUTPUT_SPSPPS;
     picParams.frameIdx       = m_frameIndex++;
     picParams.inputTimeStamp = timestampNs;
     picParams.inputBuffer    = mapRes.mappedResource;
-    picParams.outputBitstream = m_bitstreamBuffer;
+    picParams.outputBitstream = m_bitstreamBuffers[stagingIdx];
     picParams.bufferFmt      = mapRes.mappedBufferFmt;
     picParams.pictureStruct  = NV_ENC_PIC_STRUCT_FRAME;
 
     st = m_nvenc.nvEncEncodePicture(m_encoder, &picParams);
-
-    // Unmap regardless of encode result
     m_nvenc.nvEncUnmapInputResource(m_encoder, mapRes.mappedResource);
 
     if (st != NV_ENC_SUCCESS) {
@@ -297,7 +342,7 @@ bool NvencEncoder::encode(ID3D11Texture2D* inputTexture, uint64_t timestampNs)
     // Lock and read bitstream
     NV_ENC_LOCK_BITSTREAM lockBS = {};
     lockBS.version         = NV_ENC_LOCK_BITSTREAM_VER;
-    lockBS.outputBitstream = m_bitstreamBuffer;
+    lockBS.outputBitstream = m_bitstreamBuffers[stagingIdx];
 
     st = m_nvenc.nvEncLockBitstream(m_encoder, &lockBS);
     if (st != NV_ENC_SUCCESS) {
@@ -305,10 +350,6 @@ bool NvencEncoder::encode(ID3D11Texture2D* inputTexture, uint64_t timestampNs)
         return false;
     }
 
-    // NVENC with FORCEIDR + OUTPUT_SPSPPS produces Annex-B bitstream with
-    // 0x00000001 start codes, including VPS/SPS/PPS before the IDR slice.
-    // Since we force every frame to be IDR with OUTPUT_SPSPPS, every frame
-    // includes the parameter sets.
     bool isKeyframe = (lockBS.pictureType == NV_ENC_PIC_TYPE_IDR);
 
     deliverOutput(
@@ -318,7 +359,7 @@ bool NvencEncoder::encode(ID3D11Texture2D* inputTexture, uint64_t timestampNs)
         isKeyframe
     );
 
-    m_nvenc.nvEncUnlockBitstream(m_encoder, m_bitstreamBuffer);
+    m_nvenc.nvEncUnlockBitstream(m_encoder, m_bitstreamBuffers[stagingIdx]);
     return true;
 }
 
@@ -368,6 +409,13 @@ void NvencEncoder::flush()
 {
     if (!m_initialized) return;
 
+    // Drain encode queue
+    {
+        std::unique_lock<std::mutex> lock(m_encodeMutex);
+        // Wait until queue is empty (encode thread processes all pending)
+        m_encodeCV.wait(lock, [this] { return m_encodeQueue.empty(); });
+    }
+
     // Send EOS to flush pending frames
     NV_ENC_PIC_PARAMS picParams = {};
     picParams.version        = NV_ENC_PIC_PARAMS_VER;
@@ -381,22 +429,34 @@ void NvencEncoder::flush()
 // ---------------------------------------------------------------------------
 void NvencEncoder::destroy()
 {
-    if (m_encoder) {
-        if (m_bitstreamBuffer) {
-            m_nvenc.nvEncDestroyBitstreamBuffer(m_encoder, m_bitstreamBuffer);
-            m_bitstreamBuffer = nullptr;
+    // Stop encode thread first
+    if (m_encodeRunning.exchange(false)) {
+        m_encodeCV.notify_all();
+        if (m_encodeThread.joinable()) {
+            m_encodeThread.join();
         }
-        if (m_registeredResource) {
-            m_nvenc.nvEncUnregisterResource(m_encoder, m_registeredResource);
-            m_registeredResource = nullptr;
+    }
+
+    if (m_encoder) {
+        for (int i = 0; i < kNumStaging; ++i) {
+            if (m_bitstreamBuffers[i]) {
+                m_nvenc.nvEncDestroyBitstreamBuffer(m_encoder, m_bitstreamBuffers[i]);
+                m_bitstreamBuffers[i] = nullptr;
+            }
+            if (m_registeredResources[i]) {
+                m_nvenc.nvEncUnregisterResource(m_encoder, m_registeredResources[i]);
+                m_registeredResources[i] = nullptr;
+            }
         }
         m_nvenc.nvEncDestroyEncoder(m_encoder);
         m_encoder = nullptr;
     }
 
-    if (m_stagingTexture) {
-        m_stagingTexture->Release();
-        m_stagingTexture = nullptr;
+    for (int i = 0; i < kNumStaging; ++i) {
+        if (m_stagingTextures[i]) {
+            m_stagingTextures[i]->Release();
+            m_stagingTextures[i] = nullptr;
+        }
     }
 
     if (m_nvencLib) {
