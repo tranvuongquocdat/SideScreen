@@ -233,11 +233,13 @@ void AppController::stopServer() {
 void AppController::connectPipeline() {
     if (!capture_ || !encoder_ || !server_) return;
 
-    // Capture → Encoder
+    // Capture → Encoder (with backpressure tracking)
     capture_->setFrameCallback(
         [this](ID3D11Texture2D* texture, uint64_t timestampNs) {
-            if (encoder_) {
+            if (encoder_ && capture_) {
+                capture_->pendingEncodes.fetch_add(1, std::memory_order_relaxed);
                 encoder_->encode(texture, timestampNs);
+                capture_->pendingEncodes.fetch_sub(1, std::memory_order_relaxed);
             }
         });
 

@@ -327,9 +327,11 @@ void AppController::connectPipeline() {
     if (!capture_ || !encoder_ || !server_) return;
 
     // Capture -> Encoder (Linux: raw pixels, not D3D11 texture)
+    // Backpressure: skip frames when encoder queue is full to prevent unbounded lag
     capture_->setFrameCallback(
         [this](const uint8_t* data, int w, int h, int stride, uint64_t ts) {
             if (encoder_ && capture_) {
+                if (capture_->isBackpressured()) return;
                 capture_->pendingEncodes.fetch_add(1, std::memory_order_relaxed);
                 encoder_->encode(data, w, h, stride, ts);
                 capture_->pendingEncodes.fetch_sub(1, std::memory_order_relaxed);

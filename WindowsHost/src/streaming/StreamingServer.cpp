@@ -127,7 +127,8 @@ void StreamingServer::updateRotation(int rotation) {
 }
 
 void StreamingServer::sendFrame(const uint8_t* data, size_t size) {
-    if (!m_clientConnected.load() || data == nullptr || size == 0) {
+    if (!m_clientConnected.load() || !m_connectionReady.load() ||
+        data == nullptr || size == 0) {
         return;
     }
 
@@ -307,8 +308,9 @@ void StreamingServer::handleClient(SOCKET clientSocket) {
         m_lastStatsTime = std::chrono::steady_clock::now();
     }
 
-    // Send display config immediately upon connection
+    // Send display config immediately upon connection, then open the frame gate
     sendDisplayConfig();
+    m_connectionReady.store(true);
 
     // Notify connection callback
     if (m_connectionCallback) {
@@ -468,6 +470,7 @@ void StreamingServer::sendPong(const uint8_t* timestampData) {
 // ============================================================================
 
 void StreamingServer::closeClient() {
+    m_connectionReady.store(false);
     m_clientConnected.store(false);
 
     std::lock_guard<std::mutex> lock(m_clientMutex);

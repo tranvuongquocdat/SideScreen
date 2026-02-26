@@ -78,6 +78,7 @@ private:
     // Lifecycle
     std::atomic<bool> m_running{false};
     std::atomic<bool> m_clientConnected{false};
+    std::atomic<bool> m_connectionReady{false};  // Gate: true after display config sent
 
     // Display config (protected by m_displayMutex)
     std::mutex m_displayMutex;
