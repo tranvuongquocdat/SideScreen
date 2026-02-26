@@ -825,21 +825,21 @@ class MainActivity : AppCompatActivity() {
                 val errorMessage =
                     when {
                         e.message?.contains("ECONNREFUSED") == true -> {
-                            "Mac server is not running.\n\nPlease start Side Screen.app on your Mac first."
+                            "Host server is not running.\n\nPlease start Side Screen on your computer first."
                         }
 
                         e.message?.contains("Network is unreachable") == true -> {
-                            "Cannot reach Mac.\n\n" +
+                            "Cannot reach host.\n\n" +
                                 "Make sure both devices are connected via USB cable and ADB reverse is configured."
                         }
 
                         e.message?.contains("timeout") == true -> {
-                            "Connection timeout.\n\nCheck if Mac firewall is blocking port $port."
+                            "Connection timeout.\n\nCheck if firewall is blocking port $port."
                         }
 
                         else -> {
                             "Connection failed: ${e.message}\n\n" +
-                                "Try:\n• Start Side Screen.app on Mac\n" +
+                                "Try:\n• Start Side Screen on your computer\n" +
                                 "• Check USB connection\n• Run: adb reverse tcp:8888 tcp:8888"
                         }
                     }
@@ -1053,7 +1053,7 @@ class MainActivity : AppCompatActivity() {
         val isUsbConnected = usbManager.deviceList.isNotEmpty() || isCharging()
         updateChecklistItem(binding.checkUsbConnected, isUsbConnected)
 
-        // Check Mac Server (try to connect to port)
+        // Check host server (try to connect to port)
         lifecycleScope.launch(Dispatchers.IO) {
             // Double-check connection state before socket test
             if (isConnected) return@launch
@@ -1109,13 +1109,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Check if Mac server is actually running (not just ADB reverse)
+     * Check if host server is actually running (not just ADB reverse)
      *
      * Problem: When `adb reverse tcp:8888 tcp:8888` is active, ADB daemon listens on port 8888.
-     * A simple socket connect will succeed to ADB daemon, not the actual Mac server.
+     * A simple socket connect will succeed to ADB daemon, not the actual host server.
      *
      * Solution: After connecting, try to read data with a short timeout.
-     * Mac server sends display config (type=1) immediately upon connection.
+     * Host server sends display config (type=1) immediately upon connection.
      * ADB daemon doesn't send anything, so read will timeout → false.
      */
     private fun checkServerRunning(
@@ -1128,12 +1128,12 @@ class MainActivity : AppCompatActivity() {
             socket.connect(InetSocketAddress(host, port), 300) // 300ms connect timeout
             socket.soTimeout = 200 // 200ms read timeout
 
-            // Try to read - Mac server sends display config immediately
+            // Try to read - host server sends display config immediately
             // ADB daemon doesn't send anything, so read will timeout
             val input = socket.getInputStream()
             val firstByte = input.read() // Blocks up to soTimeout
 
-            // If we got data (>= 0), it's the real Mac server
+            // If we got data (>= 0), it's the real host server
             // -1 means EOF (connection closed), anything else is data
             firstByte >= 0
         } catch (e: Exception) {

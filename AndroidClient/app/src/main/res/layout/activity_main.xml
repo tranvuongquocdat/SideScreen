@@ -285,7 +285,7 @@
                         android:textSize="13sp" />
                 </LinearLayout>
 
-                <!-- Mac Server Check -->
+                <!-- Host Server Check -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -302,7 +302,7 @@
                         android:layout_width="0dp"
                         android:layout_weight="1"
                         android:layout_height="wrap_content"
-                        android:text="Mac server running"
+                        android:text="Host server running"
                         android:textColor="#BBBBBB"
                         android:textSize="13sp" />
                 </LinearLayout>

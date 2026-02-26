@@ -22,7 +22,22 @@ class StreamClient(
     private var socket: Socket? = null
     private var inputStream: DataInputStream? = null
     private var outputStream: java.io.DataOutputStream? = null
+
+    @Volatile
     private var isConnected = false
+
+    // Keepalive watchdog: track last data received from server.
+    // If no data (frames or pongs) arrives within KEEPALIVE_TIMEOUT_MS,
+    // the connection is considered dead and will be dropped.
+    @Volatile
+    private var lastDataReceivedMs = 0L
+
+    companion object {
+        private const val TAG = "StreamClient"
+        private const val MAX_FRAME_SIZE = 5 * 1024 * 1024 // 5MB
+        private const val KEEPALIVE_TIMEOUT_MS = 5000L // 5 seconds without any data = dead
+        private const val SOCKET_TIMEOUT_MS = 10000 // 10s read timeout (safety net)
+    }
 
     // Callback includes actual frame size (may differ from buffer.size due to pooling) and timestamp
     var onFrameReceived: ((ByteArray, Int, Long) -> Unit)? = null
@@ -93,11 +108,14 @@ class StreamClient(
             try {
                 socket =
                     Socket(host, port).apply {
-                        tcpNoDelay = true
+                        tcpNoDelay = true // Disable Nagle for low latency
+                        keepAlive = true // Enable TCP-level keepalive
+                        soTimeout = SOCKET_TIMEOUT_MS // Read timeout safety net
                     }
                 inputStream = DataInputStream(java.io.BufferedInputStream(socket?.getInputStream(), 65536))
                 outputStream = java.io.DataOutputStream(socket?.getOutputStream())
                 isConnected = true
+                lastDataReceivedMs = System.currentTimeMillis()
 
                 diagLog("Connected to $host:$port")
                 onConnectionStatus?.invoke(true)
@@ -116,7 +134,24 @@ class StreamClient(
 
             try {
                 while (isConnected) {
-                    val type = input.readByte()
+                    val type: Byte
+                    try {
+                        type = input.readByte()
+                    } catch (e: java.net.SocketTimeoutException) {
+                        // Socket read timeout — not necessarily a disconnect.
+                        // Check keepalive: if we haven't received ANY data recently,
+                        // the connection is dead.
+                        val silenceMs = System.currentTimeMillis() - lastDataReceivedMs
+                        if (silenceMs > KEEPALIVE_TIMEOUT_MS) {
+                            Log.w(TAG, "Keepalive timeout: no data for ${silenceMs}ms — disconnecting")
+                            break
+                        }
+                        // Otherwise just continue waiting — server may be idle
+                        continue
+                    }
+
+                    // Any data received resets the keepalive watchdog
+                    lastDataReceivedMs = System.currentTimeMillis()
 
                     when (type.toInt()) {
                         0 -> { // Video frame
@@ -214,7 +249,10 @@ class StreamClient(
     var onLatencyMeasured: ((Double) -> Unit)? = null
 
     /**
-     * Send a ping to measure round-trip latency through the USB connection
+     * Send a ping to measure round-trip latency and serve as keepalive.
+     * The server echoes back as pong (type 5), which resets lastDataReceivedMs
+     * in the receive loop. If the server is dead, no pong arrives and the
+     * keepalive watchdog in receiveData() will eventually disconnect.
      */
     fun sendPing() {
         if (!isConnected) return
@@ -284,9 +322,4 @@ class StreamClient(
     }
 
     private fun diagLog(msg: String) = DiagLog.log("SC", msg)
-
-    companion object {
-        private const val TAG = "StreamClient"
-        private const val MAX_FRAME_SIZE = 5 * 1024 * 1024 // 5MB
-    }
 }
