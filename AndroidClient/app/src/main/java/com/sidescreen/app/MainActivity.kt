@@ -33,16 +33,26 @@ import com.google.android.material.switchmaterial.SwitchMaterial
 import com.sidescreen.app.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.io.File
 import java.net.InetSocketAddress
 import java.net.Socket
+
+private fun mainDiag(msg: String) {
+    try {
+        val f = File("/data/user/0/com.sidescreen.app/files/diag.log")
+        f.parentFile?.mkdirs()
+        f.appendText("[${System.currentTimeMillis()}] MA: $msg\n")
+    } catch (_: Exception) {}
+}
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var prefs: PreferencesManager
     private var videoDecoder: VideoDecoder? = null
     private var streamClient: StreamClient? = null
-    private var displayWidth = 1920
-    private var displayHeight = 1080
+    private var currentSurfaceHolder: SurfaceHolder? = null
+    private var displayWidth = 0   // 0 = no config received yet
+    private var displayHeight = 0  // 0 = no config received yet
     private var displayRotation = 0 // 0, 90, 180, 270 degrees
     private var wakeLock: PowerManager.WakeLock? = null
     private var pingJob: kotlinx.coroutines.Job? = null
@@ -172,6 +182,7 @@ class MainActivity : AppCompatActivity() {
         binding.surfaceView.holder.addCallback(
             object : SurfaceHolder.Callback {
                 override fun surfaceCreated(holder: SurfaceHolder) {
+                    mainDiag("surfaceCreated")
                     log("Surface created")
                 }
 
@@ -181,13 +192,24 @@ class MainActivity : AppCompatActivity() {
                     width: Int,
                     height: Int,
                 ) {
+                    mainDiag("surfaceChanged: ${width}x$height")
                     log("Surface changed: ${width}x$height")
-                    initializeDecoder(holder)
+                    // Don't initialize decoder here — wait for display config
+                    // from the server so we use the correct resolution.
+                    // Store the holder so we can initialize later.
+                    currentSurfaceHolder = holder
+                    // If we already have a display config (reconnect case), init now
+                    if (displayWidth > 0 && displayHeight > 0 && videoDecoder == null) {
+                        initializeDecoder(holder)
+                    }
                 }
 
                 override fun surfaceDestroyed(holder: SurfaceHolder) {
+                    mainDiag("surfaceDestroyed")
                     log("Surface destroyed")
-                    cleanup()
+                    // Only release decoder, NOT the connection.
+                    videoDecoder?.release()
+                    videoDecoder = null
                 }
             },
         )
@@ -644,6 +666,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initializeDecoder(holder: SurfaceHolder) {
+        mainDiag("initializeDecoder called, surface=${holder.surface}, valid=${holder.surface.isValid}, res=${displayWidth}x$displayHeight")
+        if (displayWidth <= 0 || displayHeight <= 0) {
+            mainDiag("initializeDecoder skipped — no display config yet")
+            return
+        }
         try {
             // Pass display for vsync-aligned frame presentation
             // Use modern API on Android R+, fallback to deprecated for older versions
@@ -654,9 +681,15 @@ class MainActivity : AppCompatActivity() {
                     @Suppress("DEPRECATION")
                     windowManager.defaultDisplay
                 }
-            videoDecoder = VideoDecoder(holder.surface, displayObj)
-            log("✅ Decoder initialized (${displayObj?.refreshRate ?: 60f}Hz display)")
+            videoDecoder = VideoDecoder(holder.surface, displayObj, displayWidth, displayHeight)
+            // Wire up buffer release callback
+            videoDecoder?.onFrameDecoded = { buffer ->
+                streamClient?.releaseBuffer(buffer)
+            }
+            mainDiag("Decoder initialized OK ${displayWidth}x$displayHeight, videoDecoder=$videoDecoder")
+            log("✅ Decoder initialized ${displayWidth}x$displayHeight (${displayObj?.refreshRate ?: 60f}Hz)")
         } catch (e: Exception) {
+            mainDiag("Decoder init FAILED: ${e.message}")
             log("❌ Failed to initialize decoder: ${e.message}")
         }
     }
@@ -671,7 +704,12 @@ class MainActivity : AppCompatActivity() {
 
                 streamClient = StreamClient(host, port)
                 streamClient?.onFrameReceived = { frameData, frameSize, timestamp ->
-                    videoDecoder?.decode(frameData, frameSize, timestamp)
+                    val dec = videoDecoder
+                    if (dec != null) {
+                        dec.decode(frameData, frameSize, timestamp)
+                    } else {
+                        mainDiag("FRAME DROPPED: videoDecoder is null!")
+                    }
                 }
 
                 // Wire up buffer release callback for buffer pooling
@@ -746,12 +784,24 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 streamClient?.onDisplaySize = { width, height, rotation ->
+                    mainDiag("onDisplaySize: ${width}x$height @ $rotation°")
                     displayWidth = width
                     displayHeight = height
                     displayRotation = rotation
 
-                    // Update decoder resolution
-                    videoDecoder?.updateResolution(width, height)
+                    if (videoDecoder != null) {
+                        // Decoder already exists — update its resolution
+                        videoDecoder?.updateResolution(width, height)
+                    } else {
+                        // Decoder not yet created — create it now with correct resolution
+                        val holder = currentSurfaceHolder
+                        if (holder != null && holder.surface.isValid) {
+                            mainDiag("Display config arrived, initializing decoder ${width}x$height")
+                            runOnUiThread { initializeDecoder(holder) }
+                        } else {
+                            mainDiag("Display config arrived but no valid surface yet")
+                        }
+                    }
 
                     runOnUiThread {
                         binding.resolutionText.text = "${width}x$height"
@@ -800,6 +850,9 @@ class MainActivity : AppCompatActivity() {
     private fun disconnect() {
         stopPingTimer()
         streamClient?.disconnect()
+        // Reset display config so next connect defers decoder init until config arrives
+        displayWidth = 0
+        displayHeight = 0
         log("Disconnected")
     }
 

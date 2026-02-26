@@ -242,6 +242,28 @@ class VirtualDisplayManager {
         }
     }
 
+    /// Verify the virtual display is registered in the system display list
+    func verifyDisplayRegistered() -> Bool {
+        guard let displayID = displayID else {
+            debugLog("verifyDisplayRegistered: no displayID set")
+            return false
+        }
+
+        var onlineDisplays = [CGDirectDisplayID](repeating: 0, count: 16)
+        var displayCount: UInt32 = 0
+        let err = CGGetOnlineDisplayList(16, &onlineDisplays, &displayCount)
+
+        guard err == .success else {
+            debugLog("verifyDisplayRegistered: CGGetOnlineDisplayList failed with \(err)")
+            return false
+        }
+
+        let onlineIDs = Array(onlineDisplays.prefix(Int(displayCount)))
+        let found = onlineIDs.contains(displayID)
+        debugLog("verifyDisplayRegistered: displayID \(displayID) \(found ? "FOUND" : "NOT FOUND") in online displays \(onlineIDs)")
+        return found
+    }
+
     /// Destroy the virtual display
     func destroyDisplay() {
         if virtualDisplay != nil {

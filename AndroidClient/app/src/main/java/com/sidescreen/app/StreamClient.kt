@@ -10,6 +10,7 @@ import kotlinx.coroutines.withContext
 import java.io.DataInputStream
 import java.io.IOException
 import java.net.Socket
+import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.Executors
@@ -98,7 +99,7 @@ class StreamClient(
                 outputStream = java.io.DataOutputStream(socket?.getOutputStream())
                 isConnected = true
 
-                Log.d(TAG, "✅ Connected to $host:$port")
+                diagLog("Connected to $host:$port")
                 onConnectionStatus?.invoke(true)
 
                 receiveData()
@@ -131,6 +132,13 @@ class StreamClient(
 
                             // Capture timestamp after full frame received for accurate age tracking
                             val receiveTimestamp = System.nanoTime()
+                            framesReceived++
+                            if (framesReceived == 1L) {
+                                diagLog("First video frame: size=$frameSize, callback=${onFrameReceived != null}")
+                            }
+                            if (framesReceived % 60L == 0L) {
+                                diagLog("Frames received: $framesReceived")
+                            }
                             onFrameReceived?.invoke(frameData, frameSize, receiveTimestamp)
                             updateStats(frameSize)
                         }
@@ -139,8 +147,8 @@ class StreamClient(
                             val width = input.readInt()
                             val height = input.readInt()
                             val rotation = input.readInt()
+                            diagLog("Display config: ${width}x$height @ $rotation°")
                             onDisplaySize?.invoke(width, height, rotation)
-                            Log.d(TAG, "Display config: ${width}x$height @ $rotation°")
                         }
 
                         5 -> { // Pong response — measure round-trip latency
@@ -149,6 +157,11 @@ class StreamClient(
                             val sentTime = ByteBuffer.wrap(buf).order(ByteOrder.LITTLE_ENDIAN).long
                             val rtt = (System.nanoTime() - sentTime) / 1_000_000.0 // ms
                             onLatencyMeasured?.invoke(rtt)
+                        }
+
+                        else -> {
+                            Log.e(TAG, "Unknown message type: ${type.toInt()}, stream may be misaligned — disconnecting")
+                            break
                         }
                     }
                 }
@@ -265,6 +278,23 @@ class StreamClient(
         outputStream = null
         inputStream = null
         socket = null
+    }
+
+    private fun diagLog(msg: String) {
+        Log.d(TAG, msg)
+        try {
+            for (path in listOf(
+                "/data/user/0/com.sidescreen.app/files/diag.log",
+                "/data/data/com.sidescreen.app/files/diag.log"
+            )) {
+                try {
+                    val f = File(path)
+                    f.parentFile?.mkdirs()
+                    f.appendText("[${System.currentTimeMillis()}] SC: $msg\n")
+                    return
+                } catch (_: Exception) {}
+            }
+        } catch (_: Exception) {}
     }
 
     companion object {

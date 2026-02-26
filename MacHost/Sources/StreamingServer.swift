@@ -23,6 +23,7 @@ class StreamingServer {
     private var rotation = 0
     private var isReceiving = false
     private var isStopped = false
+    private var connectionReady = false
 
     init(port: UInt16) {
         self.port = port
@@ -49,9 +50,9 @@ class StreamingServer {
             listener?.stateUpdateHandler = { state in
                 switch state {
                 case .ready:
-                    print("✅ TCP Server listening on port \(self.port)")
+                    debugLog("TCP Server listening on port \(self.port)")
                 case .failed(let error):
-                    print("❌ Server failed: \(error)")
+                    debugLog("Server failed: \(error)")
                 default:
                     break
                 }
@@ -59,12 +60,12 @@ class StreamingServer {
 
             listener?.start(queue: networkQueue)
         } catch {
-            print("❌ Failed to start server: \(error)")
+            debugLog("Failed to start server: \(error)")
         }
     }
 
     private func handleConnection(_ newConnection: NWConnection) {
-        print("🔌 New connection incoming...")
+        debugLog("New connection incoming...")
 
         // Clean up old connection properly
         if let oldConnection = connection {
@@ -72,22 +73,25 @@ class StreamingServer {
             oldConnection.cancel()
         }
 
+        connectionReady = false
         connection = newConnection
         droppedFrames = 0
 
         connection?.stateUpdateHandler = { [weak self] state in
-            print("🔌 Connection state: \(state)")
+            debugLog("Connection state: \(state)")
             switch state {
             case .ready:
-                print("✅ Client connected - starting touch receive")
+                debugLog("Client connected - sending display config first")
                 self?.sendDisplaySize()
+                self?.connectionReady = true
+                debugLog("Connection ready for frames")
                 self?.onClientConnected?()
                 self?.startReceivingTouch()
             case .failed(let error):
-                print("❌ Connection failed: \(error)")
+                debugLog("Connection failed: \(error)")
                 self?.onClientDisconnected?()
             case .cancelled:
-                print("⚠️  Connection cancelled")
+                debugLog("Connection cancelled")
                 self?.onClientDisconnected?()
             default:
                 break
@@ -119,16 +123,16 @@ class StreamingServer {
         data.append(contentsOf: withUnsafeBytes(of: Int32(rotation).bigEndian) { Data($0) })
 
         connection.send(content: data, completion: .contentProcessed { _ in })
-        print("📐 Sent display config: \(displayWidth)x\(displayHeight) @ \(rotation)°")
+        debugLog("Sent display config: \(displayWidth)x\(displayHeight) @ \(rotation)°")
     }
 
     private func startReceivingTouch() {
         guard !isReceiving else {
-            print("⚠️ Already receiving touch events")
+            debugLog("Already receiving touch events")
             return
         }
         isReceiving = true
-        print("👆 Starting touch receive loop...")
+        debugLog("Starting touch receive loop...")
 
         // Use loop-based pattern instead of recursion to prevent stack overflow
         receiveQueue.async { [weak self] in
@@ -195,7 +199,7 @@ class StreamingServer {
     }
 
     func sendFrame(_ data: Data, timestamp: UInt64, isKeyframe: Bool = false) {
-        guard let connection = connection, !isStopped else { return }
+        guard let connection = connection, !isStopped, connectionReady else { return }
 
         // With all-intra encoding, every frame is independently decodable.
         // No frame-age dropping or backpressure — send everything immediately.
@@ -244,7 +248,7 @@ class StreamingServer {
             // Log pipeline latency profile
             if profiledFrameCount > 0 {
                 let avgAgeMs = Double(totalFrameAgeNs) / Double(profiledFrameCount) / 1_000_000.0
-                print("📊 Pipeline: \(String(format: "%.1f", fps))fps, \(String(format: "%.1f", mbps))Mbps, avg frame age: \(String(format: "%.1f", avgAgeMs))ms, dropped: \(droppedFrames)")
+                debugLog("Pipeline: \(String(format: "%.1f", fps))fps, \(String(format: "%.1f", mbps))Mbps, avg frame age: \(String(format: "%.1f", avgAgeMs))ms, dropped: \(droppedFrames)")
             }
 
             bytesSent = 0
