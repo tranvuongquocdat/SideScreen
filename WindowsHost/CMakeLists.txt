@@ -42,6 +42,7 @@ set(SOURCES
     src/encoder/NvencEncoder.cpp
     src/encoder/AmfEncoder.cpp
     src/encoder/QsvEncoder.cpp
+    src/encoder/MfSoftEncoder.cpp
     src/display/VirtualDisplayManager.cpp
     src/input/TouchHandler.cpp
     src/ui/SettingsWindow.cpp
@@ -58,6 +59,7 @@ set(HEADERS
     src/encoder/NvencEncoder.h
     src/encoder/AmfEncoder.h
     src/encoder/QsvEncoder.h
+    src/encoder/MfSoftEncoder.h
     src/display/VirtualDisplayManager.h
     src/input/TouchHandler.h
     src/ui/SettingsWindow.h

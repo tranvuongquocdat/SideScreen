@@ -2,6 +2,7 @@
 #include "NvencEncoder.h"
 #include "AmfEncoder.h"
 #include "QsvEncoder.h"
+#include "MfSoftEncoder.h"
 #include "../Config.h"
 
 #include <cstdio>
@@ -40,9 +41,19 @@ std::unique_ptr<VideoEncoder> VideoEncoder::create(
             printf("[VideoEncoder] Using QuickSync (Intel) encoder\n");
             return enc;
         }
-        printf("[VideoEncoder] QuickSync not available\n");
+        printf("[VideoEncoder] QuickSync not available, trying next...\n");
     }
 
-    printf("[VideoEncoder] ERROR: No hardware H.265 encoder available!\n");
+    // --- Try Media Foundation software encoder (CPU fallback) ---
+    {
+        auto enc = std::make_unique<MfSoftEncoder>();
+        if (enc->initialize(device, width, height, fps, bitrateMbps)) {
+            printf("[VideoEncoder] Using Media Foundation software encoder (CPU)\n");
+            return enc;
+        }
+        printf("[VideoEncoder] MF software encoder not available\n");
+    }
+
+    printf("[VideoEncoder] ERROR: No H.265 encoder available!\n");
     return nullptr;
 }

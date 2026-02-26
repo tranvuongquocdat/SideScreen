@@ -26,8 +26,8 @@ public:
     VideoEncoder(const VideoEncoder&) = delete;
     VideoEncoder& operator=(const VideoEncoder&) = delete;
 
-    /// Factory — attempts NVENC, then AMF, then QuickSync.
-    /// Returns nullptr if no hardware encoder is available.
+    /// Factory — attempts NVENC, then AMF, then QuickSync, then MF software.
+    /// Returns nullptr if no encoder is available.
     static std::unique_ptr<VideoEncoder> create(
         ID3D11Device* device, int width, int height, int fps, int bitrateMbps);
 

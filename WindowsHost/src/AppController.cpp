@@ -143,7 +143,7 @@ void AppController::startServer() {
     if (!encoder_) {
         QMessageBox::critical(nullptr, "SideScreen",
             "Failed to create H.265 encoder.\n"
-            "No compatible GPU encoder found (NVENC/AMF/QuickSync).");
+            "No compatible encoder found (tried NVENC/AMF/QuickSync/Software).");
         stopServer();
         return;
     }
