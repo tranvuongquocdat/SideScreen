@@ -25,6 +25,7 @@
 ![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)
 ![macOS](https://img.shields.io/badge/macOS_14+-000000?style=for-the-badge&logo=apple&logoColor=white)
 ![Android](https://img.shields.io/badge/Android_8+-3DDC84?style=for-the-badge&logo=android&logoColor=white)
+![Universal Binary](https://img.shields.io/badge/Universal_Binary-Apple_Silicon_+_Intel-000000?style=for-the-badge&logo=apple&logoColor=white)
 
 </div>
 
@@ -71,6 +72,10 @@ Hardware-accelerated H.265 encoding on Mac and decoding on Android. Async pipeli
 ### Touch Support
 
 Use your tablet's touchscreen to interact with macOS. Touch prediction compensates for network latency, making taps and drags feel natural.
+
+### HiDPI (Retina) Support
+
+Enable HiDPI mode to render at 2× resolution internally — text and icons are sharp at any logical resolution, just like a MacBook Retina display. Perfect for users with 2K/4K tablets who want a readable workspace without sacrificing sharpness.
 
 ### Gaming Mode
 
@@ -162,6 +167,7 @@ cd AndroidClient && ./gradlew assembleDebug
 | Frame Rate | 30, 60, 90, 120 FPS | 120 |
 | Bitrate | 20–5000 Mbps | 1000 Mbps |
 | Quality | Ultra Low, Low, Medium, High | Ultra Low |
+| HiDPI (Retina) | On/Off | Off |
 | Gaming Boost | On/Off (1 Gbps, 120 Hz) | Off |
 | Touch Input | On/Off | On |
 
