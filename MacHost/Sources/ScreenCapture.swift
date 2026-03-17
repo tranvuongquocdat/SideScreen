@@ -75,8 +75,8 @@ class ScreenCapture {
     /// CGDisplayModeGetPixelWidth/Height to always get the true physical size.
     static func physicalSize(for displayID: CGDirectDisplayID) -> (width: Int, height: Int) {
         if let mode = CGDisplayCopyDisplayMode(displayID) {
-            let w = CGDisplayModeGetPixelWidth(mode)
-            let h = CGDisplayModeGetPixelHeight(mode)
+            let w = mode.pixelWidth
+            let h = mode.pixelHeight
             if w > 0 && h > 0 { return (w, h) }
         }
         // Mode lookup failed — falling back to logical pixels (may be stale on HiDPI display)
