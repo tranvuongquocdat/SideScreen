@@ -20,9 +20,19 @@ sleep 0.5
 echo "Cleaning old build..."
 rm -rf .build
 
-# Build fresh
-echo "Building macOS Host..."
-swift build -c release
+# Build fresh (Universal Binary: arm64 + x86_64)
+echo "Building macOS Host (arm64)..."
+swift build -c release --arch arm64
+
+echo "Building macOS Host (x86_64)..."
+swift build -c release --arch x86_64
+
+echo "Creating Universal Binary..."
+mkdir -p ".build/release-universal"
+lipo -create \
+  .build/arm64-apple-macosx/release/SideScreen \
+  .build/x86_64-apple-macosx/release/SideScreen \
+  -output .build/release-universal/SideScreen
 
 # Create .app bundle
 APP_NAME="SideScreen"
@@ -33,8 +43,8 @@ rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS"
 mkdir -p "$APP_DIR/Contents/Resources"
 
-# Copy binary
-cp .build/release/SideScreen "$APP_DIR/Contents/MacOS/"
+# Copy universal binary
+cp .build/release-universal/SideScreen "$APP_DIR/Contents/MacOS/"
 
 # Copy app icon if exists
 if [ -f "$ROOT_DIR/MacHost/Resources/AppIcon.icns" ]; then
@@ -95,7 +105,7 @@ echo "Creating DMG..."
 DMG_DIR=$(mktemp -d)
 cp -R "$APP_DIR" "$DMG_DIR/"
 ln -s /Applications "$DMG_DIR/Applications"
-DMG_PATH="$ROOT_DIR/SideScreen-${VERSION}-mac.dmg"
+DMG_PATH="$ROOT_DIR/SideScreen-${VERSION}-mac-universal.dmg"
 hdiutil create -volname "Side Screen" -srcfolder "$DMG_DIR" -ov -format UDZO "$DMG_PATH"
 rm -rf "$DMG_DIR"
 echo "DMG: $DMG_PATH"

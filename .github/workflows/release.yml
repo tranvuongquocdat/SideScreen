@@ -18,10 +18,16 @@ jobs:
         id: version
         run: echo "version=$(cat VERSION)" >> $GITHUB_OUTPUT
 
-      - name: Build macOS
+      - name: Build macOS (Universal Binary)
         run: |
           cd MacHost
-          swift build -c release
+          swift build -c release --arch arm64
+          swift build -c release --arch x86_64
+          mkdir -p .build/release-universal
+          lipo -create \
+            .build/arm64-apple-macosx/release/SideScreen \
+            .build/x86_64-apple-macosx/release/SideScreen \
+            -output .build/release-universal/SideScreen
 
       - name: Create .app bundle
         run: |
@@ -29,7 +35,7 @@ jobs:
           APP_DIR="SideScreen.app"
           mkdir -p "$APP_DIR/Contents/MacOS"
           mkdir -p "$APP_DIR/Contents/Resources"
-          cp MacHost/.build/release/SideScreen "$APP_DIR/Contents/MacOS/"
+          cp MacHost/.build/release-universal/SideScreen "$APP_DIR/Contents/MacOS/"
 
           # Copy icon if exists
           if [ -f "MacHost/Resources/AppIcon.icns" ]; then
@@ -78,7 +84,7 @@ jobs:
           mkdir -p dmg-content
           cp -R SideScreen.app dmg-content/
           ln -s /Applications dmg-content/Applications
-          hdiutil create -volname "Side Screen" -srcfolder dmg-content -ov -format UDZO "SideScreen-${VERSION}-mac.dmg"
+          hdiutil create -volname "Side Screen" -srcfolder dmg-content -ov -format UDZO "SideScreen-${VERSION}-mac-universal.dmg"
           rm -rf dmg-content
 
       - name: Upload DMG
@@ -161,7 +167,7 @@ jobs:
             ### Downloads
             | Platform | File |
             |----------|------|
-            | macOS | `SideScreen-${{ steps.version.outputs.version }}-mac.dmg` |
+            | macOS (Universal) | `SideScreen-${{ steps.version.outputs.version }}-mac-universal.dmg` |
             | Android | `SideScreen-${{ steps.version.outputs.version }}-android.apk` |
 
             ### Installation
