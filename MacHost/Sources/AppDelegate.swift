@@ -217,12 +217,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Setup ADB reverse port forwarding for USB connection
-    func setupADBReverse() {
+    func setupADBReverse() async {
         let port = settings.port
         print("🔌 Setting up ADB reverse for port \(port)...")
 
-        // Run adb reverse in background
-        DispatchQueue.global(qos: .utility).async {
+        await Task.detached(priority: .utility) {
             // Try common adb paths
             let adbPaths = [
                 "/usr/local/bin/adb",
@@ -270,32 +269,42 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             print("📱 Found ADB at: \(finalAdbPath)")
 
-            // Run adb reverse
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: finalAdbPath)
-            process.arguments = ["reverse", "tcp:\(port)", "tcp:\(port)"]
+            // Retry adb reverse up to 3 times — handles first-install authorization delay
+            for attempt in 1...3 {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: finalAdbPath)
+                process.arguments = ["reverse", "tcp:\(port)", "tcp:\(port)"]
 
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = pipe
+                let pipe = Pipe()
+                process.standardOutput = pipe
+                process.standardError = pipe
 
-            do {
-                try process.run()
-                process.waitUntilExit()
+                do {
+                    try process.run()
+                    process.waitUntilExit()
 
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                let output = String(data: data, encoding: .utf8) ?? ""
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    let output = String(data: data, encoding: .utf8) ?? ""
 
-                if process.terminationStatus == 0 {
-                    print("✅ ADB reverse setup successful: tcp:\(port) -> tcp:\(port)")
-                } else {
-                    print("⚠️  ADB reverse failed: \(output)")
-                    print("💡 Make sure Android device is connected via USB with debugging enabled")
+                    if process.terminationStatus == 0 {
+                        print("✅ ADB reverse setup successful: tcp:\(port) -> tcp:\(port)")
+                        return
+                    } else {
+                        print("⚠️  ADB reverse attempt \(attempt)/3 failed: \(output.trimmingCharacters(in: .whitespacesAndNewlines))")
+                        if attempt < 3 {
+                            try? await Task.sleep(nanoseconds: 1_000_000_000)
+                        }
+                    }
+                } catch {
+                    print("⚠️  Failed to run ADB (attempt \(attempt)/3): \(error.localizedDescription)")
+                    if attempt < 3 {
+                        try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    }
                 }
-            } catch {
-                print("⚠️  Failed to run ADB: \(error.localizedDescription)")
             }
-        }
+
+            print("💡 Make sure Android device is connected via USB with debugging enabled")
+        }.value
     }
 
     @MainActor
@@ -327,10 +336,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        setupADBReverse()
-
         do {
-            // Create virtual display
+            // Create virtual display and run ADB setup in parallel
             virtualDisplayManager = VirtualDisplayManager()
             let size = settings.resolutionSize
             try virtualDisplayManager?.createDisplay(
@@ -352,8 +359,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 settings.displayCreated = true
             }
 
-            // Wait for display to initialize
-            try await Task.sleep(nanoseconds: 500_000_000)
+            // Run ADB setup and display init wait in parallel
+            // ADB must complete before server starts (fixes race condition on first install)
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await self.setupADBReverse() }
+                group.addTask { try? await Task.sleep(nanoseconds: 500_000_000) }
+            }
 
             virtualDisplayManager?.restoreDisplayPosition()
 

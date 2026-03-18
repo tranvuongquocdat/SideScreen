@@ -320,13 +320,29 @@ class ScreenCapture {
             }
 
             if stalled {
-                self.stopFrameMonitor()
-                if !self.restartAttempted {
-                    debugLog("Attempting SCStream restart...")
-                    self.restartStream()
+                let hasHadFrames = self.stateLock.withLock { $0.hasReceivedFirstFrame }
+
+                if hasHadFrames, let lastBuffer = self.lastPixelBuffer {
+                    // Screen is idle — SCStream is healthy but not delivering frames (macOS optimization).
+                    // Re-send the last captured frame as a keepalive so the tablet stays connected.
+                    let pts = CMTime(
+                        value: CMTimeValue(DispatchTime.now().uptimeNanoseconds / 1000),
+                        timescale: 1_000_000
+                    )
+                    self.encodeQueue?.async {
+                        self.encoder?.encode(pixelBuffer: lastBuffer, presentationTimeStamp: pts)
+                    }
+                    self.stateLock.withLock { $0.lastFrameTime = DispatchTime.now() }
+                    // Keep monitoring — real errors are handled by the SCStream error delegate
                 } else {
-                    debugLog("Restart already attempted — falling back to CGDisplayStream")
-                    self.attemptFallbackCapture()
+                    self.stopFrameMonitor()
+                    if !self.restartAttempted {
+                        debugLog("Attempting SCStream restart...")
+                        self.restartStream()
+                    } else {
+                        debugLog("Restart already attempted — falling back to CGDisplayStream")
+                        self.attemptFallbackCapture()
+                    }
                 }
             }
         }

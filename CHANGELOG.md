@@ -17,6 +17,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+<a id="0.6.8"></a>
+## [0.6.8] - 2026-03-18
+
+Bug fixes — connection reliability and stream stability.
+
+### Fixed
+- **ADB race condition on first connect**: `setupADBReverse()` now completes before the streaming server starts. Previously, the server could begin listening before the ADB tunnel was established, causing the tablet to show "Mac Server Running" in red on first install. Includes automatic retry (up to 3×) to handle first-time USB authorization delays.
+- **SCStream false-positive restart on idle screen**: When the display was idle (no content changes), macOS stops delivering frames as an optimization. The frame flow monitor incorrectly treated this as a stream crash and triggered unnecessary restarts, eventually falling back to CGDisplayStream. The monitor now sends a keepalive frame from the last captured buffer instead of restarting. Real SCStream errors are still handled via the error delegate.
+
+---
+
+<a id="0.6.5"></a>
+## [0.6.5] - 2026-03-17
+
+HiDPI support and Universal Binary.
+
+### Added
+- **HiDPI / Retina mode**: Virtual display now supports HiDPI scaling. macOS renders at 2× physical pixels for sharp, Retina-quality output — even at lower logical resolutions (e.g. choose 1280×800 logical on a 2K tablet for comfortable UI size with full sharpness).
+- **Universal Binary**: Mac app now ships as a Universal Binary (arm64 + x86_64), supporting both Apple Silicon and Intel Macs natively.
+
+---
+
+<a id="0.6.2"></a>
+## [0.6.2] - 2026-03-17
+
+Universal Binary build system.
+
+### Changed
+- Build pipeline updated to produce Universal Binary (arm64 + x86_64).
+
+---
+
 <a id="0.5.2"></a>
 ## [0.5.2] - 2026-02-21
 
@@ -151,7 +183,10 @@ Each release follows this format:
 
 ---
 
-[Unreleased]: https://github.com/tranvuongquocdat/SideScreen/compare/0.5.2...HEAD
+[Unreleased]: https://github.com/tranvuongquocdat/SideScreen/compare/0.6.8...HEAD
+[0.6.8]: https://github.com/tranvuongquocdat/SideScreen/compare/0.6.5...0.6.8
+[0.6.5]: https://github.com/tranvuongquocdat/SideScreen/compare/0.6.2...0.6.5
+[0.6.2]: https://github.com/tranvuongquocdat/SideScreen/compare/0.5.2...0.6.2
 [0.5.2]: https://github.com/tranvuongquocdat/SideScreen/compare/0.2.3...0.5.2
 [0.2.3]: https://github.com/tranvuongquocdat/SideScreen/compare/0.2.2...0.2.3
 [0.2.2]: https://github.com/tranvuongquocdat/SideScreen/compare/0.2.1...0.2.2
