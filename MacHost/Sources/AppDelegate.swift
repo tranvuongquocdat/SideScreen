@@ -189,8 +189,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         } else {
             debugLog("Screen recording permission not granted yet")
-            // Prompt user to grant permission
+            // Prompt user to grant permission. If macOS still has a stale TCC
+            // entry from a previous install, this call no-ops silently — we
+            // detect that case by re-checking after a short delay.
             CGRequestScreenCaptureAccess()
+
+            try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5s
+
+            let recheck = CGPreflightScreenCaptureAccess()
+            await MainActor.run {
+                settings.hasScreenRecordingPermission = recheck
+                if recheck {
+                    settings.hasGrantedBefore = true
+                    settings.isPermissionStale = false
+                    settings.tccResetFallbackVisible = false
+                } else if settings.hasGrantedBefore {
+                    settings.isPermissionStale = true
+                    debugLog("Stale TCC state detected (hasGrantedBefore=true but preflight=false after request)")
+                } else {
+                    settings.isPermissionStale = false
+                }
+            }
         }
 
         // Check Accessibility permission (required for touch/mouse injection)
