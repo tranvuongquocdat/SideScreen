@@ -17,6 +17,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+<a id="0.6.9"></a>
+## [0.6.9] - 2026-05-02
+
+User-experience improvements — recovery from stale screen-recording permission and quicker access to display arrangement.
+
+### Fixed
+- **Stuck Screen Recording permission after reinstall** (#8): when macOS holds onto a stale TCC entry from a previous SideScreen install, `CGRequestScreenCaptureAccess()` no-ops silently and the user is locked out. The Status section now detects this state (preflight returns false despite a previous successful grant), surfaces a "Permission stuck" banner, and offers a one-click "Reset Permission" button that runs `tccutil reset ScreenCapture com.sidescreen.app`. If the spawn fails, a fallback banner shows the exact command with a Copy button.
+
+### Added
+- **"Arrange Displays…" shortcut** (#12) in the Display Configuration section. Opens System Settings → Displays directly on the arrangement pane.
+
+---
+
 <a id="0.6.8"></a>
 ## [0.6.8] - 2026-03-18
 
