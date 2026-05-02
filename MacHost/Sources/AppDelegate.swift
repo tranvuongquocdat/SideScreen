@@ -168,6 +168,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let hasScreenCapture = CGPreflightScreenCaptureAccess()
         await MainActor.run {
             settings.hasScreenRecordingPermission = hasScreenCapture
+            if hasScreenCapture {
+                settings.hasGrantedBefore = true
+                settings.isPermissionStale = false
+                settings.tccResetFallbackVisible = false
+            }
         }
         if hasScreenCapture {
             debugLog("Screen recording permission granted (CGPreflight)")
