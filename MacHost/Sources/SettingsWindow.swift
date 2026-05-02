@@ -299,6 +299,21 @@ struct SettingsView: View {
                                             .foregroundColor(.green)
                                     }
                                 }
+
+                                Divider()
+                                    .padding(.vertical, 2)
+
+                                Button(action: {
+                                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.displays?displayArrangement")!)
+                                }) {
+                                    HStack {
+                                        Image(systemName: "rectangle.connected.to.line.below")
+                                        Text("Arrange Displays…")
+                                        Spacer()
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
                             }
                         }
 
