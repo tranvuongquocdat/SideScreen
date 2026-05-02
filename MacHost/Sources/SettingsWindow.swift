@@ -893,6 +893,8 @@ class DisplaySettings: ObservableObject {
     @Published var clientConnected = false
     @Published var hasScreenRecordingPermission = false
     @Published var hasAccessibilityPermission = false
+    @Published var isPermissionStale = false
+    @Published var tccResetFallbackVisible = false
     @Published var isRunning = false
     @Published var currentFPS: Double = 0
     @Published var currentBitrate: Double = 0
