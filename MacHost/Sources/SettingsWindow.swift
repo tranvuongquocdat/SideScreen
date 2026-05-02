@@ -884,6 +884,9 @@ class DisplaySettings: ObservableObject {
     @Published var touchEnabled: Bool {
         didSet { save("touchEnabled", touchEnabled) }
     }
+    @Published var hasGrantedBefore: Bool {
+        didSet { save("hasGrantedBefore", hasGrantedBefore) }
+    }
 
     // Runtime state (not persisted)
     @Published var displayCreated = false
@@ -910,6 +913,7 @@ class DisplaySettings: ObservableObject {
         self.customWidth = defaults.object(forKey: keyPrefix + "customWidth") as? Int ?? 1920
         self.customHeight = defaults.object(forKey: keyPrefix + "customHeight") as? Int ?? 1200
         self.touchEnabled = defaults.object(forKey: keyPrefix + "touchEnabled") as? Bool ?? true
+        self.hasGrantedBefore = defaults.bool(forKey: keyPrefix + "hasGrantedBefore")
 
         print("Loaded settings: \(resolution) @ \(refreshRate)Hz, bitrate=\(bitrate), quality=\(quality)")
     }
