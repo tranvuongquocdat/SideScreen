@@ -182,7 +182,7 @@ struct SettingsView: View {
                                             }
                                         }
                                     }
-                                    .frame(height: 180)
+                                    .frame(height: settings.showAllResolutions ? 180 : 140)
                                     .background(.ultraThinMaterial)
                                     .cornerRadius(8)
                                     .overlay(
@@ -272,48 +272,56 @@ struct SettingsView: View {
                                             .font(.system(size: 10))
                                             .foregroundColor(.accentColor)
                                     }
-                                }
 
-                                // Refresh Rate
-                                VStack(alignment: .leading, spacing: 8) {
                                     HStack {
-                                        Text("Refresh Rate")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.secondary)
                                         Spacer()
-                                        Text("\(settings.refreshRate) Hz")
-                                            .font(.system(size: 11, weight: .medium))
+                                        Button(action: {
+                                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.displays?displayArrangement")!)
+                                        }) {
+                                            HStack(spacing: 4) {
+                                                Image(systemName: "rectangle.connected.to.line.below")
+                                                Text("Arrange Displays…")
+                                            }
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
                                     }
+                                    .padding(.top, 10)
+                                }
 
-                                    Picker("", selection: $settings.refreshRate) {
-                                        Text("30").tag(30)
-                                        Text("60").tag(60)
-                                        Text("90").tag(90)
-                                        Text("120").tag(120)
-                                    }
-                                    .pickerStyle(.segmented)
+                            }
+                        }
 
-                                    if settings.refreshRate >= 90 {
-                                        Text("High refresh rate for smooth experience")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.green)
+                        // Refresh Rate (own block)
+                        FrostedGroupBox(title: "Refresh Rate", icon: "speedometer") {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text("Frame Rate")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    Text("\(settings.refreshRate) Hz")
+                                        .font(.system(size: 11, weight: .medium))
+                                }
+
+                                HStack(spacing: 6) {
+                                    ForEach([30, 60, 90, 120], id: \.self) { rate in
+                                        BitrateButton(
+                                            label: "\(rate)",
+                                            value: rate,
+                                            currentValue: settings.refreshRate,
+                                            disabled: false
+                                        ) {
+                                            settings.refreshRate = rate
+                                        }
                                     }
                                 }
 
-                                Divider()
-                                    .padding(.vertical, 2)
-
-                                Button(action: {
-                                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.displays?displayArrangement")!)
-                                }) {
-                                    HStack {
-                                        Image(systemName: "rectangle.connected.to.line.below")
-                                        Text("Arrange Displays…")
-                                        Spacer()
-                                    }
+                                if settings.refreshRate >= 90 {
+                                    Text("High refresh rate for smooth experience")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.green)
                                 }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
                             }
                         }
 
