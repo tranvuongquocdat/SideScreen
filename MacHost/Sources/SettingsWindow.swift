@@ -481,6 +481,44 @@ struct SettingsView: View {
                                             .foregroundColor(.green)
                                     }
                                 }
+
+                                // Encoding Mode
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Encoding Mode")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+
+                                    Picker("", selection: $settings.keyFrameInterval) {
+                                        Text("All-Intra").tag(1)
+                                        Text("Low Compression").tag(5)
+                                        Text("Balanced").tag(10)
+                                        Text("Max Compression").tag(30)
+                                     }
+                                     .pickerStyle(.segmented)
+                                     .disabled(settings.gamingBoost)
+
+                                    if settings.gamingBoost {
+                                        Text("Locked to All-Intra in Gaming Boost mode")
+                                             .font(.system(size: 10))
+                                             .foregroundColor(.orange)
+                                     } else if settings.keyFrameInterval <= 1 {
+                                        Text("Every frame is independent. Higher bandwidth, no corruption from dropped frames.")
+                                             .font(.system(size: 10))
+                                             .foregroundColor(.green)
+                                     } else if settings.keyFrameInterval == 5 {
+                                        Text("Keyframe every ~0.09s. Minimal artifacts, moderate bandwidth increase.")
+                                             .font(.system(size: 10))
+                                             .foregroundColor(.green)
+                                     } else if settings.keyFrameInterval == 10 {
+                                        Text("Best balance of smoothness and bandwidth. Keyframe every ~0.17s")
+                                             .font(.system(size: 10))
+                                             .foregroundColor(.green)
+                                     } else {
+                                        Text("Maximum compression. Keyframe every ~0.5s. Dropped frames may cause brief artifacts.")
+                                             .font(.system(size: 10))
+                                             .foregroundColor(.orange)
+                                     }
+                                }
                             }
                         }
 
@@ -497,6 +535,11 @@ struct SettingsView: View {
                                 StatusRow(title: "Accessibility", status: settings.hasAccessibilityPermission ? "Granted" : "Optional", color: settings.hasAccessibilityPermission ? .green : .orange)
                                 if settings.isRunning {
                                     StatusRow(title: "Capture Method", status: settings.captureMethod, color: settings.captureMethod.contains("fallback") ? .orange : .green)
+                                }
+
+                                if settings.isRunning {
+                                    let mode = settings.effectiveKeyFrameInterval <= 1 ? "All-Intra" : "I/P (every \(settings.effectiveKeyFrameInterval)f)"
+                                    StatusRow(title: "Encoding Mode", status: mode, color: .green)
                                 }
 
                                 if !settings.hasScreenRecordingPermission {
@@ -884,6 +927,9 @@ class DisplaySettings: ObservableObject {
     @Published var touchEnabled: Bool {
         didSet { save("touchEnabled", touchEnabled) }
     }
+    @Published var keyFrameInterval: Int {
+        didSet { save("keyFrameInterval", keyFrameInterval) }
+    }
 
     // Runtime state (not persisted)
     @Published var displayCreated = false
@@ -910,6 +956,7 @@ class DisplaySettings: ObservableObject {
         self.customWidth = defaults.object(forKey: keyPrefix + "customWidth") as? Int ?? 1920
         self.customHeight = defaults.object(forKey: keyPrefix + "customHeight") as? Int ?? 1200
         self.touchEnabled = defaults.object(forKey: keyPrefix + "touchEnabled") as? Bool ?? true
+        self.keyFrameInterval = defaults.object(forKey: keyPrefix + "keyFrameInterval") as? Int ?? 1
 
         print("Loaded settings: \(resolution) @ \(refreshRate)Hz, bitrate=\(bitrate), quality=\(quality)")
     }
@@ -966,14 +1013,18 @@ class DisplaySettings: ObservableObject {
         return gamingBoost ? 120 : refreshRate
     }
 
+    var effectiveKeyFrameInterval: Int {
+        return gamingBoost ? 1 : keyFrameInterval
+    }
+
     func toggleServer() {
         onToggleServer?()
     }
 
     func resetToDefaults() {
         let keys = ["resolution", "refreshRate", "hiDPI", "bitrate", "quality",
-                    "gamingBoost", "port", "rotation", "showAllResolutions",
-                    "customWidth", "customHeight", "touchEnabled"]
+            "gamingBoost", "port", "rotation", "showAllResolutions",
+            "customWidth", "customHeight", "touchEnabled", "keyFrameInterval"]
         for key in keys {
             defaults.removeObject(forKey: keyPrefix + key)
         }
@@ -990,6 +1041,7 @@ class DisplaySettings: ObservableObject {
         customWidth = 1920
         customHeight = 1200
         touchEnabled = true
+        keyFrameInterval = 1
 
         print("Settings reset to defaults")
     }

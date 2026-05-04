@@ -22,6 +22,10 @@ private class StreamDelegate: NSObject, SCStreamDelegate {
 // MARK: - ScreenCapture
 
 class ScreenCapture {
+    private struct KeyframeRequestState {
+        var pendingEncoderCreationRequest = false
+    }
+
     private var stream: SCStream?
     private var streamOutput: StreamOutput?
     private var streamDelegate: StreamDelegate?
@@ -29,6 +33,7 @@ class ScreenCapture {
     private var display: SCDisplay?
     private var virtualDisplayID: CGDirectDisplayID?
     private var refreshRate: Int = 60
+    private let keyframeRequestLock = OSAllocatedUnfairLock(initialState: KeyframeRequestState())
 
     // Thread-safe state for cross-thread access (frame output queue + main queue)
     private let stateLock = OSAllocatedUnfairLock(initialState: FrameMonitorState())
@@ -58,7 +63,37 @@ class ScreenCapture {
     private var pendingEncodes: Int32 = 0
     private var lastPixelBuffer: CVPixelBuffer?
 
-    /// Callback when capture method changes (e.g. SCStream → CGDisplayStream fallback)
+    /// Force the encoder to emit a keyframe on the next frame.
+    /// Called synchronously so the pendingForceKeyframe flag is set before any
+    /// encoding queue (SCStream's encodeQueue or CGDisplayStream's fallback queue)
+    /// processes the next frame.
+    func requestKeyframe() {
+        if let encoder {
+            encoder.requestKeyframe()
+            return
+        }
+
+        keyframeRequestLock.withLock { $0.pendingEncoderCreationRequest = true }
+    }
+
+    /// Force a keyframe for the next frame, or immediately re-encode the last
+    /// captured frame if the display is currently idle.
+    func requestKeyframeOrReplayCachedFrame() {
+        requestKeyframe()
+
+        guard let encoder, let cached = lastPixelBuffer else { return }
+
+        let pts = CMTime(
+            value: CMTimeValue(DispatchTime.now().uptimeNanoseconds / 1000),
+            timescale: 1_000_000
+        )
+
+        encodeQueue?.async {
+            encoder.encode(pixelBuffer: cached, presentationTimeStamp: pts)
+        }
+    }
+
+     /// Callback when capture method changes (e.g. SCStream → CGDisplayStream fallback)
     var onCaptureMethodChanged: ((String) -> Void)?
 
     var displayWidth: Int {
@@ -253,7 +288,7 @@ class ScreenCapture {
 
     // MARK: - Start streaming
 
-    func startStreaming(to server: StreamingServer?, bitrateMbps: Int = 20, quality: String = "medium", gamingBoost: Bool = false, frameRate: Int = 60) {
+    func startStreaming(to server: StreamingServer?, bitrateMbps: Int = 20, quality: String = "medium", gamingBoost: Bool = false, frameRate: Int = 60, keyFrameInterval: Int = 30) {
         // Save parameters for potential restart
         currentServer = server
         currentBitrateMbps = bitrateMbps
@@ -264,7 +299,15 @@ class ScreenCapture {
         let width = displayWidth
         let height = displayHeight
 
-        encoder = VideoEncoder(width: width, height: height, bitrateMbps: bitrateMbps, quality: quality, gamingBoost: gamingBoost, frameRate: frameRate)
+        encoder = VideoEncoder(width: width, height: height, bitrateMbps: bitrateMbps, quality: quality, gamingBoost: gamingBoost, frameRate: frameRate, keyFrameInterval: keyFrameInterval)
+        let shouldForceInitialKeyframe = keyframeRequestLock.withLock { state -> Bool in
+            guard state.pendingEncoderCreationRequest else { return false }
+            state.pendingEncoderCreationRequest = false
+            return true
+        }
+        if shouldForceInitialKeyframe {
+            encoder?.requestKeyframe()
+        }
         encoder?.onEncodedFrame = { [weak server] data, timestamp, isKeyframe in
             server?.sendFrame(data, timestamp: timestamp, isKeyframe: isKeyframe)
         }
@@ -469,8 +512,8 @@ class ScreenCapture {
 
     // MARK: - Settings update
 
-    func updateEncoderSettings(bitrateMbps: Int, quality: String, gamingBoost: Bool) {
-        encoder?.updateSettings(bitrateMbps: bitrateMbps, quality: quality, gamingBoost: gamingBoost)
+    func updateEncoderSettings(bitrateMbps: Int, quality: String, gamingBoost: Bool, keyFrameInterval: Int = 30) {
+        encoder?.updateSettings(bitrateMbps: bitrateMbps, quality: quality, gamingBoost: gamingBoost, keyFrameInterval: keyFrameInterval)
     }
 
     // MARK: - Stop streaming

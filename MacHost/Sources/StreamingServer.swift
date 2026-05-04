@@ -24,6 +24,7 @@ class StreamingServer {
     private var isReceiving = false
     private var isStopped = false
     private var connectionReady = false
+    private var waitingForSyncFrame = false
 
     init(port: UInt16) {
         self.port = port
@@ -74,6 +75,7 @@ class StreamingServer {
         }
 
         connectionReady = false
+        waitingForSyncFrame = true
         connection = newConnection
         droppedFrames = 0
 
@@ -84,8 +86,8 @@ class StreamingServer {
                 debugLog("Client connected - sending display config first")
                 self?.sendDisplaySize()
                 self?.connectionReady = true
-                debugLog("Connection ready for frames")
                 self?.onClientConnected?()
+                debugLog("Connection ready for frames; waiting for keyframe")
                 self?.startReceivingTouch()
             case .failed(let error):
                 debugLog("Connection failed: \(error)")
@@ -200,6 +202,14 @@ class StreamingServer {
 
     func sendFrame(_ data: Data, timestamp: UInt64, isKeyframe: Bool = false) {
         guard let connection = connection, !isStopped, connectionReady else { return }
+        if waitingForSyncFrame {
+            guard isKeyframe else {
+                droppedFrames += 1
+                return
+            }
+            waitingForSyncFrame = false
+            debugLog("First keyframe sent to new client")
+        }
 
         // With all-intra encoding, every frame is independently decodable.
         // No frame-age dropping or backpressure — send everything immediately.

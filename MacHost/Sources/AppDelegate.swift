@@ -94,7 +94,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.screenCapture?.updateEncoderSettings(
                     bitrateMbps: self.settings.effectiveBitrate,
                     quality: self.settings.effectiveQuality,
-                    gamingBoost: gamingBoost
+                    gamingBoost: gamingBoost,
+                    keyFrameInterval: self.settings.effectiveKeyFrameInterval
                 )
             }
             .store(in: &cancellables)
@@ -108,12 +109,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.screenCapture?.updateEncoderSettings(
                     bitrateMbps: bitrate,
                     quality: quality,
-                    gamingBoost: false
+                    gamingBoost: false,
+                    keyFrameInterval: self.settings.effectiveKeyFrameInterval
                 )
             }
             .store(in: &cancellables)
 
-        // Observer cho rotation changes - send to connected client immediately
+        // Observer for keyframe interval changes
+        settings.$keyFrameInterval
+            .dropFirst()
+            .sink { [weak self] _ in
+                guard let self = self, self.settings.isRunning else { return }
+                let interval = self.settings.effectiveKeyFrameInterval
+                self.screenCapture?.updateEncoderSettings(
+                    bitrateMbps: self.settings.effectiveBitrate,
+                    quality: self.settings.effectiveQuality,
+                    gamingBoost: self.settings.gamingBoost,
+                    keyFrameInterval: interval
+                )
+            }
+            .store(in: &cancellables)
+
+         // Observer cho rotation changes - send to connected client immediately
         settings.$rotation
             .dropFirst()
             .sink { [weak self] rotation in
@@ -396,6 +413,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             streamingServer?.setDisplaySize(width: physWidth, height: physHeight, rotation: settings.rotation)
             streamingServer?.onClientConnected = { [weak self] in
                 guard let self = self else { return }
+                self.screenCapture?.requestKeyframeOrReplayCachedFrame()
                 Task { @MainActor in
                     self.settings.clientConnected = true
                 }
@@ -419,7 +437,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 bitrateMbps: settings.effectiveBitrate,
                 quality: settings.effectiveQuality,
                 gamingBoost: settings.gamingBoost,
-                frameRate: settings.effectiveRefreshRate
+                frameRate: settings.effectiveRefreshRate,
+                keyFrameInterval: settings.effectiveKeyFrameInterval
             )
 
             await MainActor.run {

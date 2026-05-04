@@ -1,8 +1,13 @@
 import Foundation
 import VideoToolbox
 import CoreMedia
+import os
 
 class VideoEncoder {
+    private struct EncoderState {
+        var pendingForceKeyframe = false
+    }
+
     private var compressionSession: VTCompressionSession?
     var onEncodedFrame: ((Data, UInt64, Bool) -> Void)?  // data, timestamp, isKeyframe
     private var width: Int
@@ -11,20 +16,24 @@ class VideoEncoder {
     private var quality: String = "medium"
     private var gamingBoost: Bool = false
     private var frameRate: Int = 60
-    init(width: Int, height: Int, bitrateMbps: Int = 20, quality: String = "ultralow", gamingBoost: Bool = false, frameRate: Int = 60) {
+    private var keyFrameInterval: Int = 30
+    private let stateLock = OSAllocatedUnfairLock(initialState: EncoderState())
+    init(width: Int, height: Int, bitrateMbps: Int = 20, quality: String = "ultralow", gamingBoost: Bool = false, frameRate: Int = 60, keyFrameInterval: Int = 30) {
         self.width = width
         self.height = height
         self.bitrateMbps = gamingBoost ? 50 : bitrateMbps
         self.quality = gamingBoost ? "ultralow" : quality
         self.gamingBoost = gamingBoost
         self.frameRate = frameRate
+        self.keyFrameInterval = keyFrameInterval
         setupCompressionSession()
     }
 
-    func updateSettings(bitrateMbps: Int, quality: String, gamingBoost: Bool) {
+    func updateSettings(bitrateMbps: Int, quality: String, gamingBoost: Bool, keyFrameInterval: Int = 30) {
         self.bitrateMbps = gamingBoost ? 50 : bitrateMbps
         self.quality = gamingBoost ? "ultralow" : quality
         self.gamingBoost = gamingBoost
+        self.keyFrameInterval = keyFrameInterval
 
         // Drain pending frames before invalidation
         if let session = compressionSession {
@@ -72,11 +81,15 @@ class VideoEncoder {
         // Frame rate settings
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ExpectedFrameRate, value: frameRate as CFNumber)
 
-        // All-intra: every frame is a keyframe
-        // Eliminates P-frame dependency → no corruption from frame loss
-        // Higher bitrate (~3x) but USB-C has plenty of bandwidth
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: 1 as CFNumber)
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, value: 0.0 as CFNumber)
+        if keyFrameInterval <= 1 {
+            // All-intra mode: every frame is a keyframe
+            VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: 1 as CFNumber)
+            VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, value: 0.0 as CFNumber)
+        } else {
+            // Hybrid I/P mode: keyframe every N frames
+            VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameInterval, value: keyFrameInterval as CFNumber)
+            VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, value: Double(keyFrameInterval) / Double(frameRate) as CFNumber)
+        }
 
         // Critical for low latency - NO frame reordering (no B-frames)
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse)
@@ -105,8 +118,15 @@ class VideoEncoder {
 
         VTCompressionSessionPrepareToEncodeFrames(session)
 
+        let encodingMode = keyFrameInterval <= 1 ? "ALL-INTRA" : "I/P (keyframe every \(keyFrameInterval)f)"
         let mode = gamingBoost ? "🎮 GAMING BOOST" : quality.uppercased()
-        debugLog("VideoToolbox encoder configured (H.265, \(bitrateMbps)Mbps, \(frameRate)fps, \(mode))")
+        debugLog("VideoToolbox encoder configured (H.265, \(bitrateMbps)Mbps, \(frameRate)fps, \(mode), encoding: \(encodingMode))")
+    }
+
+    /// Force the next encoded frame to be an IDR (sync) frame.
+    /// Ensures a newly connected or reinitializing decoder can start decoding immediately.
+    func requestKeyframe() {
+        stateLock.withLock { $0.pendingForceKeyframe = true }
     }
 
     func encode(pixelBuffer: CVPixelBuffer, presentationTimeStamp: CMTime) {
@@ -119,12 +139,25 @@ class VideoEncoder {
         let refconValue = UnsafeMutableRawPointer.allocate(byteCount: 8, alignment: 8)
         refconValue.storeBytes(of: captureNanos, as: UInt64.self)
 
+        let shouldForceKeyframe = stateLock.withLock { state -> Bool in
+            guard state.pendingForceKeyframe else { return false }
+            state.pendingForceKeyframe = false
+            return true
+        }
+
+        let frameProperties: CFDictionary?
+        if shouldForceKeyframe {
+            frameProperties = [kVTEncodeFrameOptionKey_ForceKeyFrame: true] as CFDictionary
+        } else {
+            frameProperties = nil
+        }
+
         VTCompressionSessionEncodeFrame(
             session,
             imageBuffer: pixelBuffer,
             presentationTimeStamp: presentationTimeStamp,
             duration: duration,
-            frameProperties: nil,
+            frameProperties: frameProperties,
             sourceFrameRefcon: refconValue,
             infoFlagsOut: nil
         )
