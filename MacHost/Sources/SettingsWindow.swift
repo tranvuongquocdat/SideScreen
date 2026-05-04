@@ -490,9 +490,9 @@ struct SettingsView: View {
 
                                     Picker("", selection: $settings.keyFrameInterval) {
                                         Text("All-Intra").tag(1)
-                                        Text("Low Compression").tag(10)
-                                        Text("Balanced").tag(30)
-                                        Text("Max Compression").tag(60)
+                                        Text("Low Compression").tag(5)
+                                        Text("Balanced").tag(10)
+                                        Text("Max Compression").tag(30)
                                      }
                                      .pickerStyle(.segmented)
                                      .disabled(settings.gamingBoost)
@@ -505,18 +505,18 @@ struct SettingsView: View {
                                         Text("Every frame is independent. Higher bandwidth, no corruption from dropped frames.")
                                              .font(.system(size: 10))
                                              .foregroundColor(.green)
-                                     } else if settings.keyFrameInterval == 10 {
-                                        Text("Keyframe every ~0.17s. Minimal artifacts, moderate bandwidth increase.")
+                                     } else if settings.keyFrameInterval == 5 {
+                                        Text("Keyframe every ~0.09s. Minimal artifacts, moderate bandwidth increase.")
                                              .font(.system(size: 10))
                                              .foregroundColor(.green)
-                                     } else if settings.keyFrameInterval == 30 {
-                                        Text("Best balance of smoothness and bandwidth. Keyframe every ~0.5s")
+                                     } else if settings.keyFrameInterval == 10 {
+                                        Text("Best balance of smoothness and bandwidth. Keyframe every ~0.17s")
                                              .font(.system(size: 10))
                                              .foregroundColor(.green)
                                      } else {
-                                        Text("Maximum compression. Keyframe every ~1s. Dropped frames may cause brief artifacts.")
+                                        Text("Maximum compression. Keyframe every ~0.5s. Dropped frames may cause brief artifacts.")
                                              .font(.system(size: 10))
-                                             .foregroundColor(.green)
+                                             .foregroundColor(.orange)
                                      }
                                 }
                             }
