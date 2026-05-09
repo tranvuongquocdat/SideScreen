@@ -907,12 +907,20 @@ class DisplaySettings: ObservableObject {
     @Published var touchEnabled: Bool {
         didSet { save("touchEnabled", touchEnabled) }
     }
+    @Published var connectionMode: ConnectionMode {
+        didSet { save("connectionMode", connectionMode.rawValue) }
+    }
 
     // Runtime state (not persisted)
     @Published var displayCreated = false
     @Published var clientConnected = false
     @Published var hasScreenRecordingPermission = false
     @Published var hasAccessibilityPermission = false
+    @Published var adbInstalled = false
+    @Published var adbReverseConfigured = false
+    @Published var usbDeviceConnected = false
+    @Published var wifiConnected = false
+    @Published var listeningAddress: String? = nil
     @Published var isRunning = false
     @Published var currentFPS: Double = 0
     @Published var currentBitrate: Double = 0
@@ -933,6 +941,8 @@ class DisplaySettings: ObservableObject {
         self.customWidth = defaults.object(forKey: keyPrefix + "customWidth") as? Int ?? 1920
         self.customHeight = defaults.object(forKey: keyPrefix + "customHeight") as? Int ?? 1200
         self.touchEnabled = defaults.object(forKey: keyPrefix + "touchEnabled") as? Bool ?? true
+        let modeRaw = defaults.string(forKey: keyPrefix + "connectionMode") ?? ConnectionMode.usb.rawValue
+        self.connectionMode = ConnectionMode(rawValue: modeRaw) ?? .usb
 
         print("Loaded settings: \(resolution) @ \(refreshRate)Hz, bitrate=\(bitrate), quality=\(quality)")
     }
