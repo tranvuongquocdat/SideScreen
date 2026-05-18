@@ -25,6 +25,7 @@ class VideoDecoder(
 
     private var frameCount = 0L
     private var droppedFrames = 0L
+    private var staleOutputDrops = 0L
     private var lastStatsTime = System.currentTimeMillis()
     private var inputFrameCount = 0L
     private var outputFrameCount = 0L
@@ -46,9 +47,14 @@ class VideoDecoder(
 
     @Volatile private var isRunning = false
 
+    @Volatile private var needsKeyframe = true
+
+    private var lastKeyframeRequestNs = 0L
+
     var onFrameRendered: ((Long) -> Unit)? = null
     var onFrameStats: ((fps: Double, variance: Double) -> Unit)? = null
     var onFrameDecoded: ((ByteArray) -> Unit)? = null
+    var onKeyframeRequired: ((force: Boolean, reason: String) -> Unit)? = null
 
     // Available input buffer indices — fed by onInputBufferAvailable callback
     private val availableInputBuffers = ConcurrentLinkedQueue<Int>()
@@ -66,6 +72,7 @@ class VideoDecoder(
             currentHeight = height
             release()
             setupDecoder()
+            requestKeyframe("resolution changed", force = true)
         }
     }
 
@@ -107,6 +114,8 @@ class VideoDecoder(
                 ) {
                     diagLog("Codec error: ${e.diagnosticInfo}")
                     Log.e(TAG, "Codec error: ${e.diagnosticInfo}", e)
+                    needsKeyframe = true
+                    requestKeyframe("codec error", force = true)
                 }
 
                 override fun onOutputFormatChanged(
@@ -173,7 +182,6 @@ class VideoDecoder(
                         currentHeight,
                     )
                 codec.configure(minimalFormat, surface, null, 0)
-                configured = true
                 diagLog("Configured with minimal format")
             } catch (e: Exception) {
                 diagLog("All configure attempts failed: ${e.message}")
@@ -187,6 +195,7 @@ class VideoDecoder(
         }
 
         codec.setVideoScalingMode(MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT)
+        needsKeyframe = true
         isRunning = true
         codec.start()
         decoder = codec
@@ -207,8 +216,11 @@ class VideoDecoder(
     ): String? {
         try {
             val codecList = MediaCodecList(MediaCodecList.ALL_CODECS)
-            var hwDecoder: String? = null
-            var swDecoder: String? = null
+            val targetRate = displayRefreshRate.toDouble().coerceAtLeast(30.0)
+            var hwRateDecoder: String? = null
+            var hwSizeDecoder: String? = null
+            var swRateDecoder: String? = null
+            var swSizeDecoder: String? = null
 
             for (info in codecList.codecInfos) {
                 if (info.isEncoder) continue
@@ -224,27 +236,43 @@ class VideoDecoder(
                     !info.name.startsWith("c2.android.") &&
                         !info.name.startsWith("OMX.google.")
                 val supported = videoCaps.isSizeSupported(width, height)
+                val rateSupported =
+                    supported &&
+                        try {
+                            videoCaps.areSizeAndRateSupported(width, height, targetRate)
+                        } catch (_: Exception) {
+                            false
+                        }
 
                 diagLog(
                     "HEVC decoder '${info.name}': " +
                         "width=${videoCaps.supportedWidths}, " +
                         "height=${videoCaps.supportedHeights}, " +
-                        "hw=$isHardware, supports ${width}x$height=$supported",
+                        "hw=$isHardware, supports ${width}x$height=$supported, " +
+                        "supports @${"%.0f".format(targetRate)}fps=$rateSupported",
                 )
 
                 if (supported) {
-                    if (isHardware && hwDecoder == null) {
-                        hwDecoder = info.name
-                    } else if (!isHardware && swDecoder == null) {
-                        swDecoder = info.name
+                    if (isHardware && rateSupported && hwRateDecoder == null) {
+                        hwRateDecoder = info.name
+                    } else if (isHardware && hwSizeDecoder == null) {
+                        hwSizeDecoder = info.name
+                    } else if (!isHardware && rateSupported && swRateDecoder == null) {
+                        swRateDecoder = info.name
+                    } else if (!isHardware && swSizeDecoder == null) {
+                        swSizeDecoder = info.name
                     }
                 }
             }
 
-            // Prefer hardware, fall back to software
-            val chosen = hwDecoder ?: swDecoder
+            // Prefer hardware that advertises the target refresh rate, then any
+            // hardware decoder for the size, then software as a last resort.
+            val chosen = hwRateDecoder ?: hwSizeDecoder ?: swRateDecoder ?: swSizeDecoder
             if (chosen != null) {
-                diagLog("Selected decoder: $chosen (hw=${chosen == hwDecoder})")
+                diagLog(
+                    "Selected decoder: $chosen " +
+                        "(rateSupported=${chosen == hwRateDecoder || chosen == swRateDecoder})",
+                )
             } else {
                 diagLog("No decoder supports ${width}x$height — will use default")
             }
@@ -259,6 +287,7 @@ class VideoDecoder(
         frameData: ByteArray,
         frameSize: Int = frameData.size,
         frameTimestamp: Long = System.nanoTime(),
+        isKeyframe: Boolean = false,
     ) {
         if (!isRunning) {
             diagLog("decode called but isRunning=false")
@@ -269,11 +298,12 @@ class VideoDecoder(
         inputFrameCount++
         if (inputFrameCount == 1L) {
             val header =
-                frameData.take(minOf(16, frameSize))
+                frameData
+                    .take(minOf(16, frameSize))
                     .joinToString(" ") { String.format("%02x", it) }
             diagLog(
                 "First frame: size=$frameSize, header=[$header], " +
-                    "surface=$surface, valid=${surface.isValid}",
+                    "keyframe=$isKeyframe, surface=$surface, valid=${surface.isValid}",
             )
         }
         if (inputFrameCount % 60L == 0L) {
@@ -283,35 +313,97 @@ class VideoDecoder(
             )
         }
 
-        // Direct feed: grab an available input buffer and queue immediately
-        // No intermediate queue, no thread handoff — minimum latency
-        val index = availableInputBuffers.poll()
-        if (index == null) {
-            // No input buffer available — codec is busy, drop frame
-            droppedFrames++
-            if (droppedFrames <= 3L || droppedFrames % 60L == 0L) {
-                diagLog("No input buffer — dropping (total dropped: $droppedFrames)")
+        val codec =
+            decoder ?: run {
+                diagLog("decoder is null in decode()")
+                onFrameDecoded?.invoke(frameData)
+                return
             }
-            onFrameDecoded?.invoke(frameData)
+
+        if (needsKeyframe && !isKeyframe) {
+            dropFrame(
+                frameData,
+                isKeyframe,
+                "waiting for keyframe",
+                waitForKeyframe = true,
+            )
             return
         }
 
+        // Direct feed: grab an available input buffer and queue immediately.
+        val index = availableInputBuffers.poll()
+        if (index == null) {
+            dropFrame(
+                frameData,
+                isKeyframe,
+                "no input buffer",
+                waitForKeyframe = needsKeyframe || isKeyframe,
+                requestRefresh = true,
+            )
+            return
+        }
+
+        queueFrame(codec, index, frameData, frameSize, frameTimestamp, isKeyframe)
+    }
+
+    private fun queueFrame(
+        codec: MediaCodec,
+        index: Int,
+        frameData: ByteArray,
+        frameSize: Int,
+        frameTimestamp: Long,
+        isKeyframe: Boolean,
+    ) {
         try {
-            val codec =
-                decoder ?: run {
-                    diagLog("decoder is null in decode()")
-                    onFrameDecoded?.invoke(frameData)
-                    return
-                }
-            val inputBuffer = codec.getInputBuffer(index)
-            inputBuffer?.clear()
-            inputBuffer?.put(frameData, 0, frameSize)
+            val inputBuffer =
+                codec.getInputBuffer(index)
+                    ?: throw IllegalStateException("Input buffer $index is null")
+            inputBuffer.clear()
+            inputBuffer.put(frameData, 0, frameSize)
             codec.queueInputBuffer(index, 0, frameSize, frameTimestamp / 1000, 0)
+            if (isKeyframe) {
+                needsKeyframe = false
+            }
         } catch (e: Exception) {
+            needsKeyframe = true
+            requestKeyframe("queue input failed")
             Log.e(TAG, "decode direct feed error", e)
         } finally {
             onFrameDecoded?.invoke(frameData)
         }
+    }
+
+    private fun dropFrame(
+        frameData: ByteArray,
+        isKeyframe: Boolean,
+        reason: String,
+        waitForKeyframe: Boolean,
+        requestRefresh: Boolean = waitForKeyframe,
+    ) {
+        droppedFrames++
+        if (droppedFrames <= 3L || droppedFrames % 60L == 0L) {
+            diagLog("Dropping frame ($reason, keyframe=$isKeyframe, dropped=$droppedFrames)")
+        }
+        if (waitForKeyframe) {
+            needsKeyframe = true
+        }
+        if (requestRefresh) {
+            requestKeyframe(reason)
+        }
+        onFrameDecoded?.invoke(frameData)
+    }
+
+    private fun requestKeyframe(
+        reason: String,
+        force: Boolean = false,
+    ) {
+        val now = System.nanoTime()
+        if (!force && now - lastKeyframeRequestNs < KEYFRAME_REQUEST_INTERVAL_NS) {
+            return
+        }
+        lastKeyframeRequestNs = now
+        diagLog("Requesting keyframe: reason=$reason, force=$force")
+        onKeyframeRequired?.invoke(force, reason)
     }
 
     private fun handleOutputBuffer(
@@ -330,7 +422,8 @@ class VideoDecoder(
             // frame spent inside the codec's input/reorder/output queues.
             val nowNs = System.nanoTime()
             val latencyNs = nowNs - info.presentationTimeUs * 1000L
-            if (latencyNs in 0..2_000_000_000L) {
+            val hasValidLatency = latencyNs in 0..MAX_REASONABLE_LATENCY_NS
+            if (hasValidLatency) {
                 latencySumNs += latencyNs
                 latencySamples++
                 if (latencyNs > latencyMaxNs) latencyMaxNs = latencyNs
@@ -349,6 +442,26 @@ class VideoDecoder(
                 latencySamples = 0
                 latencyMaxNs = 0
             }
+
+            val shouldRender =
+                outputFrameCount == 1L ||
+                    !hasValidLatency ||
+                    latencyNs <= MAX_RENDER_LATENCY_NS
+
+            if (!shouldRender) {
+                droppedFrames++
+                staleOutputDrops++
+                if (staleOutputDrops <= 3L || staleOutputDrops % 60L == 0L) {
+                    diagLog(
+                        "Dropping stale output frame: latency=${"%.1f".format(latencyNs / 1_000_000.0)}ms, " +
+                            "staleDrops=$staleOutputDrops",
+                    )
+                }
+                codec.releaseOutputBuffer(index, false)
+                updateStats()
+                return
+            }
+
             codec.releaseOutputBuffer(index, true)
             trackFrameTiming(System.nanoTime())
             updateStats()
@@ -384,6 +497,7 @@ class VideoDecoder(
         if (elapsed >= 1000) {
             frameCount = 0
             droppedFrames = 0
+            staleOutputDrops = 0
             lastStatsTime = now
         }
     }
@@ -404,5 +518,8 @@ class VideoDecoder(
 
     companion object {
         private const val TAG = "VideoDecoder"
+        private const val KEYFRAME_REQUEST_INTERVAL_NS = 1_000_000_000L
+        private const val MAX_RENDER_LATENCY_NS = 100_000_000L
+        private const val MAX_REASONABLE_LATENCY_NS = 2_000_000_000L
     }
 }

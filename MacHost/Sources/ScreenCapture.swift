@@ -41,8 +41,10 @@ class ScreenCapture {
 
     private struct KeyframeRequestState {
         var pendingEncoderCreationRequest = false
+        var lastKeyframeOrReplayRequestNs: UInt64 = 0
     }
     private let keyframeRequestLock = OSAllocatedUnfairLock(initialState: KeyframeRequestState())
+    private static let keyframeRequestThrottleNs: UInt64 = 500_000_000
 
     // Main-thread-only state
     private var frameMonitorTimer: DispatchSourceTimer?
@@ -81,7 +83,19 @@ class ScreenCapture {
     /// the last cached frame as a forced keyframe if the display is currently
     /// idle. Without this, a client connecting during a static screen would
     /// wait up to one full GOP duration before its decoder could start.
-    func requestKeyframeOrReplayCachedFrame() {
+    func requestKeyframeOrReplayCachedFrame(force: Bool = false) {
+        let now = DispatchTime.now().uptimeNanoseconds
+        let shouldRequest = keyframeRequestLock.withLock { state -> Bool in
+            if !force,
+               state.lastKeyframeOrReplayRequestNs > 0,
+               now - state.lastKeyframeOrReplayRequestNs < Self.keyframeRequestThrottleNs {
+                return false
+            }
+            state.lastKeyframeOrReplayRequestNs = now
+            return true
+        }
+        guard shouldRequest else { return }
+
         requestKeyframe()
 
         guard let encoder, let cached = lastPixelBuffer else { return }

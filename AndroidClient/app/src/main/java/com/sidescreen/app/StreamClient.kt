@@ -28,8 +28,9 @@ class StreamClient(
     private var outputStream: java.io.DataOutputStream? = null
     private var isConnected = false
 
-    // Callback includes actual frame size (may differ from buffer.size due to pooling) and timestamp
-    var onFrameReceived: ((ByteArray, Int, Long) -> Unit)? = null
+    // Callback includes actual frame size (may differ from buffer.size due to pooling),
+    // receive timestamp, and whether the frame can restart HEVC decoding.
+    var onFrameReceived: ((ByteArray, Int, Long, Boolean) -> Unit)? = null
     var onConnectionStatus: ((Boolean) -> Unit)? = null
     var onDisplaySize: ((Int, Int, Int) -> Unit)? = null // width, height, rotation
     var onStats: ((Double, Double) -> Unit)? = null
@@ -38,6 +39,9 @@ class StreamClient(
     private var framesReceived = 0L
     private var diagFrameCount = 0L
     private var lastStatsTime = System.currentTimeMillis()
+    private val keyframeRequestLock = Any()
+    private var lastKeyframeRequestNs = 0L
+    private var lastKeyframeReceivedNs = 0L
 
     // Buffer pooling to reduce GC pressure from per-frame allocations
     // At 60fps with ~100KB frames, this prevents ~6MB/s of allocations
@@ -81,12 +85,20 @@ class StreamClient(
     // Use THREAD_PRIORITY_DISPLAY instead of URGENT_DISPLAY to avoid starving system processes
     private val touchExecutor =
         Executors.newSingleThreadExecutor { runnable ->
-            Thread(runnable).apply {
-                name = "TouchThread"
+            Thread(
+                {
+                    // Use DISPLAY priority (less aggressive than URGENT_DISPLAY).
+                    // ThreadFactory runs on the caller thread, so set Linux priority
+                    // from inside the worker thread before processing touch writes.
+                    try {
+                        Process.setThreadPriority(Process.THREAD_PRIORITY_DISPLAY)
+                    } catch (_: Exception) {
+                    }
+                    runnable.run()
+                },
+                "TouchThread",
+            ).apply {
                 priority = Thread.MAX_PRIORITY
-                // Use DISPLAY priority (less aggressive than URGENT_DISPLAY)
-                // URGENT_DISPLAY can starve system launcher and cause lag
-                Process.setThreadPriority(Process.THREAD_PRIORITY_DISPLAY)
             }
         }
     private val touchDispatcher = touchExecutor.asCoroutineDispatcher()
@@ -101,7 +113,12 @@ class StreamClient(
                     }
                 inputStream = DataInputStream(java.io.BufferedInputStream(socket?.getInputStream(), 65536))
                 outputStream = java.io.DataOutputStream(socket?.getOutputStream())
+                advertiseFrameMetadataSupport()
                 isConnected = true
+                lastKeyframeReceivedNs = 0L
+                synchronized(keyframeRequestLock) {
+                    lastKeyframeRequestNs = 0L
+                }
 
                 diagLog("Connected to $host:$port")
                 onConnectionStatus?.invoke(true)
@@ -221,6 +238,7 @@ class StreamClient(
                 socket = s
                 inputStream = DataInputStream(java.io.BufferedInputStream(s.getInputStream(), 65536))
                 outputStream = java.io.DataOutputStream(s.getOutputStream())
+                advertiseFrameMetadataSupport()
                 isConnected = true
                 diagLog("Wireless connected to $host:$port")
                 onConnectionStatus?.invoke(true)
@@ -243,6 +261,14 @@ class StreamClient(
         }
     }
 
+    private fun advertiseFrameMetadataSupport() {
+        outputStream?.let { out ->
+            out.writeByte(MESSAGE_CLIENT_SUPPORTS_FRAME_METADATA)
+            out.flush()
+            diagLog("Advertised frame metadata support")
+        }
+    }
+
     private suspend fun receiveData() =
         withContext(Dispatchers.IO) {
             val input = inputStream ?: return@withContext
@@ -252,28 +278,12 @@ class StreamClient(
                     val type = input.readByte()
 
                     when (type.toInt()) {
-                        0 -> { // Video frame
-                            val frameSize = input.readInt()
+                        MESSAGE_VIDEO_FRAME -> {
+                            receiveVideoFrame(input, hasMetadata = false)
+                        }
 
-                            if (frameSize <= 0 || frameSize > MAX_FRAME_SIZE) {
-                                Log.e(TAG, "❌ Invalid frame size: $frameSize")
-                                break
-                            }
-
-                            val frameData = acquireBuffer(frameSize)
-                            input.readFully(frameData, 0, frameSize)
-
-                            // Capture timestamp after full frame received for accurate age tracking
-                            val receiveTimestamp = System.nanoTime()
-                            diagFrameCount++
-                            if (diagFrameCount == 1L) {
-                                diagLog("First video frame: size=$frameSize, callback=${onFrameReceived != null}")
-                            }
-                            if (diagFrameCount % 60L == 0L) {
-                                diagLog("Frames received: $diagFrameCount")
-                            }
-                            onFrameReceived?.invoke(frameData, frameSize, receiveTimestamp)
-                            updateStats(frameSize)
+                        MESSAGE_VIDEO_FRAME_WITH_METADATA -> {
+                            receiveVideoFrame(input, hasMetadata = true)
                         }
 
                         1 -> { // Display size + rotation
@@ -347,6 +357,47 @@ class StreamClient(
     var onLatencyMeasured: ((Double) -> Unit)? = null
 
     /**
+     * Ask the host to send an IDR/sync frame.
+     *
+     * Non-forced requests are rate-limited here so all callers share the same
+     * backpressure guard. Forced requests are reserved for startup and hard
+     * decoder recovery paths where waiting for the throttle would leave the
+     * client black or unsynchronized.
+     */
+    fun requestKeyframe(
+        force: Boolean = false,
+        reason: String = "client request",
+    ) {
+        if (!isConnected) return
+        val now = System.nanoTime()
+        val shouldSend =
+            synchronized(keyframeRequestLock) {
+                if (!force &&
+                    lastKeyframeRequestNs > 0L &&
+                    now - lastKeyframeRequestNs < KEYFRAME_REQUEST_INTERVAL_NS
+                ) {
+                    false
+                } else {
+                    lastKeyframeRequestNs = now
+                    true
+                }
+            }
+        if (!shouldSend) return
+
+        val flags = if (force) KEYFRAME_REQUEST_FLAG_FORCE else 0
+        diagLog("Requesting keyframe: reason=$reason, force=$force")
+        touchScope.launch {
+            try {
+                outputStream?.let { out ->
+                    out.write(byteArrayOf(MESSAGE_KEYFRAME_REQUEST.toByte(), flags.toByte()))
+                    out.flush()
+                }
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    /**
      * Send a ping to measure round-trip latency through the USB connection
      */
     fun sendPing() {
@@ -380,6 +431,73 @@ class StreamClient(
             bytesReceived = 0
             framesReceived = 0
             lastStatsTime = now
+        }
+    }
+
+    private fun receiveVideoFrame(
+        input: DataInputStream,
+        hasMetadata: Boolean,
+    ) {
+        val frameSize = input.readInt()
+
+        if (frameSize <= 0 || frameSize > MAX_FRAME_SIZE) {
+            throw IOException("Invalid frame size: $frameSize")
+        }
+
+        var isKeyframe = false
+        if (hasMetadata) {
+            val flags = input.readUnsignedByte()
+            input.readLong() // Host capture timestamp; clocks are not comparable with Android.
+            isKeyframe = (flags and FRAME_FLAG_KEYFRAME) != 0
+        }
+
+        val frameData = acquireBuffer(frameSize)
+        input.readFully(frameData, 0, frameSize)
+
+        if (!hasMetadata && !isKeyframe) {
+            isKeyframe = isHevcSyncFrame(frameData, frameSize)
+        }
+
+        // Capture timestamp after full frame received for accurate age tracking.
+        val receiveTimestamp = System.nanoTime()
+        checkKeyframeFreshness(receiveTimestamp, isKeyframe)
+        diagFrameCount++
+        if (diagFrameCount == 1L) {
+            diagLog(
+                "First video frame: size=$frameSize, keyframe=$isKeyframe, " +
+                    "metadata=$hasMetadata, callback=${onFrameReceived != null}",
+            )
+        }
+        if (diagFrameCount % 60L == 0L) {
+            diagLog("Frames received: $diagFrameCount")
+        }
+
+        val callback = onFrameReceived
+        if (callback != null) {
+            callback.invoke(frameData, frameSize, receiveTimestamp, isKeyframe)
+        } else {
+            releaseBuffer(frameData)
+        }
+        updateStats(frameSize)
+    }
+
+    private fun checkKeyframeFreshness(
+        receiveTimestamp: Long,
+        isKeyframe: Boolean,
+    ) {
+        if (isKeyframe) {
+            lastKeyframeReceivedNs = receiveTimestamp
+            return
+        }
+
+        val lastKeyframeNs = lastKeyframeReceivedNs
+        if (lastKeyframeNs <= 0L) return
+
+        val keyframeAgeNs = receiveTimestamp - lastKeyframeNs
+        if (keyframeAgeNs > KEYFRAME_STALE_INTERVAL_NS) {
+            requestKeyframe(
+                reason = "last keyframe ${keyframeAgeNs / 1_000_000L}ms ago",
+            )
         }
     }
 
@@ -421,5 +539,53 @@ class StreamClient(
     companion object {
         private const val TAG = "StreamClient"
         private const val MAX_FRAME_SIZE = 5 * 1024 * 1024 // 5MB
+        private const val KEYFRAME_REQUEST_INTERVAL_NS = 500_000_000L
+        private const val KEYFRAME_STALE_INTERVAL_NS = 1_500_000_000L
+        private const val MESSAGE_VIDEO_FRAME = 0
+        private const val MESSAGE_VIDEO_FRAME_WITH_METADATA = 6
+        private const val MESSAGE_KEYFRAME_REQUEST = 7
+        private const val MESSAGE_CLIENT_SUPPORTS_FRAME_METADATA = 8
+        private const val FRAME_FLAG_KEYFRAME = 1
+        private const val KEYFRAME_REQUEST_FLAG_FORCE = 1
+
+        private fun isHevcSyncFrame(
+            data: ByteArray,
+            size: Int,
+        ): Boolean {
+            var i = 0
+            while (i + 5 < size) {
+                var start = -1
+                var startCodeLength = 0
+
+                while (i + 3 < size) {
+                    if (data[i] == 0.toByte() && data[i + 1] == 0.toByte()) {
+                        if (data[i + 2] == 1.toByte()) {
+                            start = i
+                            startCodeLength = 3
+                            break
+                        }
+                        if (i + 3 < size && data[i + 2] == 0.toByte() && data[i + 3] == 1.toByte()) {
+                            start = i
+                            startCodeLength = 4
+                            break
+                        }
+                    }
+                    i++
+                }
+
+                if (start < 0) return false
+
+                val nalStart = start + startCodeLength
+                if (nalStart + 1 >= size) return false
+
+                val nalType = (data[nalStart].toInt() and 0x7E) shr 1
+                if (nalType in 16..21) {
+                    return true
+                }
+
+                i = nalStart + 2
+            }
+            return false
+        }
     }
 }

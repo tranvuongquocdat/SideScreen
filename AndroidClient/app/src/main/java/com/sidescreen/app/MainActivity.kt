@@ -789,6 +789,10 @@ class MainActivity : AppCompatActivity() {
             videoDecoder?.onFrameDecoded = { buffer ->
                 streamClient?.releaseBuffer(buffer)
             }
+            videoDecoder?.onKeyframeRequired = { force, reason ->
+                streamClient?.requestKeyframe(force = force, reason = reason)
+            }
+            streamClient?.requestKeyframe(force = true, reason = "decoder initialized")
             mainDiag("Decoder initialized OK ${displayWidth}x$displayHeight, videoDecoder=$videoDecoder")
             log("✅ Decoder initialized ${displayWidth}x$displayHeight (${displayObj?.refreshRate ?: 60f}Hz)")
         } catch (e: Exception) {
@@ -801,10 +805,10 @@ class MainActivity : AppCompatActivity() {
      * Wire up all StreamClient callbacks. Used by both USB connect() and wireless connectWireless().
      */
     private fun setupStreamClientCallbacks() {
-        streamClient?.onFrameReceived = { frameData, frameSize, timestamp ->
+        streamClient?.onFrameReceived = { frameData, frameSize, timestamp, isKeyframe ->
             val dec = videoDecoder
             if (dec != null) {
-                dec.decode(frameData, frameSize, timestamp)
+                dec.decode(frameData, frameSize, timestamp, isKeyframe)
             } else {
                 mainDiag("FRAME DROPPED: videoDecoder is null!")
             }
@@ -951,12 +955,12 @@ class MainActivity : AppCompatActivity() {
                 log("Connecting to $host:$port...")
 
                 streamClient = StreamClient(host, port)
-                streamClient?.onFrameReceived = { frameData, frameSize, timestamp ->
+                streamClient?.onFrameReceived = { frameData, frameSize, timestamp, isKeyframe ->
                     val dec = videoDecoder
                     if (dec != null) {
-                        dec.decode(frameData, frameSize, timestamp)
+                        dec.decode(frameData, frameSize, timestamp, isKeyframe)
                     } else {
-                        mainDiag("FRAME DROPPED: videoDecoder is null!")
+                        streamClient?.releaseBuffer(frameData)
                     }
                 }
 
@@ -964,6 +968,9 @@ class MainActivity : AppCompatActivity() {
                 // When decode completes, buffer is returned to StreamClient's pool
                 videoDecoder?.onFrameDecoded = { buffer ->
                     streamClient?.releaseBuffer(buffer)
+                }
+                videoDecoder?.onKeyframeRequired = { force, reason ->
+                    streamClient?.requestKeyframe(force = force, reason = reason)
                 }
 
                 // Latency measurement via ping/pong

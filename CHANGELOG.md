@@ -17,6 +17,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+<a id="0.9.0"></a>
+## [0.9.0] - 2026-05-18
+
+Stream resilience pass — faster recovery after backgrounding/reconnect, less lag pile-up on rapidly changing content, and two latent bugs squashed in the wire layer. Contributed by @luisdavim (#16, relates to #13).
+
+### Added
+- **Keyframe tracking and recovery**. The Android client now parses per-frame metadata from the Mac host (keyframe flag + capture timestamp), waits for a fresh keyframe before feeding the decoder after startup or codec error, and explicitly requests a keyframe from the host on demand. Returning to Side Screen from home / multi-task now recovers in ~50–100 ms instead of staying garbled until the next scheduled keyframe (~1 s). An opt-in handshake message keeps older clients on the legacy frame format so mixed versions still work.
+- **Stale decoder-output drop**. When the decoder's output queue piles up under heavy scenes (fast terminal scroll, large window scroll, etc.), frames whose decoder-pipeline latency exceeds 100 ms are dropped rather than rendered. Cursor and touch feel stay live instead of slowly trailing reality.
+
+### Fixed
+- **Touch thread priority was being set on the wrong thread.** `Executors.newSingleThreadExecutor` runs the thread factory on the caller, so the `Process.setThreadPriority(THREAD_PRIORITY_DISPLAY)` call inside the factory was elevating whichever thread happened to call `connect()` instead of `TouchThread` itself. The priority call now runs from inside the worker, so touch handling actually gets the boost under CPU pressure.
+- **Coalesced messages on the Mac host could silently lose touch/ping events.** The Mac input loop read up to 22 bytes per receive and processed only the first message; when TCP combined a touch frame plus a ping into one segment, the trailing message was dropped. Replaced with a buffered parser that consumes one message at a time and keeps the rest for the next round.
+- **Async diagnostic log writes.** `DiagLog` no longer blocks on file I/O on the calling thread — writes run on a dedicated single-thread executor. Helps on devices where the previous synchronous `appendText` showed up in input latency profiles.
+
+### Notes
+- This release adds three new wire-protocol message types (`6` video-frame-with-metadata, `7` keyframe-request, `8` client-supports-metadata) but keeps the legacy type `0` path. Mixed pairs are safe: a new Android client + old Mac host falls back to legacy frames; a new Mac host + old Android client never sees the new types because the client doesn't advertise capability. Update both sides to get the recovery benefits.
+
+### Installation
+- **macOS**: Open `SideScreen-0.9.0-mac-universal.dmg`, drag SideScreen to Applications. If Gatekeeper says "damaged"/"cannot be opened": `sudo xattr -cr /Applications/SideScreen.app`
+- **Android**: Install `SideScreen-0.9.0-android.apk` (enable "Unknown sources" if needed).
+
+---
+
 <a id="0.8.1"></a>
 ## [0.8.1] - 2026-05-12
 

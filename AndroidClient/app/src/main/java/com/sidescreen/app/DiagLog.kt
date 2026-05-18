@@ -3,6 +3,7 @@ package com.sidescreen.app
 import android.content.Context
 import android.util.Log
 import java.io.File
+import java.util.concurrent.Executors
 
 /**
  * Shared diagnostic file logger for debugging on devices that suppress logcat.
@@ -16,6 +17,13 @@ object DiagLog {
     @Volatile
     private var logFile: File? = null
 
+    private val logExecutor =
+        Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "DiagLogWriter").apply {
+                isDaemon = true
+            }
+        }
+
     /** Initialize with app context. Call once from Application.onCreate() or MainActivity. */
     fun init(context: Context) {
         logFile = File(context.filesDir, LOG_FILE)
@@ -27,15 +35,17 @@ object DiagLog {
     ) {
         Log.d(tag, msg)
         val f = logFile ?: return
-        try {
-            // Rotate if too large
-            if (f.exists() && f.length() > MAX_LOG_SIZE) {
-                val backup = File(f.parent, "diag.log.old")
-                backup.delete()
-                f.renameTo(backup)
+        logExecutor.execute {
+            try {
+                // Rotate if too large
+                if (f.exists() && f.length() > MAX_LOG_SIZE) {
+                    val backup = File(f.parent, "diag.log.old")
+                    backup.delete()
+                    f.renameTo(backup)
+                }
+                f.appendText("[${System.currentTimeMillis()}] $tag: $msg\n")
+            } catch (_: Exception) {
             }
-            f.appendText("[${System.currentTimeMillis()}] $tag: $msg\n")
-        } catch (_: Exception) {
         }
     }
 }
