@@ -333,13 +333,19 @@ class VideoDecoder(
         // Direct feed: grab an available input buffer and queue immediately.
         val index = availableInputBuffers.poll()
         if (index == null) {
-            dropFrame(
-                frameData,
-                isKeyframe,
-                "no input buffer",
-                waitForKeyframe = needsKeyframe || isKeyframe,
-                requestRefresh = true,
-            )
+            // Decoder input pool exhausted (typically a WiFi burst saturating
+            // MediaCodec). Do NOT pause the pipeline — keep feeding so the
+            // cursor tracks live. Reference state diverges briefly (cursor
+            // trail visible), but a force-keyframe request bypasses every
+            // layer's throttle and rebuilds the reference within ~100-200 ms,
+            // which feels better than a 1-2 s freeze waiting on the next
+            // throttled request to land.
+            droppedFrames++
+            if (droppedFrames <= 3L || droppedFrames % 60L == 0L) {
+                diagLog("Dropping frame (no input buffer, dropped=$droppedFrames)")
+            }
+            requestKeyframe("no input buffer", force = true)
+            onFrameDecoded?.invoke(frameData)
             return
         }
 
@@ -398,7 +404,9 @@ class VideoDecoder(
         force: Boolean = false,
     ) {
         val now = System.nanoTime()
-        if (!force && now - lastKeyframeRequestNs < KEYFRAME_REQUEST_INTERVAL_NS) {
+        val interval =
+            if (force) FORCE_KEYFRAME_REQUEST_INTERVAL_NS else KEYFRAME_REQUEST_INTERVAL_NS
+        if (now - lastKeyframeRequestNs < interval) {
             return
         }
         lastKeyframeRequestNs = now
@@ -519,6 +527,7 @@ class VideoDecoder(
     companion object {
         private const val TAG = "VideoDecoder"
         private const val KEYFRAME_REQUEST_INTERVAL_NS = 1_000_000_000L
+        private const val FORCE_KEYFRAME_REQUEST_INTERVAL_NS = 200_000_000L
         private const val MAX_RENDER_LATENCY_NS = 100_000_000L
         private const val MAX_REASONABLE_LATENCY_NS = 2_000_000_000L
     }

@@ -17,6 +17,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+<a id="0.9.1"></a>
+## [0.9.1] - 2026-05-18
+
+Hotfix for a "cursor trail" / ghost-cursor artifact visible on shaky WiFi (e.g. iPhone hotspot) under 0.9.0. Android-only — Mac host is unchanged.
+
+### Fixed
+- **Cursor trail / ghost cursors on WiFi jitter.** When a brief WiFi burst saturated MediaCodec's input pool on Android, the decoder kept receiving P-frames whose reference state had quietly diverged from the encoder's. The mismatch painted ghost cursors at old positions until the next scheduled keyframe arrived (~1 s later). The client now **force-requests a fresh keyframe** the moment the input pool exhausts, bypassing the 1 s / 500 ms / 500 ms throttle chain that was holding recovery back — the reference rebuilds in ~150 ms instead. The pipeline keeps feeding through the recovery so the cursor stays live (a brief trail is visible while the keyframe is in flight, then it clears). A new 200 ms throttle on forced requests prevents the host being keyframe-flooded under sustained congestion.
+
+### Installation
+- **macOS**: 0.9.0 DMG works — no Mac changes in this release. Otherwise install `SideScreen-0.9.1-mac-universal.dmg` and run `sudo xattr -cr /Applications/SideScreen.app` if Gatekeeper complains.
+- **Android**: Install `SideScreen-0.9.1-android.apk` (enable "Unknown sources" if needed).
+
+---
+
 <a id="0.9.0"></a>
 ## [0.9.0] - 2026-05-18
 
