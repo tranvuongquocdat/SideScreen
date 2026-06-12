@@ -191,6 +191,23 @@ struct SettingsView: View {
                                     ScrollView {
                                         VStack(alignment: .leading, spacing: 0) {
                                             if settings.showAllResolutions {
+                                                // Custom (Apply) values aren't in any preset group —
+                                                // surface them so the selection is visible in the list.
+                                                if !DisplaySettings.allResolutions.contains(settings.resolution) {
+                                                    HStack(spacing: 6) {
+                                                        Text("Custom")
+                                                            .font(.system(size: 11, weight: .semibold))
+                                                        Text("User defined")
+                                                            .font(.system(size: 10))
+                                                            .foregroundColor(.secondary)
+                                                    }
+                                                    .padding(.horizontal, 12)
+                                                    .padding(.vertical, 6)
+                                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                                    .background(Color.primary.opacity(0.03))
+
+                                                    ResolutionRow(resolution: settings.resolution, isSelected: true) {}
+                                                }
                                                 ForEach(DisplaySettings.resolutionGroups) { group in
                                                     HStack(spacing: 6) {
                                                         Text(group.name)
@@ -215,6 +232,11 @@ struct SettingsView: View {
                                                     ResolutionRow(resolution: res, isSelected: settings.resolution == res) {
                                                         settings.resolution = res
                                                     }
+                                                }
+                                                // Current selection from the full list or a custom
+                                                // Apply — keep it visible in the compact list too.
+                                                if !DisplaySettings.commonResolutions.contains(settings.resolution) {
+                                                    ResolutionRow(resolution: settings.resolution, isSelected: true) {}
                                                 }
                                             }
                                         }

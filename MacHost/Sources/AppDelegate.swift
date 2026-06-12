@@ -202,6 +202,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
             .store(in: &cancellables)
+
+        // Observer cho resolution changes — the virtual display is created at
+        // server start, so a new resolution (list row or custom Apply) needs a
+        // stop/start cycle to take effect, same as a connection-mode change.
+        // Without this, changing resolution mid-run silently did nothing.
+        settings.$resolution
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] resolution in
+                guard let self = self else { return }
+                Task { @MainActor in
+                    guard self.settings.isRunning else { return }
+                    debugLog("Resolution changed to \(resolution) — restarting server to rebuild virtual display")
+                    self.stopServer()
+                    await self.startServer()
+                }
+            }
+            .store(in: &cancellables)
     }
 
     func setupMenuBar() {
