@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.media.MediaFormat
 import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.Bundle
@@ -765,6 +766,20 @@ class MainActivity : AppCompatActivity() {
         constraintSet.applyTo(constraintLayout)
     }
 
+    /**
+     * Display config from a new Mac always arrives AFTER codecSelected, so a
+     * missing negotiation at this point proves the Mac app predates H.264
+     * support — surface that instead of a silent black screen.
+     */
+    private fun warnIfAvcOnlyWithoutNegotiation() {
+        if (!CodecCapabilities.hasHevcDecoder && streamClient?.codecNegotiated != true) {
+            mainDiag("AVC-only device but Mac did not negotiate codec — Mac app too old")
+            runOnUiThread {
+                updateStatus("This device has no HEVC decoder. Update the SideScreen Mac app to enable H.264 support.")
+            }
+        }
+    }
+
     private fun initializeDecoder(holder: SurfaceHolder) {
         mainDiag(
             "initializeDecoder called, surface=${holder.surface}, " +
@@ -784,7 +799,13 @@ class MainActivity : AppCompatActivity() {
                     @Suppress("DEPRECATION")
                     windowManager.defaultDisplay
                 }
-            videoDecoder = VideoDecoder(holder.surface, displayObj, displayWidth, displayHeight)
+            val mime =
+                if (streamClient?.streamCodecIsHevc == false) {
+                    MediaFormat.MIMETYPE_VIDEO_AVC
+                } else {
+                    MediaFormat.MIMETYPE_VIDEO_HEVC
+                }
+            videoDecoder = VideoDecoder(holder.surface, displayObj, displayWidth, displayHeight, mime)
             // Wire up buffer release callback
             videoDecoder?.onFrameDecoded = { buffer ->
                 streamClient?.releaseBuffer(buffer)
@@ -793,11 +814,14 @@ class MainActivity : AppCompatActivity() {
                 streamClient?.requestKeyframe(force = force, reason = reason)
             }
             streamClient?.requestKeyframe(force = true, reason = "decoder initialized")
-            mainDiag("Decoder initialized OK ${displayWidth}x$displayHeight, videoDecoder=$videoDecoder")
-            log("✅ Decoder initialized ${displayWidth}x$displayHeight (${displayObj?.refreshRate ?: 60f}Hz)")
+            mainDiag("Decoder initialized OK ${displayWidth}x$displayHeight mime=$mime, videoDecoder=$videoDecoder")
+            log("✅ Decoder initialized ${displayWidth}x$displayHeight $mime (${displayObj?.refreshRate ?: 60f}Hz)")
         } catch (e: Exception) {
             mainDiag("Decoder init FAILED: ${e.message}")
             log("❌ Failed to initialize decoder: ${e.message}")
+            runOnUiThread {
+                updateStatus("Video decoder failed: ${e.message}")
+            }
         }
     }
 
@@ -883,6 +907,7 @@ class MainActivity : AppCompatActivity() {
 
         streamClient?.onDisplaySize = { width, height, rotation ->
             mainDiag("onDisplaySize: ${width}x$height @ $rotation°")
+            warnIfAvcOnlyWithoutNegotiation()
             displayWidth = width
             displayHeight = height
             displayRotation = rotation
@@ -1040,6 +1065,7 @@ class MainActivity : AppCompatActivity() {
 
                 streamClient?.onDisplaySize = { width, height, rotation ->
                     mainDiag("onDisplaySize: ${width}x$height @ $rotation°")
+                    warnIfAvcOnlyWithoutNegotiation()
                     displayWidth = width
                     displayHeight = height
                     displayRotation = rotation
