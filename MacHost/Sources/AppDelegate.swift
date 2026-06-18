@@ -129,18 +129,30 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.settings.usbDeviceConnected = isConnected
                 self.settings.adbReverseConfigured = reverseOK
                 
-                // Auto-connect: If server is running in USB mode, and a device was just plugged in,
-                // and ADB reverse isn't set up yet, trigger it automatically!
-                if self.settings.connectionMode == .usb {
-                    if self.settings.isRunning {
-                        if isConnected && !wasConnected && !reverseOK {
-                            print("🔌 USB Device connected while server is running. Auto-triggering ADB reverse...")
+                // Auto-connect and ADB tracking
+                let connectionMode = self.settings.connectionMode
+                let isRunning = self.settings.isRunning
+                let autoStartEnabled = self.settings.autoStartOnUSBConnect
+
+                if isConnected && !wasConnected {
+                    debugLog("🔌 USB Device connection detected.")
+                    debugLog("   - State -> connectionMode: \(connectionMode.rawValue), isRunning: \(isRunning), autoStart: \(autoStartEnabled), reverseOK: \(reverseOK)")
+
+                    if connectionMode != .usb {
+                        debugLog("   => Action: Ignored (Not in USB connection mode)")
+                    } else if isRunning {
+                        if !reverseOK {
+                            debugLog("   => Action: Triggering ADB reverse (Server already running)")
                             Task { await self.setupADBReverse() }
+                        } else {
+                            debugLog("   => Action: Ignored (Server running & ADB reverse already OK)")
                         }
-                    } else if self.settings.autoStartOnUSBConnect {
-                        if isConnected && !wasConnected {
-                            print("🔌 USB Device connected. Auto-starting server...")
+                    } else {
+                        if autoStartEnabled {
+                            debugLog("   => Action: Starting server automatically")
                             Task { await self.startServer() }
+                        } else {
+                            debugLog("   => Action: Ignored (Auto-start setting is disabled)")
                         }
                     }
                 }
@@ -345,6 +357,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func setupADBReverse() async {
         let port = settings.port
         print("🔌 Setting up ADB reverse for port \(port)...")
+        debugLog("🔌 setupADBReverse() invoked for port \(port)...")
 
         await Task.detached(priority: .utility) {
             // Try common adb paths
@@ -456,7 +469,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func startServer() async {
+        debugLog("🚀 startServer() invoked. Check permission: \(settings.hasScreenRecordingPermission)")
         guard settings.hasScreenRecordingPermission else {
+            debugLog("❌ startServer aborted: Missing Screen Recording permission")
             await showPermissionAlert()
             return
         }

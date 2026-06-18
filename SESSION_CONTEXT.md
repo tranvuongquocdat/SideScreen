@@ -12,6 +12,8 @@
 - Modified `refreshStatusIndicators` in `AppDelegate.swift` to automatically call `startServer()` when a device connects via USB while the server is stopped and the setting is enabled.
 - Both Android and macOS apps have been successfully compiled.
 - Checked out and published `headless-support` to personal fork.
+- Created Pull Request #25 on the main repository.
+- **Added comprehensive logging in `AppDelegate.swift` around USB detection, state changes, and auto-start execution, utilizing `debugLog` to persist trace information for easier debugging.**
 
 ## Next Steps
 - Commit the changes locally.
