@@ -103,6 +103,27 @@ class MainActivity : AppCompatActivity() {
         startChecklistUpdates()
         setupModeToggle()
         setupWirelessController()
+        
+        handleIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        val autoConnect = intent?.getBooleanExtra("auto_connect", false) ?: false
+        if (autoConnect) {
+            mainDiag("Auto-connect flag detected. Attempting to connect...")
+            // Short delay to ensure UI is ready
+            binding.root.postDelayed({
+                if (binding.connectButton.isEnabled) {
+                    binding.connectButton.performClick()
+                }
+            }, 500)
+        }
     }
 
     private fun setupModeToggle() {

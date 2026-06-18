@@ -509,9 +509,9 @@ struct SettingsView: View {
                                     
                                     HStack {
                                         VStack(alignment: .leading, spacing: 2) {
-                                            Text("Auto-start on USB Connect")
+                                            Text("Auto-manage Server via USB")
                                                 .font(.system(size: 12, weight: .medium))
-                                            Text("Start server automatically when tablet is connected via USB")
+                                            Text("Start/stop automatically on USB plug/unplug")
                                                 .font(.system(size: 10))
                                                 .foregroundColor(.secondary)
                                         }

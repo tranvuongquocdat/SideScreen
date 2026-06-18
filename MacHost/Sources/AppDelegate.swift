@@ -155,6 +155,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                             debugLog("   => Action: Ignored (Auto-start setting is disabled)")
                         }
                     }
+                } else if !isConnected && wasConnected {
+                    debugLog("🔌 USB Device disconnection detected.")
+                    debugLog("   - State -> connectionMode: \(connectionMode.rawValue), isRunning: \(isRunning), autoStart: \(autoStartEnabled)")
+                    
+                    if connectionMode != .usb {
+                        debugLog("   => Action: Ignored (Not in USB connection mode)")
+                    } else if autoStartEnabled && isRunning {
+                        debugLog("   => Action: Stopping server automatically (Device disconnected)")
+                        self.stopServer()
+                    } else if !autoStartEnabled {
+                        debugLog("   => Action: Ignored (Auto-manage setting is disabled)")
+                    } else {
+                        debugLog("   => Action: Ignored (Server is already stopped)")
+                    }
                 }
             }
         }
@@ -426,6 +440,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
                     if process.terminationStatus == 0 {
                         print("✅ ADB reverse setup successful: tcp:\(port) -> tcp:\(port)")
+                        
+                        // If auto-start is enabled, launch the Android app and tell it to auto-connect
+                        if self.settings.autoStartOnUSBConnect {
+                            let launchProcess = Process()
+                            launchProcess.executableURL = URL(fileURLWithPath: finalAdbPath)
+                            launchProcess.arguments = ["shell", "am", "start", "-n", "com.sidescreen.app/.MainActivity", "--ez", "auto_connect", "true"]
+                            try? launchProcess.run()
+                            launchProcess.waitUntilExit()
+                            debugLog("📱 Auto-launched Android app with auto_connect=true")
+                        }
+                        
                         return
                     } else {
                         print("⚠️  ADB reverse attempt \(attempt)/3 failed: \(output.trimmingCharacters(in: .whitespacesAndNewlines))")
