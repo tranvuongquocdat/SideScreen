@@ -60,6 +60,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var cancellables = Set<AnyCancellable>()
     private var permissionCheckTimer: Timer?
     private var statusRefreshTimer: Timer?
+    var isDaemonMode = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("✅ App launched")
@@ -89,8 +90,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             refreshStatusIndicators()
         }
 
-        // Show settings window
-        showSettings()
+        if isDaemonMode {
+            print("🚀 Launching in Daemon Mode - starting server immediately")
+            Task {
+                await startServer()
+            }
+        } else {
+            // Show settings window
+            showSettings()
+        }
     }
 
     @MainActor
@@ -114,8 +122,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let reverseOK = StatusDetector.adbReverseConfigured(port: port)
             await MainActor.run { [weak self] in
                 guard let self = self else { return }
-                self.settings.usbDeviceConnected = !devices.isEmpty
+                
+                let wasConnected = self.settings.usbDeviceConnected
+                let isConnected = !devices.isEmpty
+                
+                self.settings.usbDeviceConnected = isConnected
                 self.settings.adbReverseConfigured = reverseOK
+                
+                // Auto-connect: If server is running in USB mode, and a device was just plugged in,
+                // and ADB reverse isn't set up yet, trigger it automatically!
+                if self.settings.connectionMode == .usb {
+                    if self.settings.isRunning {
+                        if isConnected && !wasConnected && !reverseOK {
+                            print("🔌 USB Device connected while server is running. Auto-triggering ADB reverse...")
+                            Task { await self.setupADBReverse() }
+                        }
+                    } else if self.settings.autoStartOnUSBConnect {
+                        if isConnected && !wasConnected {
+                            print("🔌 USB Device connected. Auto-starting server...")
+                            Task { await self.startServer() }
+                        }
+                    }
+                }
             }
         }
     }

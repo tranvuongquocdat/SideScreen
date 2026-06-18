@@ -80,6 +80,7 @@ struct SettingsView: View {
     // and .number formatting injected locale grouping separators ("1,200").
     @State private var customWidthText = ""
     @State private var customHeightText = ""
+    @State private var daemonEnabled = false
 
     private var customWidthValue: Int? { Int(customWidthText.trimmingCharacters(in: .whitespaces)) }
     private var customHeightValue: Int? { Int(customHeightText.trimmingCharacters(in: .whitespaces)) }
@@ -471,6 +472,57 @@ struct SettingsView: View {
                                             pairedDeviceStore: (NSApp.delegate as? AppDelegate)?.pairedDeviceStore ?? PairedDeviceStore())
                         }
 
+                        // System Integration
+                        if #available(macOS 13.0, *) {
+                            FrostedGroupBox(title: "System Integration", icon: "gearshape.2") {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Launch at System Startup (Daemon Mode)")
+                                                .font(.system(size: 12, weight: .medium))
+                                            Text("Start in background automatically before login")
+                                                .font(.system(size: 10))
+                                                .foregroundColor(.secondary)
+                                        }
+                                        Spacer()
+                                        Toggle("", isOn: Binding(
+                                            get: { daemonEnabled },
+                                            set: { newValue in
+                                                do {
+                                                    if newValue {
+                                                        try DaemonManager.shared.enable()
+                                                    } else {
+                                                        try DaemonManager.shared.disable()
+                                                    }
+                                                    daemonEnabled = DaemonManager.shared.isEnabled
+                                                } catch {
+                                                    print("Daemon toggle failed: \(error)")
+                                                    // Revert on failure
+                                                    daemonEnabled = DaemonManager.shared.isEnabled
+                                                }
+                                            }
+                                        ))
+                                        .labelsHidden()
+                                    }
+                                    
+                                    Divider()
+                                    
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Auto-start on USB Connect")
+                                                .font(.system(size: 12, weight: .medium))
+                                            Text("Start server automatically when tablet is connected via USB")
+                                                .font(.system(size: 10))
+                                                .foregroundColor(.secondary)
+                                        }
+                                        Spacer()
+                                        Toggle("", isOn: $settings.autoStartOnUSBConnect)
+                                            .labelsHidden()
+                                    }
+                                }
+                            }
+                        }
+
                         // Gaming Boost
                         FrostedGroupBox(title: "Gaming Boost", icon: settings.gamingBoost ? "bolt.fill" : "bolt") {
                             VStack(alignment: .leading, spacing: 16) {
@@ -846,6 +898,11 @@ struct SettingsView: View {
                 }
             }
         }
+        .onAppear {
+            if #available(macOS 13.0, *) {
+                daemonEnabled = DaemonManager.shared.isEnabled
+            }
+        }
         .frame(width: 480, height: 780)
     }
 
@@ -1072,6 +1129,9 @@ class DisplaySettings: ObservableObject {
     @Published var connectionMode: ConnectionMode {
         didSet { save("connectionMode", connectionMode.rawValue) }
     }
+    @Published var autoStartOnUSBConnect: Bool {
+        didSet { save("autoStartOnUSBConnect", autoStartOnUSBConnect) }
+    }
 
     // Runtime state (not persisted)
     @Published var displayCreated = false
@@ -1110,6 +1170,7 @@ class DisplaySettings: ObservableObject {
         self.touchEnabled = defaults.object(forKey: keyPrefix + "touchEnabled") as? Bool ?? true
         let modeRaw = defaults.string(forKey: keyPrefix + "connectionMode") ?? ConnectionMode.usb.rawValue
         self.connectionMode = ConnectionMode(rawValue: modeRaw) ?? .usb
+        self.autoStartOnUSBConnect = defaults.object(forKey: keyPrefix + "autoStartOnUSBConnect") as? Bool ?? false
 
         print("Loaded settings: \(resolution) @ \(refreshRate)Hz, bitrate=\(bitrate), quality=\(quality)")
     }
@@ -1173,7 +1234,7 @@ class DisplaySettings: ObservableObject {
     func resetToDefaults() {
         let keys = ["resolution", "refreshRate", "hiDPI", "bitrate", "quality",
                     "gamingBoost", "port", "rotation", "showAllResolutions",
-                    "customWidth", "customHeight", "touchEnabled"]
+                    "customWidth", "customHeight", "touchEnabled", "autoStartOnUSBConnect"]
         for key in keys {
             defaults.removeObject(forKey: keyPrefix + key)
         }
@@ -1190,6 +1251,7 @@ class DisplaySettings: ObservableObject {
         customWidth = 1920
         customHeight = 1200
         touchEnabled = true
+        autoStartOnUSBConnect = false
 
         print("Settings reset to defaults")
     }
