@@ -46,6 +46,28 @@ mkdir -p "$APP_DIR/Contents/Resources"
 # Copy universal binary
 cp .build/release-universal/SideScreen "$APP_DIR/Contents/MacOS/"
 
+# Create daemon plist
+mkdir -p "$APP_DIR/Contents/Library/LaunchDaemons"
+cat > "$APP_DIR/Contents/Library/LaunchDaemons/com.sidescreen.daemon.plist" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.sidescreen.daemon</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Applications/SideScreen.app/Contents/MacOS/SideScreen</string>
+        <string>--daemon</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+</dict>
+</plist>
+EOF
+
 # Copy app icon if exists
 if [ -f "$ROOT_DIR/MacHost/Resources/AppIcon.icns" ]; then
     cp "$ROOT_DIR/MacHost/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/"

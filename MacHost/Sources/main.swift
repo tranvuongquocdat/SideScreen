@@ -3,6 +3,8 @@ import AppKit
 
 print("🚀 Side Screen starting...")
 
+let isDaemonMode = CommandLine.arguments.contains("--daemon")
+
 // Entry point
 let app = NSApplication.shared
 
@@ -31,5 +33,13 @@ mainMenu.addItem(editMenuItem)
 app.mainMenu = mainMenu
 
 let delegate = AppDelegate()
+delegate.isDaemonMode = isDaemonMode
+
+if isDaemonMode {
+    app.setActivationPolicy(.accessory)
+} else {
+    app.setActivationPolicy(.regular)
+}
+
 app.delegate = delegate
 app.run()
