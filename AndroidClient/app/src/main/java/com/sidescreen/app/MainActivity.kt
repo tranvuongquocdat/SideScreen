@@ -33,6 +33,7 @@ import com.google.android.material.slider.Slider
 import com.google.android.material.switchmaterial.SwitchMaterial
 import com.sidescreen.app.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -117,12 +118,16 @@ class MainActivity : AppCompatActivity() {
         val autoConnect = intent?.getBooleanExtra("auto_connect", false) ?: false
         if (autoConnect) {
             mainDiag("Auto-connect flag detected. Attempting to connect...")
-            // Short delay to ensure UI is ready
-            binding.root.postDelayed({
-                if (binding.connectButton.isEnabled) {
-                    binding.connectButton.performClick()
+            // Launch coroutine to wait briefly then connect directly (avoids dropped UI events)
+            lifecycleScope.launch {
+                delay(800) // Give Mac Host a moment to start the streaming server
+                if (prefs.connectionMode == ConnectionMode.USB) {
+                    val host = binding.hostInput.text.toString().ifEmpty { "127.0.0.1" }.let { if (it.equals("localhost", true)) "127.0.0.1" else it }
+                    val port = binding.portInput.text.toString().toIntOrNull() ?: 54321
+                    updateStatus("Connecting...")
+                    connect(host, port)
                 }
-            }, 500)
+            }
         }
     }
 
