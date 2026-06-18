@@ -478,9 +478,9 @@ struct SettingsView: View {
                                 VStack(alignment: .leading, spacing: 8) {
                                     HStack {
                                         VStack(alignment: .leading, spacing: 2) {
-                                            Text("Launch at System Startup (Daemon Mode)")
+                                            Text("Launch at Login")
                                                 .font(.system(size: 12, weight: .medium))
-                                            Text("Start in background automatically before login")
+                                            Text("Start automatically when you log in")
                                                 .font(.system(size: 10))
                                                 .foregroundColor(.secondary)
                                         }

@@ -6,11 +6,8 @@ import os.log
 class DaemonManager {
     static let shared = DaemonManager()
     
-    // The name of the plist file that will be placed in Contents/Library/LaunchDaemons/
-    private let plistName = "com.sidescreen.daemon.plist"
-    
     private var appService: SMAppService {
-        return SMAppService.daemon(plistName: plistName)
+        return SMAppService.mainApp
     }
     
     var isEnabled: Bool {
@@ -23,9 +20,9 @@ class DaemonManager {
         
         do {
             try service.register()
-            os_log("Successfully registered daemon.")
+            os_log("Successfully registered login item.")
         } catch {
-            os_log("Failed to register daemon: %{public}@", error.localizedDescription)
+            os_log("Failed to register login item: %{public}@", error.localizedDescription)
             throw error
         }
     }
@@ -36,9 +33,9 @@ class DaemonManager {
         
         do {
             try service.unregister()
-            os_log("Successfully unregistered daemon.")
+            os_log("Successfully unregistered login item.")
         } catch {
-            os_log("Failed to unregister daemon: %{public}@", error.localizedDescription)
+            os_log("Failed to unregister login item: %{public}@", error.localizedDescription)
             throw error
         }
     }
