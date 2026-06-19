@@ -91,7 +91,6 @@ class StreamingServer {
             // Optimize TCP for low-latency streaming
             if let tcpOptions = params.defaultProtocolStack.transportProtocol as? NWProtocolTCP.Options {
                 tcpOptions.noDelay = true  // Disable Nagle's algorithm
-                tcpOptions.enableFastOpen = true
             }
 
             listener = try NWListener(using: params, on: NWEndpoint.Port(integerLiteral: port))
