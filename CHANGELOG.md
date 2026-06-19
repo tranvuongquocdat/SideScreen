@@ -17,6 +17,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+<a id="0.10.1"></a>
+## [0.10.1] - 2026-06-12
+
+Wireless connection fix. Several people reported the tablet connecting at the TCP level but the Mac never responding — the loading screen hung forever and only flipped to "Couldn't reach Mac" when the server stopped. This was most common on mobile hotspots and carrier-NAT networks. Contributed by @akashraj9828 (#26, closes #10).
+
+### Fixed
+- **Wireless connection hangs in "Connecting…" on many networks.** The Mac host enabled TCP Fast Open on its listener, but the Android client uses standard TCP (no TFO). On networks with middleboxes (mobile hotspot, carrier NAT), the connection's `NWConnection` stayed in `.preparing` and never reached `.ready`, so the auth handshake never ran and the Mac stayed silent at the application layer — even though the TCP handshake itself completed. Removing the Fast Open option lets the connection establish normally. USB was unaffected (loopback has no middleboxes), which is why it always worked. `noDelay` (Nagle's algorithm disabled) — the optimization that actually matters for streaming latency — is kept.
+
+### Installation
+- **macOS**: Open `SideScreen-0.10.1-mac-universal.dmg`, drag SideScreen to Applications. If Gatekeeper says "damaged"/"cannot be opened": `sudo xattr -cr /Applications/SideScreen.app`. Requires macOS 13 (Ventura) or later.
+- **Android**: Install `SideScreen-0.10.1-android.apk` (enable "Unknown sources" if needed).
+
+---
+
 <a id="0.10.0"></a>
 ## [0.10.0] - 2026-06-12
 
