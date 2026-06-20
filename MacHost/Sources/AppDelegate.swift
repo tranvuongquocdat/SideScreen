@@ -60,7 +60,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var cancellables = Set<AnyCancellable>()
     private var permissionCheckTimer: Timer?
     private var statusRefreshTimer: Timer?
-    var isDaemonMode = false
+    var isDaemonMode = false // Deprecated: keeping variable for ABI compatibility but unused
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("✅ App launched")
@@ -90,15 +90,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             refreshStatusIndicators()
         }
 
-        if isDaemonMode {
-            print("🚀 Launching in Daemon Mode - starting server immediately")
-            Task {
-                await startServer()
+        if #available(macOS 13.0, *) {
+            if DaemonManager.shared.isEnabled {
+                print("🚀 Launch at Login is enabled - starting silently in background")
+                // Do not show settings window automatically.
+                // applicationShouldHandleReopen will show it if the user manually launched the app.
+            } else {
+                showSettings()
             }
         } else {
-            // Show settings window
             showSettings()
         }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            showSettings()
+        }
+        return true
     }
 
     @MainActor
