@@ -37,7 +37,5 @@ class PreferencesManager(
         get() = prefs.getInt("settings_corner", 0)
         set(value) = prefs.edit().putInt("settings_corner", value).apply()
 
-    var connectionMode: ConnectionMode
-        get() = ConnectionMode.fromName(prefs.getString("connection_mode", null))
-        set(value) = prefs.edit().putString("connection_mode", value.name).apply()
+
 }
