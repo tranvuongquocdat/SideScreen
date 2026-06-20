@@ -81,6 +81,7 @@ struct SettingsView: View {
     @State private var customWidthText = ""
     @State private var customHeightText = ""
     @State private var daemonEnabled = false
+    @State private var selectedTab = "Display"
 
     private var customWidthValue: Int? { Int(customWidthText.trimmingCharacters(in: .whitespaces)) }
     private var customHeightValue: Int? { Int(customHeightText.trimmingCharacters(in: .whitespaces)) }
@@ -184,17 +185,37 @@ struct SettingsView: View {
                     .fill(Color.primary.opacity(0.06))
                     .frame(height: 1)
 
+                Picker("", selection: $selectedTab) {
+                    Text("Display & Input").tag("Display")
+                    Text("Connection").tag("Connection")
+                    Text("Quality").tag("Quality")
+                    Text("Status").tag("Status")
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
+
+                Rectangle()
+                    .fill(Color.primary.opacity(0.06))
+                    .frame(height: 1)
+
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        // Display Configuration
-                        FrostedGroupBox(title: "Display Configuration", icon: "display") {
+                        if selectedTab == "Display" {
+                            // Display Configuration
+                            FrostedGroupBox(title: "Display Configuration", icon: "display") {
                             VStack(alignment: .leading, spacing: 16) {
                                 // Resolution
                                 VStack(alignment: .leading, spacing: 8) {
                                     HStack {
-                                        Text("Resolution")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.secondary)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Resolution")
+                                                .font(.system(size: 11))
+                                                .foregroundColor(.secondary)
+                                            Text("Sets the virtual display resolution sent to the tablet. Higher resolutions look sharper but require more bandwidth and CPU to encode.")
+                                                .font(.system(size: 10))
+                                                .foregroundColor(.secondary.opacity(0.7))
+                                        }
                                         Spacer()
                                         Toggle("Show all", isOn: $settings.showAllResolutions)
                                             .toggleStyle(.switch)
@@ -315,9 +336,14 @@ struct SettingsView: View {
 
                                 // Rotation
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Text("Rotation")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Rotation")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.secondary)
+                                        Text("Adjusts the orientation of the virtual display to match your tablet's physical position. Does not affect performance.")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary.opacity(0.7))
+                                    }
 
                                     HStack(spacing: 12) {
                                         ZStack {
@@ -383,9 +409,14 @@ struct SettingsView: View {
                         FrostedGroupBox(title: "Refresh Rate", icon: "speedometer") {
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
-                                    Text("Frame Rate")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Frame Rate")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.secondary)
+                                        Text("Determines how many frames are sent per second. 60Hz is standard; 120Hz provides maximum smoothness but doubles network traffic.")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary.opacity(0.7))
+                                    }
                                     Spacer()
                                     Text("\(settings.refreshRate) Hz")
                                         .font(.system(size: 11, weight: .medium))
@@ -435,14 +466,21 @@ struct SettingsView: View {
                                 }
                             }
                         }
+                        }
 
-                        // Network Settings (port — applies to both modes; listener binds on it)
-                        FrostedGroupBox(title: "Network Settings", icon: "network") {
+                        if selectedTab == "Connection" {
+                            // Network Settings (port — applies to both modes; listener binds on it)
+                            FrostedGroupBox(title: "Network Settings", icon: "network") {
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
-                                    Text("Server Port")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Server Port")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.secondary)
+                                        Text("The network port used for the streaming server. Only change this if you encounter conflicts with other apps on your Mac.")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary.opacity(0.7))
+                                    }
                                     Spacer()
                                     TextField("Port", value: $settings.port, format: .number)
                                         .textFieldStyle(.roundedBorder)
@@ -480,7 +518,7 @@ struct SettingsView: View {
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text("Launch at Login")
                                                 .font(.system(size: 12, weight: .medium))
-                                            Text("Start automatically when you log in")
+                                            Text("Start in background automatically after login")
                                                 .font(.system(size: 10))
                                                 .foregroundColor(.secondary)
                                         }
@@ -522,9 +560,11 @@ struct SettingsView: View {
                                 }
                             }
                         }
+                        }
 
-                        // Gaming Boost
-                        FrostedGroupBox(title: "Gaming Boost", icon: settings.gamingBoost ? "bolt.fill" : "bolt") {
+                        if selectedTab == "Quality" {
+                            // Gaming Boost
+                            FrostedGroupBox(title: "Gaming Boost", icon: settings.gamingBoost ? "bolt.fill" : "bolt") {
                             VStack(alignment: .leading, spacing: 16) {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 2) {
@@ -575,9 +615,14 @@ struct SettingsView: View {
                                 // Bitrate
                                 VStack(alignment: .leading, spacing: 10) {
                                     HStack {
-                                        Text("Bitrate")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.secondary)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Bitrate")
+                                                .font(.system(size: 11))
+                                                .foregroundColor(.secondary)
+                                            Text("Higher values produce a cleaner image with fewer compression artifacts, but require a stronger USB or Wi-Fi connection to prevent stuttering.")
+                                                .font(.system(size: 10))
+                                                .foregroundColor(.secondary.opacity(0.7))
+                                        }
                                         Spacer()
                                         Text("\(settings.effectiveBitrate) Mbps")
                                             .font(.system(size: 13, weight: .semibold, design: .monospaced))
@@ -654,9 +699,11 @@ struct SettingsView: View {
                                 }
                             }
                         }
+                        }
 
-                        // Status
-                        FrostedGroupBox(title: "Status", icon: "checkmark.circle") {
+                        if selectedTab == "Status" {
+                            // Status
+                            FrostedGroupBox(title: "Status", icon: "checkmark.circle") {
                             VStack(alignment: .leading, spacing: 12) {
                                 StatusRow(title: "Virtual Display",
                                           status: settings.displayCreated ? "Active" : "Inactive",
@@ -800,6 +847,7 @@ struct SettingsView: View {
                                     }
                                 }
                             }
+                        }
                         }
                     }
                     .padding(20)
