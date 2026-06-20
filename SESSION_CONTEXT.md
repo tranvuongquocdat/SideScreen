@@ -13,3 +13,4 @@ Implementing https://github.com/tranvuongquocdat/SideScreen/issues/24 and adding
 
 ## Next Steps
 - Implement Hybrid Standby Mode / Wireless enhancement where a connected tablet can smoothly resume without manual toggles.
+- Removed unused Android pairing, QR, and camera UI to further streamline the tablet side for a headless automatic connection.
