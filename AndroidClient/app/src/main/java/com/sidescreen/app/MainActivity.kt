@@ -51,6 +51,8 @@ class MainActivity : AppCompatActivity() {
     private var displayWidth = 0 // 0 = no config received yet
     private var displayHeight = 0 // 0 = no config received yet
     private var displayRotation = 0 // 0, 90, 180, 270 degrees
+    private var displayFlipHorizontal = false
+    private var displayFlipVertical = false
     private var wakeLock: PowerManager.WakeLock? = null
     private var pingJob: kotlinx.coroutines.Job? = null
 
@@ -1020,12 +1022,14 @@ class MainActivity : AppCompatActivity() {
 
         streamClient?.onCodecSelected = { isHevc -> onStreamCodecSelected(isHevc) }
 
-        streamClient?.onDisplaySize = { width, height, rotation ->
-            mainDiag("onDisplaySize: ${width}x$height @ $rotation°")
+        streamClient?.onDisplaySize = { width, height, rotation, flipHorizontal, flipVertical ->
+            mainDiag("onDisplaySize: ${width}x$height @ $rotation°, h=$flipHorizontal, v=$flipVertical")
             warnIfAvcOnlyWithoutNegotiation()
             displayWidth = width
             displayHeight = height
             displayRotation = rotation
+            displayFlipHorizontal = flipHorizontal
+            displayFlipVertical = flipVertical
             if (videoDecoder != null) {
                 videoDecoder?.updateResolution(width, height)
             } else {
@@ -1043,7 +1047,7 @@ class MainActivity : AppCompatActivity() {
             }
             runOnUiThread {
                 binding.resolutionText.text = "${width}x$height"
-                applyRotation(rotation)
+                applyRotation(rotation, flipHorizontal, flipVertical)
             }
             log("Display: ${width}x$height @ $rotation°")
         }
@@ -1180,12 +1184,14 @@ class MainActivity : AppCompatActivity() {
 
                 streamClient?.onCodecSelected = { isHevc -> onStreamCodecSelected(isHevc) }
 
-                streamClient?.onDisplaySize = { width, height, rotation ->
-                    mainDiag("onDisplaySize: ${width}x$height @ $rotation°")
+                streamClient?.onDisplaySize = { width, height, rotation, flipHorizontal, flipVertical ->
+                    mainDiag("onDisplaySize: ${width}x$height @ $rotation°, h=$flipHorizontal, v=$flipVertical")
                     warnIfAvcOnlyWithoutNegotiation()
                     displayWidth = width
                     displayHeight = height
                     displayRotation = rotation
+                    displayFlipHorizontal = flipHorizontal
+                    displayFlipVertical = flipVertical
 
                     if (videoDecoder != null) {
                         // Decoder already exists — update its resolution
@@ -1208,8 +1214,7 @@ class MainActivity : AppCompatActivity() {
 
                     runOnUiThread {
                         binding.resolutionText.text = "${width}x$height"
-                        // Apply rotation to SurfaceView
-                        applyRotation(rotation)
+                        applyRotation(rotation, flipHorizontal, flipVertical)
                     }
                     log("Display: ${width}x$height @ $rotation°")
                 }
@@ -1256,6 +1261,8 @@ class MainActivity : AppCompatActivity() {
         // Reset display config so next connect defers decoder init until config arrives
         displayWidth = 0
         displayHeight = 0
+        displayFlipHorizontal = false
+        displayFlipVertical = false
         log("Disconnected")
     }
 
@@ -1300,15 +1307,19 @@ class MainActivity : AppCompatActivity() {
         view: View,
         event: MotionEvent,
     ) {
-        val x = event.x / view.width.toFloat()
-        val y = event.y / view.height.toFloat()
+        val rawX = event.x / view.width.toFloat()
+        val rawY = event.y / view.height.toFloat()
+        val x = if (displayFlipHorizontal) 1f - rawX else rawX
+        val y = if (displayFlipVertical) 1f - rawY else rawY
         val pointerCount = event.pointerCount.coerceAtMost(2)
 
         var x2 = 0f
         var y2 = 0f
         if (pointerCount >= 2) {
-            x2 = event.getX(1) / view.width.toFloat()
-            y2 = event.getY(1) / view.height.toFloat()
+            val rawX2 = event.getX(1) / view.width.toFloat()
+            val rawY2 = event.getY(1) / view.height.toFloat()
+            x2 = if (displayFlipHorizontal) 1f - rawX2 else rawX2
+            y2 = if (displayFlipVertical) 1f - rawY2 else rawY2
         }
 
         when (event.actionMasked) {
@@ -1348,28 +1359,24 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Apply rotation by changing the Activity's screen orientation
-     * This provides proper fullscreen portrait/landscape support
-     */
-    private fun applyRotation(rotation: Int) {
+    private fun applyRotation(
+        rotation: Int,
+        flipHorizontal: Boolean,
+        flipVertical: Boolean,
+    ) {
         requestedOrientation =
             when (rotation) {
                 90 -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                 180 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
                 270 -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
-                else -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE // 0°
+                else -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             }
 
-        // Reset SurfaceView transform (orientation change handles rotation)
         binding.surfaceView.apply {
             this.rotation = 0f
-            scaleX = 1f
-            scaleY = 1f
+            scaleX = if (flipHorizontal) -1f else 1f
+            scaleY = if (flipVertical) -1f else 1f
         }
-
-        // ConstraintSet handles orientation changes automatically
-        // No need for postDelayed positioning
 
         log(
             "🔄 Orientation: ${when (rotation) {
@@ -1377,7 +1384,7 @@ class MainActivity : AppCompatActivity() {
                 180 -> "Landscape (flipped)"
                 270 -> "Portrait (flipped)"
                 else -> "Landscape"
-            }}",
+            }}${if (flipHorizontal || flipVertical) " mirrored" else ""}",
         )
     }
 

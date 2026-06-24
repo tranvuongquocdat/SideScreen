@@ -74,6 +74,8 @@ class StreamingServer {
     private var displayWidth = 1920
     private var displayHeight = 1080
     private var rotation = 0
+    private var flipHorizontal = false
+    private var flipVertical = false
     private var isReceiving = false
     private var isStopped = false
     private var connectionReady = false
@@ -278,29 +280,33 @@ class StreamingServer {
         })
     }
 
-    func setDisplaySize(width: Int, height: Int, rotation: Int = 0) {
+    func setDisplaySize(width: Int, height: Int, rotation: Int = 0, flipHorizontal: Bool = false, flipVertical: Bool = false) {
         displayWidth = width
         displayHeight = height
         self.rotation = rotation
+        self.flipHorizontal = flipHorizontal
+        self.flipVertical = flipVertical
     }
 
-    /// Update rotation and send to connected client
-    func updateRotation(_ rotation: Int) {
+    func updateDisplayTransform(rotation: Int, flipHorizontal: Bool, flipVertical: Bool) {
         self.rotation = rotation
-        sendDisplaySize() // Re-send display config with new rotation
+        self.flipHorizontal = flipHorizontal
+        self.flipVertical = flipVertical
+        sendDisplaySize()
     }
 
     func sendDisplaySize() {
         guard let connection = connection else { return }
 
+        let transform = rotation + (flipHorizontal ? 1000 : 0) + (flipVertical ? 2000 : 0)
         var data = Data()
-        data.append(WireMessage.displayConfig) // Type: Display size + rotation
+        data.append(WireMessage.displayConfig)
         data.append(contentsOf: withUnsafeBytes(of: Int32(displayWidth).bigEndian) { Data($0) })
         data.append(contentsOf: withUnsafeBytes(of: Int32(displayHeight).bigEndian) { Data($0) })
-        data.append(contentsOf: withUnsafeBytes(of: Int32(rotation).bigEndian) { Data($0) })
+        data.append(contentsOf: withUnsafeBytes(of: Int32(transform).bigEndian) { Data($0) })
 
         connection.send(content: data, completion: .contentProcessed { _ in })
-        debugLog("Sent display config: \(displayWidth)x\(displayHeight) @ \(rotation)°")
+        debugLog("Sent display config: \(displayWidth)x\(displayHeight) @ \(rotation)°, h=\(flipHorizontal), v=\(flipVertical)")
     }
 
     private func startReceivingTouch() {

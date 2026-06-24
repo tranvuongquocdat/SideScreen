@@ -324,6 +324,7 @@ struct SettingsView: View {
                                             RoundedRectangle(cornerRadius: 4)
                                                 .stroke(Color.accentColor.opacity(0.5), lineWidth: 1)
                                                 .frame(width: 80, height: 50)
+                                                .scaleEffect(x: settings.flipHorizontal ? -1 : 1, y: settings.flipVertical ? -1 : 1)
                                                 .rotationEffect(.degrees(Double(settings.rotation)))
 
                                             Text(settings.rotation == 90 || settings.rotation == 270 ? "Portrait" : "Landscape")
@@ -359,6 +360,39 @@ struct SettingsView: View {
                                             .font(.system(size: 10))
                                             .foregroundColor(.accentColor)
                                     }
+
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        HStack {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text("Flip Horizontally")
+                                                    .font(.system(size: 11))
+                                                    .foregroundColor(.secondary)
+                                                Text("Mirror left and right")
+                                                    .font(.system(size: 10))
+                                                    .foregroundColor(.secondary.opacity(0.7))
+                                            }
+                                            Spacer()
+                                            Toggle("", isOn: $settings.flipHorizontal)
+                                                .toggleStyle(.switch)
+                                                .controlSize(.mini)
+                                        }
+
+                                        HStack {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text("Flip Vertically")
+                                                    .font(.system(size: 11))
+                                                    .foregroundColor(.secondary)
+                                                Text("Mirror top and bottom")
+                                                    .font(.system(size: 10))
+                                                    .foregroundColor(.secondary.opacity(0.7))
+                                            }
+                                            Spacer()
+                                            Toggle("", isOn: $settings.flipVertical)
+                                                .toggleStyle(.switch)
+                                                .controlSize(.mini)
+                                        }
+                                    }
+                                    .padding(.top, 4)
 
                                     HStack {
                                         Spacer()
@@ -1132,6 +1166,12 @@ class DisplaySettings: ObservableObject {
     @Published var rotation: Int {
         didSet { save("rotation", rotation) }
     }
+    @Published var flipHorizontal: Bool {
+        didSet { save("flipHorizontal", flipHorizontal) }
+    }
+    @Published var flipVertical: Bool {
+        didSet { save("flipVertical", flipVertical) }
+    }
     @Published var showAllResolutions: Bool {
         didSet { save("showAllResolutions", showAllResolutions) }
     }
@@ -1185,6 +1225,8 @@ class DisplaySettings: ObservableObject {
         // Existing users keep their saved value.
         self.port = UInt16(defaults.object(forKey: keyPrefix + "port") as? Int ?? 54321)
         self.rotation = defaults.object(forKey: keyPrefix + "rotation") as? Int ?? 0
+        self.flipHorizontal = defaults.bool(forKey: keyPrefix + "flipHorizontal")
+        self.flipVertical = defaults.bool(forKey: keyPrefix + "flipVertical")
         self.showAllResolutions = defaults.bool(forKey: keyPrefix + "showAllResolutions")
         self.customWidth = defaults.object(forKey: keyPrefix + "customWidth") as? Int ?? 1920
         self.customHeight = defaults.object(forKey: keyPrefix + "customHeight") as? Int ?? 1200
@@ -1256,7 +1298,7 @@ class DisplaySettings: ObservableObject {
 
     func resetToDefaults() {
         let keys = ["resolution", "refreshRate", "hiDPI", "bitrate", "quality",
-                    "gamingBoost", "port", "rotation", "showAllResolutions",
+                    "gamingBoost", "port", "rotation", "flipHorizontal", "flipVertical", "showAllResolutions",
                     "customWidth", "customHeight", "touchEnabled", "autoStartStreamingOnLaunch", "startupMode"]
         for key in keys {
             defaults.removeObject(forKey: keyPrefix + key)
@@ -1270,6 +1312,8 @@ class DisplaySettings: ObservableObject {
         gamingBoost = false
         port = 54321
         rotation = 0
+        flipHorizontal = false
+        flipVertical = false
         showAllResolutions = false
         customWidth = 1920
         customHeight = 1200

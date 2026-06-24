@@ -32,7 +32,7 @@ class StreamClient(
     // receive timestamp, and whether the frame can restart HEVC decoding.
     var onFrameReceived: ((ByteArray, Int, Long, Boolean) -> Unit)? = null
     var onConnectionStatus: ((Boolean) -> Unit)? = null
-    var onDisplaySize: ((Int, Int, Int) -> Unit)? = null // width, height, rotation
+    var onDisplaySize: ((Int, Int, Int, Boolean, Boolean) -> Unit)? = null
     var onStats: ((Double, Double) -> Unit)? = null
 
     /** Invoked when the server confirms the stream codec (true = HEVC). */
@@ -333,12 +333,16 @@ class StreamClient(
                             receiveVideoFrame(input, hasMetadata = true)
                         }
 
-                        1 -> { // Display size + rotation
+                        1 -> {
                             val width = input.readInt()
                             val height = input.readInt()
-                            val rotation = input.readInt()
-                            diagLog("Display config: ${width}x$height @ $rotation°")
-                            onDisplaySize?.invoke(width, height, rotation)
+                            val transform = input.readInt()
+                            val rotation = transform % 1000
+                            val flags = transform / 1000
+                            val flipHorizontal = flags and 1 == 1
+                            val flipVertical = flags and 2 == 2
+                            diagLog("Display config: ${width}x$height @ $rotation°, h=$flipHorizontal, v=$flipVertical")
+                            onDisplaySize?.invoke(width, height, rotation, flipHorizontal, flipVertical)
                         }
 
                         5 -> { // Pong response — measure round-trip latency

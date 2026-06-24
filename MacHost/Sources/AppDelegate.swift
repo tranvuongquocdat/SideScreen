@@ -222,13 +222,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
-        // Observer cho rotation changes - send to connected client immediately
-        settings.$rotation
+        Publishers.CombineLatest3(settings.$rotation, settings.$flipHorizontal, settings.$flipVertical)
             .dropFirst()
-            .sink { [weak self] rotation in
+            .sink { [weak self] rotation, flipHorizontal, flipVertical in
                 guard let self = self, self.settings.isRunning else { return }
-                print("🔄 Rotation changed to \(rotation)°")
-                self.streamingServer?.updateRotation(rotation)
+                print("🔄 Display transform changed: \(rotation)°, h=\(flipHorizontal), v=\(flipVertical)")
+                self.streamingServer?.updateDisplayTransform(rotation: rotation, flipHorizontal: flipHorizontal, flipVertical: flipVertical)
             }
             .store(in: &cancellables)
 
@@ -589,7 +588,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // logical dimensions here makes the resolution overlay on Android
             // match the Mac's resolution dropdown (e.g. "2560x1600" instead of
             // the HiDPI-doubled "5120x3200").
-            streamingServer?.setDisplaySize(width: size.width, height: size.height, rotation: settings.rotation)
+            streamingServer?.setDisplaySize(width: size.width, height: size.height, rotation: settings.rotation, flipHorizontal: settings.flipHorizontal, flipVertical: settings.flipVertical)
             streamingServer?.onClientConnected = { [weak self] in
                 guard let self = self else { return }
                 self.screenCapture?.requestKeyframeOrReplayCachedFrame(force: true)
@@ -607,12 +606,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 if codec == .hevc && enc == (capture.displayWidth, capture.displayHeight) {
                     // Unclamped HEVC: logical user-picked resolution, exactly
                     // as at startup.
-                    self.streamingServer?.setDisplaySize(width: size.width, height: size.height, rotation: self.settings.rotation)
+                    self.streamingServer?.setDisplaySize(width: size.width, height: size.height, rotation: self.settings.rotation, flipHorizontal: self.settings.flipHorizontal, flipVertical: self.settings.flipVertical)
                 } else {
                     // Clamped (client decoder limit, or the AVC floor): the
                     // client must configure its decoder within its supported
                     // range, and this matches what the stream's SPS will carry.
-                    self.streamingServer?.setDisplaySize(width: enc.width, height: enc.height, rotation: self.settings.rotation)
+                    self.streamingServer?.setDisplaySize(width: enc.width, height: enc.height, rotation: self.settings.rotation, flipHorizontal: self.settings.flipHorizontal, flipVertical: self.settings.flipVertical)
                 }
             }
             streamingServer?.onKeyframeRequested = { [weak self] force in
