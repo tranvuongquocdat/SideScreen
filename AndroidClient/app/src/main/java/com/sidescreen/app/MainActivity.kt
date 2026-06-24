@@ -7,6 +7,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.graphics.Color
+import android.graphics.Matrix
+import android.graphics.SurfaceTexture
 import android.graphics.drawable.ColorDrawable
 import android.hardware.usb.UsbManager
 import android.media.MediaFormat
@@ -17,7 +19,9 @@ import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import android.view.MotionEvent
+import android.view.Surface
 import android.view.SurfaceHolder
+import android.view.TextureView
 import android.view.View
 import android.view.Window
 import android.view.WindowInsets
@@ -48,6 +52,8 @@ class MainActivity : AppCompatActivity() {
     private var videoDecoder: VideoDecoder? = null
     private var streamClient: StreamClient? = null
     private var currentSurfaceHolder: SurfaceHolder? = null
+    private var currentTextureSurface: Surface? = null
+    private var decoderUsingTextureView = false
     private var displayWidth = 0 // 0 = no config received yet
     private var displayHeight = 0 // 0 = no config received yet
     private var displayRotation = 0 // 0, 90, 180, 270 degrees
@@ -293,27 +299,66 @@ class MainActivity : AppCompatActivity() {
                 ) {
                     mainDiag("surfaceChanged: ${width}x$height")
                     log("Surface changed: ${width}x$height")
-                    // Don't initialize decoder here — wait for display config
-                    // from the server so we use the correct resolution.
-                    // Store the holder so we can initialize later.
                     currentSurfaceHolder = holder
-                    // If we already have a display config (reconnect case), init now
-                    if (displayWidth > 0 && displayHeight > 0 && videoDecoder == null) {
-                        initializeDecoder(holder)
-                    }
+                    initializeDecoderForCurrentSurface()
                 }
 
                 override fun surfaceDestroyed(holder: SurfaceHolder) {
                     mainDiag("surfaceDestroyed")
                     log("Surface destroyed")
-                    // Only release decoder, NOT the connection.
-                    videoDecoder?.release()
-                    videoDecoder = null
+                    if (!decoderUsingTextureView) {
+                        videoDecoder?.release()
+                        videoDecoder = null
+                    }
+                    currentSurfaceHolder = null
                 }
             },
         )
 
+        binding.textureView.surfaceTextureListener =
+            object : TextureView.SurfaceTextureListener {
+                override fun onSurfaceTextureAvailable(
+                    surface: SurfaceTexture,
+                    width: Int,
+                    height: Int,
+                ) {
+                    mainDiag("textureAvailable: ${width}x$height")
+                    currentTextureSurface = Surface(surface)
+                    initializeDecoderForCurrentSurface()
+                }
+
+                override fun onSurfaceTextureSizeChanged(
+                    surface: SurfaceTexture,
+                    width: Int,
+                    height: Int,
+                ) {
+                    mainDiag("textureSizeChanged: ${width}x$height")
+                    applyTextureTransform()
+                }
+
+                override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
+                    mainDiag("textureDestroyed")
+                    if (decoderUsingTextureView) {
+                        videoDecoder?.release()
+                        videoDecoder = null
+                    }
+                    currentTextureSurface?.release()
+                    currentTextureSurface = null
+                    return true
+                }
+
+                override fun onSurfaceTextureUpdated(surface: SurfaceTexture) = Unit
+            }
+
+        if (binding.textureView.isAvailable && currentTextureSurface == null) {
+            binding.textureView.surfaceTexture?.let { currentTextureSurface = Surface(it) }
+        }
+
         binding.surfaceView.setOnTouchListener { view, event ->
+            handleTouch(view, event)
+            true
+        }
+        binding.textureView.setOnTouchListener { view, event ->
             handleTouch(view, event)
             true
         }
@@ -851,31 +896,32 @@ class MainActivity : AppCompatActivity() {
             if (isHevc) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
         runOnUiThread {
             val dec = videoDecoder
-            val holder = currentSurfaceHolder
             when {
                 dec == null -> {
-                    if (holder != null && holder.surface.isValid) {
-                        mainDiag("Codec selected ($expectedMime) — initializing deferred decoder")
-                        initializeDecoder(holder)
-                    }
+                    mainDiag("Codec selected ($expectedMime) — initializing deferred decoder")
+                    initializeDecoderForCurrentSurface()
                 }
                 dec.mime != expectedMime -> {
                     mainDiag("Stream codec is $expectedMime but decoder is ${dec.mime} — recreating")
                     dec.release()
                     videoDecoder = null
-                    if (holder != null && holder.surface.isValid) {
-                        initializeDecoder(holder)
-                    }
+                    initializeDecoderForCurrentSurface()
                 }
             }
         }
     }
 
-    private fun initializeDecoder(holder: SurfaceHolder) {
-        mainDiag(
-            "initializeDecoder called, surface=${holder.surface}, " +
-                "valid=${holder.surface.isValid}, res=${displayWidth}x$displayHeight",
-        )
+    private fun shouldUseTextureView(): Boolean = displayFlipHorizontal || displayFlipVertical
+
+    private fun activeVideoSurface(): Pair<Surface, Boolean>? {
+        return if (shouldUseTextureView()) {
+            currentTextureSurface?.takeIf { it.isValid }?.let { it to true }
+        } else {
+            currentSurfaceHolder?.surface?.takeIf { it.isValid }?.let { it to false }
+        }
+    }
+
+    private fun initializeDecoderForCurrentSurface() {
         if (displayWidth <= 0 || displayHeight <= 0) {
             mainDiag("initializeDecoder skipped — no display config yet")
             return
@@ -887,12 +933,31 @@ class MainActivity : AppCompatActivity() {
             mainDiag("initializeDecoder deferred — AVC-only device awaiting codec negotiation")
             return
         }
+
+        val (surface, useTextureView) =
+            activeVideoSurface() ?: run {
+                val kind = if (shouldUseTextureView()) "TextureView" else "SurfaceView"
+                mainDiag("initializeDecoder skipped — no valid $kind surface")
+                return
+            }
+
+        if (videoDecoder != null && decoderUsingTextureView == useTextureView) {
+            videoDecoder?.updateResolution(displayWidth, displayHeight)
+            return
+        }
+
+        videoDecoder?.release()
+        videoDecoder = null
+        decoderUsingTextureView = useTextureView
+
+        mainDiag(
+            "initializeDecoder called, surface=$surface, valid=${surface.isValid}, " +
+                "res=${displayWidth}x$displayHeight, texture=$useTextureView",
+        )
         try {
-            // Pass display for vsync-aligned frame presentation
-            // Use modern API on Android R+, fallback to deprecated for older versions
             val displayObj =
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    display // Activity.getDisplay() - modern API
+                    display
                 } else {
                     @Suppress("DEPRECATION")
                     windowManager.defaultDisplay
@@ -903,8 +968,7 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     MediaFormat.MIMETYPE_VIDEO_HEVC
                 }
-            videoDecoder = VideoDecoder(holder.surface, displayObj, displayWidth, displayHeight, mime)
-            // Wire up buffer release callback
+            videoDecoder = VideoDecoder(surface, displayObj, displayWidth, displayHeight, mime)
             videoDecoder?.onFrameDecoded = { buffer ->
                 streamClient?.releaseBuffer(buffer)
             }
@@ -929,9 +993,10 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             streamClient?.requestKeyframe(force = true, reason = "decoder initialized")
-            mainDiag("Decoder initialized OK ${displayWidth}x$displayHeight mime=$mime, videoDecoder=$videoDecoder")
+            mainDiag("Decoder initialized OK ${displayWidth}x$displayHeight mime=$mime, texture=$useTextureView")
             log("✅ Decoder initialized ${displayWidth}x$displayHeight $mime (${displayObj?.refreshRate ?: 60f}Hz)")
         } catch (e: Exception) {
+            decoderUsingTextureView = false
             mainDiag("Decoder init FAILED: ${e.message}")
             log("❌ Failed to initialize decoder: ${e.message}")
             runOnUiThread {
@@ -1030,24 +1095,10 @@ class MainActivity : AppCompatActivity() {
             displayRotation = rotation
             displayFlipHorizontal = flipHorizontal
             displayFlipVertical = flipVertical
-            if (videoDecoder != null) {
-                videoDecoder?.updateResolution(width, height)
-            } else {
-                val holder = currentSurfaceHolder
-                if (holder != null && holder.surface.isValid) {
-                    mainDiag("Display config arrived, initializing decoder ${width}x$height")
-                    runOnUiThread {
-                        if (videoDecoder == null) {
-                            initializeDecoder(holder)
-                        }
-                    }
-                } else {
-                    mainDiag("Display config arrived but no valid surface yet")
-                }
-            }
             runOnUiThread {
                 binding.resolutionText.text = "${width}x$height"
                 applyRotation(rotation, flipHorizontal, flipVertical)
+                initializeDecoderForCurrentSurface()
             }
             log("Display: ${width}x$height @ $rotation°")
         }
@@ -1193,28 +1244,10 @@ class MainActivity : AppCompatActivity() {
                     displayFlipHorizontal = flipHorizontal
                     displayFlipVertical = flipVertical
 
-                    if (videoDecoder != null) {
-                        // Decoder already exists — update its resolution
-                        videoDecoder?.updateResolution(width, height)
-                    } else {
-                        // Decoder not yet created — create it now with correct resolution
-                        val holder = currentSurfaceHolder
-                        if (holder != null && holder.surface.isValid) {
-                            mainDiag("Display config arrived, initializing decoder ${width}x$height")
-                            runOnUiThread {
-                                // Re-check under UI thread to prevent race with surfaceChanged
-                                if (videoDecoder == null) {
-                                    initializeDecoder(holder)
-                                }
-                            }
-                        } else {
-                            mainDiag("Display config arrived but no valid surface yet")
-                        }
-                    }
-
                     runOnUiThread {
                         binding.resolutionText.text = "${width}x$height"
                         applyRotation(rotation, flipHorizontal, flipVertical)
+                        initializeDecoderForCurrentSurface()
                     }
                     log("Display: ${width}x$height @ $rotation°")
                 }
@@ -1263,6 +1296,10 @@ class MainActivity : AppCompatActivity() {
         displayHeight = 0
         displayFlipHorizontal = false
         displayFlipVertical = false
+        runOnUiThread {
+            binding.textureView.visibility = View.GONE
+            applyTextureTransform()
+        }
         log("Disconnected")
     }
 
@@ -1287,6 +1324,8 @@ class MainActivity : AppCompatActivity() {
             disconnect()
             videoDecoder?.release()
             videoDecoder = null
+            currentTextureSurface?.release()
+            currentTextureSurface = null
 
             // Release wake lock safely
             try {
@@ -1372,11 +1411,10 @@ class MainActivity : AppCompatActivity() {
                 else -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             }
 
-        binding.surfaceView.apply {
-            this.rotation = 0f
-            scaleX = if (flipHorizontal) -1f else 1f
-            scaleY = if (flipVertical) -1f else 1f
-        }
+        binding.surfaceView.rotation = 0f
+        binding.surfaceView.visibility = View.VISIBLE
+        binding.textureView.visibility = if (flipHorizontal || flipVertical) View.VISIBLE else View.GONE
+        applyTextureTransform()
 
         log(
             "🔄 Orientation: ${when (rotation) {
@@ -1386,6 +1424,20 @@ class MainActivity : AppCompatActivity() {
                 else -> "Landscape"
             }}${if (flipHorizontal || flipVertical) " mirrored" else ""}",
         )
+    }
+
+    private fun applyTextureTransform() {
+        val view = binding.textureView
+        val matrix = Matrix()
+        val centerX = view.width / 2f
+        val centerY = view.height / 2f
+        matrix.postScale(
+            if (displayFlipHorizontal) -1f else 1f,
+            if (displayFlipVertical) -1f else 1f,
+            centerX,
+            centerY,
+        )
+        view.setTransform(matrix)
     }
 
     /**
