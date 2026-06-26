@@ -76,9 +76,6 @@ class MainActivity : AppCompatActivity() {
         // Allow rotation based on device sensor when not connected
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
 
-        // Keep screen on
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-
         // Enable edge-to-edge display (draw behind system bars and cutout)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.attributes.layoutInDisplayCutoutMode =
@@ -90,9 +87,6 @@ class MainActivity : AppCompatActivity() {
 
         // Apply fullscreen mode immediately
         enableFullscreenMode()
-
-        // Enable performance mode for gaming (after binding is initialized)
-        enablePerformanceMode()
 
         setupSurface()
         setupUI()
@@ -209,26 +203,34 @@ class MainActivity : AppCompatActivity() {
      */
     private fun enablePerformanceMode() {
         try {
-            // REMOVED: setSustainedPerformanceMode(true)
-            // Sustained performance mode forces max CPU/GPU clocks which causes
-            // thermal throttling on extended use, making the device laggy.
-            // Let the SoC manage power efficiently instead.
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-            // Use PARTIAL_WAKE_LOCK with timeout to prevent battery drain
-            // Screen is already kept on via FLAG_KEEP_SCREEN_ON
+            if (wakeLock?.isHeld == true) return
+
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock =
                 powerManager.newWakeLock(
                     PowerManager.PARTIAL_WAKE_LOCK,
                     "SideScreen::PerformanceMode",
                 )
-            // 30 minute timeout instead of infinite acquire
             wakeLock?.acquire(30 * 60 * 1000L)
 
             log("🎮 Performance mode ENABLED (balanced)")
         } catch (e: Exception) {
             log("⚠️ Performance mode failed: ${e.message}")
         }
+    }
+
+    private fun disablePerformanceMode() {
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        try {
+            if (wakeLock?.isHeld == true) {
+                wakeLock?.release()
+            }
+        } catch (_: Exception) {
+        }
+        wakeLock = null
+        log("🎮 Performance mode DISABLED")
     }
 
     /**
@@ -865,6 +867,7 @@ class MainActivity : AppCompatActivity() {
                     startPingTimer()
                     stopChecklistUpdates()
                     enableFullscreenMode()
+                    enablePerformanceMode()
                     binding.settingsPanel.visibility = View.GONE
                     binding.settingsButton.visibility = View.VISIBLE
                     restoreSettingsButtonPosition()
@@ -883,6 +886,7 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     stopPingTimer()
                     disableFullscreenMode()
+                    disablePerformanceMode()
                     resetOrientationToSensor()
                     binding.settingsPanel.visibility = View.VISIBLE
                     binding.settingsButton.visibility = View.GONE
@@ -1037,6 +1041,7 @@ class MainActivity : AppCompatActivity() {
 
                             // Enter fullscreen mode when connected
                             enableFullscreenMode()
+                            enablePerformanceMode()
 
                             binding.settingsPanel.visibility = View.GONE
                             binding.settingsButton.visibility = View.VISIBLE
@@ -1048,6 +1053,7 @@ class MainActivity : AppCompatActivity() {
 
                             // Exit fullscreen mode when disconnected
                             disableFullscreenMode()
+                            disablePerformanceMode()
 
                             // Reset to follow device sensor when disconnected
                             resetOrientationToSensor()
@@ -1164,16 +1170,7 @@ class MainActivity : AppCompatActivity() {
             videoDecoder?.release()
             videoDecoder = null
 
-            // Release wake lock safely
-            try {
-                if (wakeLock?.isHeld == true) {
-                    wakeLock?.release()
-                }
-            } catch (e: Exception) {
-                // Ignore wake lock release errors
-            }
-            wakeLock = null
-            log("🎮 Performance mode DISABLED")
+            disablePerformanceMode()
         } catch (e: Exception) {
             log("⚠️ Cleanup error: ${e.message}")
         }
