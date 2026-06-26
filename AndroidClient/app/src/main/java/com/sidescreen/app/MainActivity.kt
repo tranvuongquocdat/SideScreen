@@ -835,6 +835,7 @@ class MainActivity : AppCompatActivity() {
                 dec.decode(frameData, frameSize, timestamp, isKeyframe)
             } else {
                 mainDiag("FRAME DROPPED: videoDecoder is null!")
+                streamClient?.releaseBuffer(frameData)
             }
         }
 
