@@ -66,6 +66,7 @@ class StreamingServer {
     private var bytesSent: UInt64 = 0
     private var frameCount: UInt64 = 0
     private var droppedFrames: UInt64 = 0
+    private var inFlightFrameSends = 0
     private var lastStatsTime = DispatchTime.now()
     private var displayWidth = 1920
     private var displayHeight = 1080
@@ -453,20 +454,27 @@ class StreamingServer {
             debugLog("First keyframe sent to new client")
         }
 
-        // No frame-age dropping or backpressure — send everything immediately.
-        // The encode queue depth limit (2 pending) in ScreenCapture handles flow control.
         frameQueue.async { [weak self] in
             guard let self = self else { return }
 
-            let packet = self.makeFramePacket(data, timestamp: timestamp, isKeyframe: isKeyframe)
+            if self.inFlightFrameSends > 0 && !isKeyframe {
+                self.droppedFrames += 1
+                return
+            }
 
-            connection.send(content: packet, completion: .contentProcessed { error in
-                if error != nil {
-                    self.droppedFrames += 1
+            let packet = self.makeFramePacket(data, timestamp: timestamp, isKeyframe: isKeyframe)
+            self.inFlightFrameSends += 1
+
+            connection.send(content: packet, completion: .contentProcessed { [weak self] error in
+                self?.frameQueue.async {
+                    guard let self = self else { return }
+                    self.inFlightFrameSends = max(0, self.inFlightFrameSends - 1)
+                    if error != nil {
+                        self.droppedFrames += 1
+                    }
                 }
             })
 
-            // Track frame age at send time for pipeline profiling
             let sendAge = DispatchTime.now().uptimeNanoseconds - timestamp
             self.updateStats(bytes: data.count, frameAgeNs: sendAge)
         }
