@@ -95,28 +95,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     private func refreshStatusIndicators() {
-        settings.adbInstalled = StatusDetector.adbInstalled()
-        settings.wifiConnected = StatusDetector.wifiReachable()
-        settings.listeningAddress = LANAddressResolver.primaryIPv4()
-
-        // While a wireless client is actively streaming, keep its lastConnected
-        // rolling forward so the UI shows "just now". On disconnect, the
-        // onClientDisconnected handler clears currentWirelessDevice — from that
-        // point lastConnected stays frozen at the disconnect moment, so the
-        // "X minutes ago" label counts up correctly.
         if let name = currentWirelessDevice {
             pairedDeviceStore.upsert(name: name, lastConnected: Date())
         }
 
-        let port = Int(settings.port)
-        Task.detached { [weak self] in
-            let devices = StatusDetector.usbDevices()
-            let reverseOK = StatusDetector.adbReverseConfigured(port: port)
-            await MainActor.run { [weak self] in
-                guard let self = self else { return }
-                self.settings.usbDeviceConnected = !devices.isEmpty
-                self.settings.adbReverseConfigured = reverseOK
+        guard settingsWindow?.window?.isVisible == true else { return }
+
+        switch settings.connectionMode {
+        case .usb:
+            settings.adbInstalled = StatusDetector.adbInstalled()
+            let port = Int(settings.port)
+            Task.detached { [weak self] in
+                let devices = StatusDetector.usbDevices()
+                let reverseOK = StatusDetector.adbReverseConfigured(port: port)
+                await MainActor.run { [weak self] in
+                    guard let self = self else { return }
+                    self.settings.usbDeviceConnected = !devices.isEmpty
+                    self.settings.adbReverseConfigured = reverseOK
+                }
             }
+        case .wireless:
+            settings.wifiConnected = StatusDetector.wifiReachable()
+            settings.listeningAddress = LANAddressResolver.primaryIPv4()
         }
     }
 
