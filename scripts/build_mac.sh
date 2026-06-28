@@ -46,6 +46,8 @@ mkdir -p "$APP_DIR/Contents/Resources"
 # Copy universal binary
 cp .build/release-universal/SideScreen "$APP_DIR/Contents/MacOS/"
 
+# No LaunchAgent plist needed for SMAppService.mainApp
+
 # Copy app icon if exists
 if [ -f "$ROOT_DIR/MacHost/Resources/AppIcon.icns" ]; then
     cp "$ROOT_DIR/MacHost/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/"

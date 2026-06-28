@@ -60,6 +60,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var cancellables = Set<AnyCancellable>()
     private var permissionCheckTimer: Timer?
     private var statusRefreshTimer: Timer?
+    var isDaemonMode = false // Deprecated: keeping variable for ABI compatibility but unused
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("✅ App launched")
@@ -89,8 +90,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             refreshStatusIndicators()
         }
 
-        // Show settings window
-        showSettings()
+        if #available(macOS 13.0, *) {
+            if DaemonManager.shared.isEnabled {
+                print("🚀 Launch at Login is enabled - starting silently in background")
+                // Do not show settings window automatically.
+                // applicationShouldHandleReopen will show it if the user manually launched the app.
+            } else {
+                showSettings()
+            }
+        } else {
+            showSettings()
+        }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            showSettings()
+        }
+        return true
     }
 
     @MainActor
@@ -114,8 +131,54 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let reverseOK = StatusDetector.adbReverseConfigured(port: port)
             await MainActor.run { [weak self] in
                 guard let self = self else { return }
-                self.settings.usbDeviceConnected = !devices.isEmpty
+                
+                let wasConnected = self.settings.usbDeviceConnected
+                let isConnected = !devices.isEmpty
+                
+                self.settings.usbDeviceConnected = isConnected
                 self.settings.adbReverseConfigured = reverseOK
+                
+                // Auto-connect and ADB tracking
+                let connectionMode = self.settings.connectionMode
+                let isRunning = self.settings.isRunning
+                let autoStartEnabled = self.settings.autoStartOnUSBConnect
+
+                if isConnected && !wasConnected {
+                    debugLog("🔌 USB Device connection detected.")
+                    debugLog("   - State -> connectionMode: \(connectionMode.rawValue), isRunning: \(isRunning), autoStart: \(autoStartEnabled), reverseOK: \(reverseOK)")
+
+                    if connectionMode != .usb {
+                        debugLog("   => Action: Ignored (Not in USB connection mode)")
+                    } else if isRunning {
+                        if !reverseOK {
+                            debugLog("   => Action: Triggering ADB reverse (Server already running)")
+                            Task { await self.setupADBReverse() }
+                        } else {
+                            debugLog("   => Action: Ignored (Server running & ADB reverse already OK)")
+                        }
+                    } else {
+                        if autoStartEnabled {
+                            debugLog("   => Action: Starting server automatically")
+                            Task { await self.startServer() }
+                        } else {
+                            debugLog("   => Action: Ignored (Auto-start setting is disabled)")
+                        }
+                    }
+                } else if !isConnected && wasConnected {
+                    debugLog("🔌 USB Device disconnection detected.")
+                    debugLog("   - State -> connectionMode: \(connectionMode.rawValue), isRunning: \(isRunning), autoStart: \(autoStartEnabled)")
+                    
+                    if connectionMode != .usb {
+                        debugLog("   => Action: Ignored (Not in USB connection mode)")
+                    } else if autoStartEnabled && isRunning {
+                        debugLog("   => Action: Stopping server automatically (Device disconnected)")
+                        self.stopServer()
+                    } else if !autoStartEnabled {
+                        debugLog("   => Action: Ignored (Auto-manage setting is disabled)")
+                    } else {
+                        debugLog("   => Action: Ignored (Server is already stopped)")
+                    }
+                }
             }
         }
     }
@@ -317,6 +380,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func setupADBReverse() async {
         let port = settings.port
         print("🔌 Setting up ADB reverse for port \(port)...")
+        debugLog("🔌 setupADBReverse() invoked for port \(port)...")
 
         await Task.detached(priority: .utility) {
             // Try common adb paths
@@ -385,6 +449,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
                     if process.terminationStatus == 0 {
                         print("✅ ADB reverse setup successful: tcp:\(port) -> tcp:\(port)")
+                        
+                        // If auto-start is enabled, launch the Android app and tell it to auto-connect
+                        if self.settings.autoStartOnUSBConnect {
+                            let launchProcess = Process()
+                            launchProcess.executableURL = URL(fileURLWithPath: finalAdbPath)
+                            launchProcess.arguments = ["shell", "am", "start", "-n", "com.sidescreen.app/.MainActivity", "--ez", "auto_connect", "true"]
+                            try? launchProcess.run()
+                            launchProcess.waitUntilExit()
+                            debugLog("📱 Auto-launched Android app with auto_connect=true")
+                        }
+                        
                         return
                     } else {
                         print("⚠️  ADB reverse attempt \(attempt)/3 failed: \(output.trimmingCharacters(in: .whitespacesAndNewlines))")
@@ -428,7 +503,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func startServer() async {
+        debugLog("🚀 startServer() invoked. Check permission: \(settings.hasScreenRecordingPermission)")
         guard settings.hasScreenRecordingPermission else {
+            debugLog("❌ startServer aborted: Missing Screen Recording permission")
             await showPermissionAlert()
             return
         }

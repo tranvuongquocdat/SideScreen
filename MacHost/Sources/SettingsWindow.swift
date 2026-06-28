@@ -80,6 +80,8 @@ struct SettingsView: View {
     // and .number formatting injected locale grouping separators ("1,200").
     @State private var customWidthText = ""
     @State private var customHeightText = ""
+    @State private var daemonEnabled = false
+    @State private var selectedTab = "Display"
 
     private var customWidthValue: Int? { Int(customWidthText.trimmingCharacters(in: .whitespaces)) }
     private var customHeightValue: Int? { Int(customHeightText.trimmingCharacters(in: .whitespaces)) }
@@ -183,17 +185,37 @@ struct SettingsView: View {
                     .fill(Color.primary.opacity(0.06))
                     .frame(height: 1)
 
+                Picker("", selection: $selectedTab) {
+                    Text("Display & Input").tag("Display")
+                    Text("Connection").tag("Connection")
+                    Text("Quality").tag("Quality")
+                    Text("Status").tag("Status")
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
+
+                Rectangle()
+                    .fill(Color.primary.opacity(0.06))
+                    .frame(height: 1)
+
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        // Display Configuration
-                        FrostedGroupBox(title: "Display Configuration", icon: "display") {
+                        if selectedTab == "Display" {
+                            // Display Configuration
+                            FrostedGroupBox(title: "Display Configuration", icon: "display") {
                             VStack(alignment: .leading, spacing: 16) {
                                 // Resolution
                                 VStack(alignment: .leading, spacing: 8) {
                                     HStack {
-                                        Text("Resolution")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.secondary)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Resolution")
+                                                .font(.system(size: 11))
+                                                .foregroundColor(.secondary)
+                                            Text("Sets the virtual display resolution sent to the tablet. Higher resolutions look sharper but require more bandwidth and CPU to encode.")
+                                                .font(.system(size: 10))
+                                                .foregroundColor(.secondary.opacity(0.7))
+                                        }
                                         Spacer()
                                         Toggle("Show all", isOn: $settings.showAllResolutions)
                                             .toggleStyle(.switch)
@@ -314,9 +336,14 @@ struct SettingsView: View {
 
                                 // Rotation
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Text("Rotation")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Rotation")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.secondary)
+                                        Text("Adjusts the orientation of the virtual display to match your tablet's physical position. Does not affect performance.")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary.opacity(0.7))
+                                    }
 
                                     HStack(spacing: 12) {
                                         ZStack {
@@ -382,9 +409,14 @@ struct SettingsView: View {
                         FrostedGroupBox(title: "Refresh Rate", icon: "speedometer") {
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
-                                    Text("Frame Rate")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Frame Rate")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.secondary)
+                                        Text("Determines how many frames are sent per second. 60Hz is standard; 120Hz provides maximum smoothness but doubles network traffic.")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary.opacity(0.7))
+                                    }
                                     Spacer()
                                     Text("\(settings.refreshRate) Hz")
                                         .font(.system(size: 11, weight: .medium))
@@ -434,14 +466,21 @@ struct SettingsView: View {
                                 }
                             }
                         }
+                        }
 
-                        // Network Settings (port — applies to both modes; listener binds on it)
-                        FrostedGroupBox(title: "Network Settings", icon: "network") {
+                        if selectedTab == "Connection" {
+                            // Network Settings (port — applies to both modes; listener binds on it)
+                            FrostedGroupBox(title: "Network Settings", icon: "network") {
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
-                                    Text("Server Port")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Server Port")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.secondary)
+                                        Text("The network port used for the streaming server. Only change this if you encounter conflicts with other apps on your Mac.")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary.opacity(0.7))
+                                    }
                                     Spacer()
                                     TextField("Port", value: $settings.port, format: .number)
                                         .textFieldStyle(.roundedBorder)
@@ -471,8 +510,61 @@ struct SettingsView: View {
                                             pairedDeviceStore: (NSApp.delegate as? AppDelegate)?.pairedDeviceStore ?? PairedDeviceStore())
                         }
 
-                        // Gaming Boost
-                        FrostedGroupBox(title: "Gaming Boost", icon: settings.gamingBoost ? "bolt.fill" : "bolt") {
+                        // System Integration
+                        if #available(macOS 13.0, *) {
+                            FrostedGroupBox(title: "System Integration", icon: "gearshape.2") {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Launch at Login")
+                                                .font(.system(size: 12, weight: .medium))
+                                            Text("Start in background automatically after login")
+                                                .font(.system(size: 10))
+                                                .foregroundColor(.secondary)
+                                        }
+                                        Spacer()
+                                        Toggle("", isOn: Binding(
+                                            get: { daemonEnabled },
+                                            set: { newValue in
+                                                do {
+                                                    if newValue {
+                                                        try DaemonManager.shared.enable()
+                                                    } else {
+                                                        try DaemonManager.shared.disable()
+                                                    }
+                                                    daemonEnabled = DaemonManager.shared.isEnabled
+                                                } catch {
+                                                    print("Daemon toggle failed: \(error)")
+                                                    // Revert on failure
+                                                    daemonEnabled = DaemonManager.shared.isEnabled
+                                                }
+                                            }
+                                        ))
+                                        .labelsHidden()
+                                    }
+                                    
+                                    Divider()
+                                    
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Auto-manage Server via USB")
+                                                .font(.system(size: 12, weight: .medium))
+                                            Text("Start/stop automatically on USB plug/unplug")
+                                                .font(.system(size: 10))
+                                                .foregroundColor(.secondary)
+                                        }
+                                        Spacer()
+                                        Toggle("", isOn: $settings.autoStartOnUSBConnect)
+                                            .labelsHidden()
+                                    }
+                                }
+                            }
+                        }
+                        }
+
+                        if selectedTab == "Quality" {
+                            // Gaming Boost
+                            FrostedGroupBox(title: "Gaming Boost", icon: settings.gamingBoost ? "bolt.fill" : "bolt") {
                             VStack(alignment: .leading, spacing: 16) {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 2) {
@@ -523,9 +615,14 @@ struct SettingsView: View {
                                 // Bitrate
                                 VStack(alignment: .leading, spacing: 10) {
                                     HStack {
-                                        Text("Bitrate")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.secondary)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Bitrate")
+                                                .font(.system(size: 11))
+                                                .foregroundColor(.secondary)
+                                            Text("Higher values produce a cleaner image with fewer compression artifacts, but require a stronger USB or Wi-Fi connection to prevent stuttering.")
+                                                .font(.system(size: 10))
+                                                .foregroundColor(.secondary.opacity(0.7))
+                                        }
                                         Spacer()
                                         Text("\(settings.effectiveBitrate) Mbps")
                                             .font(.system(size: 13, weight: .semibold, design: .monospaced))
@@ -602,9 +699,11 @@ struct SettingsView: View {
                                 }
                             }
                         }
+                        }
 
-                        // Status
-                        FrostedGroupBox(title: "Status", icon: "checkmark.circle") {
+                        if selectedTab == "Status" {
+                            // Status
+                            FrostedGroupBox(title: "Status", icon: "checkmark.circle") {
                             VStack(alignment: .leading, spacing: 12) {
                                 StatusRow(title: "Virtual Display",
                                           status: settings.displayCreated ? "Active" : "Inactive",
@@ -749,6 +848,7 @@ struct SettingsView: View {
                                 }
                             }
                         }
+                        }
                     }
                     .padding(20)
                 }
@@ -844,6 +944,11 @@ struct SettingsView: View {
                     .padding(.vertical, 14)
                     .background(.ultraThinMaterial)
                 }
+            }
+        }
+        .onAppear {
+            if #available(macOS 13.0, *) {
+                daemonEnabled = DaemonManager.shared.isEnabled
             }
         }
         .frame(width: 480, height: 780)
@@ -1072,6 +1177,9 @@ class DisplaySettings: ObservableObject {
     @Published var connectionMode: ConnectionMode {
         didSet { save("connectionMode", connectionMode.rawValue) }
     }
+    @Published var autoStartOnUSBConnect: Bool {
+        didSet { save("autoStartOnUSBConnect", autoStartOnUSBConnect) }
+    }
 
     // Runtime state (not persisted)
     @Published var displayCreated = false
@@ -1110,6 +1218,7 @@ class DisplaySettings: ObservableObject {
         self.touchEnabled = defaults.object(forKey: keyPrefix + "touchEnabled") as? Bool ?? true
         let modeRaw = defaults.string(forKey: keyPrefix + "connectionMode") ?? ConnectionMode.usb.rawValue
         self.connectionMode = ConnectionMode(rawValue: modeRaw) ?? .usb
+        self.autoStartOnUSBConnect = defaults.object(forKey: keyPrefix + "autoStartOnUSBConnect") as? Bool ?? false
 
         print("Loaded settings: \(resolution) @ \(refreshRate)Hz, bitrate=\(bitrate), quality=\(quality)")
     }
@@ -1173,7 +1282,7 @@ class DisplaySettings: ObservableObject {
     func resetToDefaults() {
         let keys = ["resolution", "refreshRate", "hiDPI", "bitrate", "quality",
                     "gamingBoost", "port", "rotation", "showAllResolutions",
-                    "customWidth", "customHeight", "touchEnabled"]
+                    "customWidth", "customHeight", "touchEnabled", "autoStartOnUSBConnect"]
         for key in keys {
             defaults.removeObject(forKey: keyPrefix + key)
         }
@@ -1190,6 +1299,7 @@ class DisplaySettings: ObservableObject {
         customWidth = 1920
         customHeight = 1200
         touchEnabled = true
+        autoStartOnUSBConnect = false
 
         print("Settings reset to defaults")
     }
