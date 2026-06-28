@@ -55,8 +55,13 @@ struct GestureThresholds {
     static let doubleTapMaxDistance: CGFloat = 20
     static let longPressTime: UInt64 = 500_000_000     // 500ms
     static let scrollSensitivity: CGFloat = 1.2
-    static let pinchMinDistance: CGFloat = 20
-    static let pinchSensitivity: CGFloat = 1.2
+    static let pinchMinDistance: CGFloat = 28
+    static let pinchDominanceRatio: CGFloat = 1.15
+    static let scrollToPinchMinDistance: CGFloat = 48
+    static let scrollToPinchDominanceRatio: CGFloat = 1.8
+    static let pinchShortcutStepDistance: CGFloat = 55
+    static let pinchShortcutInterval: UInt64 = 90_000_000 // ~11Hz
+    static let pinchDirectionResetDistance: CGFloat = 24
     static let minScrollDelta: CGFloat = 0.5
     static let minPinchDelta: CGFloat = 1.0
     static let multiFingerSwipeMinDistance: CGFloat = 70
@@ -657,6 +662,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // 2-finger tracking
     private var initialPinchDistance: CGFloat = 0
     private var lastPinchDistance: CGFloat = 0
+    private var pinchShortcutRemainder: CGFloat = 0
+    private var lastPinchShortcutTime: UInt64 = 0
+    private var lastPinchDirection: Int = 0
+    private var lastTwoFingerDebugTime: UInt64 = 0
     private var multiFingerStartPosition: CGPoint = .zero
     private var multiFingerLastPosition: CGPoint = .zero
     private var multiFingerCount = 0
@@ -930,17 +939,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             gestureState = .idle
             initialPinchDistance = distance
             lastPinchDistance = distance
+            pinchShortcutRemainder = 0
+            lastPinchShortcutTime = 0
+            lastPinchDirection = 0
+            touchStartPosition = midpoint
             touchLastPosition = midpoint
 
         case 1: // Move
+            let now = DispatchTime.now().uptimeNanoseconds
             let rawDX = midpoint.x - touchLastPosition.x
             let rawDY = midpoint.y - touchLastPosition.y
-            let didScroll = abs(rawDX) >= GestureThresholds.minScrollDelta || abs(rawDY) >= GestureThresholds.minScrollDelta
             let totalPinchDelta = distance - initialPinchDistance
-            let pendingPinchDelta = distance - lastPinchDistance
-            let didPinch =
-                abs(totalPinchDelta) >= GestureThresholds.pinchMinDistance &&
-                abs(pendingPinchDelta) >= GestureThresholds.minPinchDelta
+            let framePinchDelta = distance - lastPinchDistance
+            let panDistance = hypot(midpoint.x - touchStartPosition.x, midpoint.y - touchStartPosition.y)
+            let canPromoteScrollToPinch =
+                gestureState == .twoFingerScroll &&
+                abs(totalPinchDelta) >= GestureThresholds.scrollToPinchMinDistance &&
+                abs(totalPinchDelta) > panDistance * GestureThresholds.scrollToPinchDominanceRatio
+            let shouldPinch =
+                gestureState == .pinching ||
+                canPromoteScrollToPinch ||
+                (
+                    gestureState != .twoFingerScroll &&
+                    abs(totalPinchDelta) >= GestureThresholds.pinchMinDistance &&
+                    abs(totalPinchDelta) > panDistance * GestureThresholds.pinchDominanceRatio
+                )
+            let didScroll =
+                !shouldPinch &&
+                gestureState != .pinching &&
+                (abs(rawDX) >= GestureThresholds.minScrollDelta || abs(rawDY) >= GestureThresholds.minScrollDelta)
 
             if didScroll {
                 let phase: CGScrollPhase = gestureState == .idle ? .began : .changed
@@ -954,26 +981,40 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
 
-            if didPinch {
-                let zoomAmount = Int32((pendingPinchDelta * GestureThresholds.pinchSensitivity).rounded())
-                if zoomAmount != 0 {
-                    injectZoomEvent(delta: zoomAmount, at: midpoint)
-                    gestureState = .pinching
-                    lastPinchDistance = distance
+            if shouldPinch && gestureState != .pinching {
+                if gestureState == .twoFingerScroll {
+                    injectScrollEvent(deltaX: 0, deltaY: 0, at: midpoint, phase: .ended)
                 }
+                gestureState = .pinching
+                lastPinchDistance = distance
+                pinchShortcutRemainder = 0
+                lastPinchShortcutTime = 0
+                lastPinchDirection = 0
+                debugLog("Two-finger pinch began: initial=\(String(format: "%.1f", initialPinchDistance)) current=\(String(format: "%.1f", distance)) totalDelta=\(String(format: "%.1f", totalPinchDelta)) pan=\(String(format: "%.1f", panDistance)) promoted=\(canPromoteScrollToPinch)")
+            }
+
+            if gestureState == .pinching {
+                emitDebouncedPinchZoom(frameDelta: framePinchDelta, now: now)
+                lastPinchDistance = distance
+            } else {
+                logTwoFingerDebug(distance: distance, totalDelta: totalPinchDelta, rawDX: rawDX, rawDY: rawDY)
             }
 
             touchLastPosition = midpoint
 
         case 2: // Up
-            if gestureState == .twoFingerScroll || gestureState == .pinching {
+            if gestureState == .twoFingerScroll {
                 injectScrollEvent(deltaX: 0, deltaY: 0, at: midpoint, phase: .ended)
             }
+            debugLog("Two-finger ended: state=\(gestureState)")
             gestureState = .idle
             touchStartPosition = .zero
             touchLastPosition = .zero
             initialPinchDistance = 0
             lastPinchDistance = 0
+            pinchShortcutRemainder = 0
+            lastPinchShortcutTime = 0
+            lastPinchDirection = 0
 
         default:
             break
@@ -986,6 +1027,44 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let event = CGEvent(mouseEventSource: eventSource, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left) {
             event.post(tap: .cghidEventTap)
         }
+    }
+
+    private func logTwoFingerDebug(distance: CGFloat, totalDelta: CGFloat, rawDX: CGFloat, rawDY: CGFloat) {
+        let now = DispatchTime.now().uptimeNanoseconds
+        guard now - lastTwoFingerDebugTime > 250_000_000 else { return }
+        lastTwoFingerDebugTime = now
+        debugLog(
+            "Two-finger move: state=\(gestureState) distance=\(String(format: "%.1f", distance)) " +
+            "totalDelta=\(String(format: "%.1f", totalDelta)) dx=\(String(format: "%.1f", rawDX)) dy=\(String(format: "%.1f", rawDY))"
+        )
+    }
+
+    private func emitDebouncedPinchZoom(frameDelta: CGFloat, now: UInt64) {
+        guard frameDelta != 0 else { return }
+
+        let direction = frameDelta > 0 ? 1 : -1
+        if lastPinchDirection != 0 && direction != lastPinchDirection {
+            pinchShortcutRemainder += frameDelta
+            if abs(pinchShortcutRemainder) < GestureThresholds.pinchDirectionResetDistance {
+                return
+            }
+            pinchShortcutRemainder = frameDelta
+        } else {
+            pinchShortcutRemainder += frameDelta
+        }
+
+        guard abs(pinchShortcutRemainder) >= GestureThresholds.pinchShortcutStepDistance else { return }
+        guard lastPinchShortcutTime == 0 || now - lastPinchShortcutTime >= GestureThresholds.pinchShortcutInterval else { return }
+
+        let zoomIn = pinchShortcutRemainder > 0
+        injectZoomShortcut(zoomIn: zoomIn)
+        lastPinchShortcutTime = now
+        lastPinchDirection = zoomIn ? 1 : -1
+        pinchShortcutRemainder += zoomIn ? -GestureThresholds.pinchShortcutStepDistance : GestureThresholds.pinchShortcutStepDistance
+        if abs(pinchShortcutRemainder) > GestureThresholds.pinchShortcutStepDistance {
+            pinchShortcutRemainder = 0
+        }
+        debugLog("Two-finger pinch zoom: shortcut=\(zoomIn ? "in" : "out") frame=\(String(format: "%.2f", frameDelta)) remainder=\(String(format: "%.2f", pinchShortcutRemainder))")
     }
 
     private func injectTabletEvent(at point: CGPoint, action: Int, pressure: Float, tilt: Float) {
@@ -1025,6 +1104,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         down.flags = .maskControl
         up.flags = .maskControl
+        down.post(tap: .cghidEventTap)
+        up.post(tap: .cghidEventTap)
+    }
+
+    private func injectZoomShortcut(zoomIn: Bool) {
+        let keyCode: CGKeyCode = zoomIn ? 24 : 27 // ANSI "=" and "-"
+        guard
+            let down = CGEvent(keyboardEventSource: eventSource, virtualKey: keyCode, keyDown: true),
+            let up = CGEvent(keyboardEventSource: eventSource, virtualKey: keyCode, keyDown: false)
+        else { return }
+
+        down.flags = .maskCommand
+        up.flags = .maskCommand
         down.post(tap: .cghidEventTap)
         up.post(tap: .cghidEventTap)
     }
@@ -1091,22 +1183,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         scrollEvent.location = position
         scrollEvent.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
         scrollEvent.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(phase.rawValue))
-        scrollEvent.post(tap: .cghidEventTap)
-    }
-
-    private func injectZoomEvent(delta: Int32, at position: CGPoint) {
-        guard let scrollEvent = CGEvent(
-            scrollWheelEvent2Source: eventSource,
-            units: .pixel,
-            wheelCount: 1,
-            wheel1: delta,
-            wheel2: 0,
-            wheel3: 0
-        ) else { return }
-        scrollEvent.location = position
-        scrollEvent.flags = .maskCommand
-        scrollEvent.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
-        scrollEvent.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(CGScrollPhase.changed.rawValue))
         scrollEvent.post(tap: .cghidEventTap)
     }
 
