@@ -188,6 +188,7 @@ struct SettingsView: View {
                 Picker("", selection: $selectedTab) {
                     Text("Display & Input").tag("Display")
                     Text("Connection").tag("Connection")
+                    Text("Startup").tag("Startup")
                     Text("Quality").tag("Quality")
                     Text("Status").tag("Status")
                 }
@@ -510,9 +511,11 @@ struct SettingsView: View {
                                             pairedDeviceStore: (NSApp.delegate as? AppDelegate)?.pairedDeviceStore ?? PairedDeviceStore())
                         }
 
-                        // System Integration
+                        }
+
+                        if selectedTab == "Startup" {
                         if #available(macOS 13.0, *) {
-                            FrostedGroupBox(title: "System Integration", icon: "gearshape.2") {
+                            FrostedGroupBox(title: "Startup", icon: "power") {
                                 VStack(alignment: .leading, spacing: 8) {
                                     HStack {
                                         VStack(alignment: .leading, spacing: 2) {
@@ -547,15 +550,36 @@ struct SettingsView: View {
                                     
                                     HStack {
                                         VStack(alignment: .leading, spacing: 2) {
-                                            Text("Auto-manage Server via USB")
+                                            Text("Auto-start streaming on launch")
                                                 .font(.system(size: 12, weight: .medium))
-                                            Text("Start/stop automatically on USB plug/unplug")
+                                            Text("Start the server automatically when the app opens, so the tablet can connect without touching the Mac.")
                                                 .font(.system(size: 10))
                                                 .foregroundColor(.secondary)
                                         }
                                         Spacer()
-                                        Toggle("", isOn: $settings.autoStartOnUSBConnect)
+                                        Toggle("", isOn: $settings.autoStartStreamingOnLaunch)
                                             .labelsHidden()
+                                    }
+
+                                    Divider()
+
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Startup mode")
+                                                .font(.system(size: 12, weight: .medium))
+                                            Text("Which connection mode to start in when auto-starting.")
+                                                .font(.system(size: 10))
+                                                .foregroundColor(.secondary)
+                                        }
+                                        Spacer()
+                                        Picker("", selection: $settings.startupMode) {
+                                            Text("USB").tag(ConnectionMode.usb)
+                                            Text("Wireless").tag(ConnectionMode.wireless)
+                                        }
+                                        .pickerStyle(.segmented)
+                                        .labelsHidden()
+                                        .frame(width: 150)
+                                        .disabled(!settings.autoStartStreamingOnLaunch)
                                     }
                                 }
                             }
@@ -1177,8 +1201,11 @@ class DisplaySettings: ObservableObject {
     @Published var connectionMode: ConnectionMode {
         didSet { save("connectionMode", connectionMode.rawValue) }
     }
-    @Published var autoStartOnUSBConnect: Bool {
-        didSet { save("autoStartOnUSBConnect", autoStartOnUSBConnect) }
+    @Published var autoStartStreamingOnLaunch: Bool {
+        didSet { save("autoStartStreamingOnLaunch", autoStartStreamingOnLaunch) }
+    }
+    @Published var startupMode: ConnectionMode {
+        didSet { save("startupMode", startupMode.rawValue) }
     }
 
     // Runtime state (not persisted)
@@ -1218,7 +1245,9 @@ class DisplaySettings: ObservableObject {
         self.touchEnabled = defaults.object(forKey: keyPrefix + "touchEnabled") as? Bool ?? true
         let modeRaw = defaults.string(forKey: keyPrefix + "connectionMode") ?? ConnectionMode.usb.rawValue
         self.connectionMode = ConnectionMode(rawValue: modeRaw) ?? .usb
-        self.autoStartOnUSBConnect = defaults.object(forKey: keyPrefix + "autoStartOnUSBConnect") as? Bool ?? false
+        self.autoStartStreamingOnLaunch = defaults.object(forKey: keyPrefix + "autoStartStreamingOnLaunch") as? Bool ?? false
+        let startupRaw = defaults.string(forKey: keyPrefix + "startupMode") ?? modeRaw
+        self.startupMode = ConnectionMode(rawValue: startupRaw) ?? .usb
 
         print("Loaded settings: \(resolution) @ \(refreshRate)Hz, bitrate=\(bitrate), quality=\(quality)")
     }
@@ -1282,7 +1311,7 @@ class DisplaySettings: ObservableObject {
     func resetToDefaults() {
         let keys = ["resolution", "refreshRate", "hiDPI", "bitrate", "quality",
                     "gamingBoost", "port", "rotation", "showAllResolutions",
-                    "customWidth", "customHeight", "touchEnabled", "autoStartOnUSBConnect"]
+                    "customWidth", "customHeight", "touchEnabled", "autoStartStreamingOnLaunch", "startupMode"]
         for key in keys {
             defaults.removeObject(forKey: keyPrefix + key)
         }
@@ -1299,7 +1328,8 @@ class DisplaySettings: ObservableObject {
         customWidth = 1920
         customHeight = 1200
         touchEnabled = true
-        autoStartOnUSBConnect = false
+        autoStartStreamingOnLaunch = false
+        startupMode = .usb
 
         print("Settings reset to defaults")
     }

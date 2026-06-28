@@ -33,7 +33,6 @@ import com.google.android.material.slider.Slider
 import com.google.android.material.switchmaterial.SwitchMaterial
 import com.sidescreen.app.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -54,7 +53,6 @@ class MainActivity : AppCompatActivity() {
     private var displayRotation = 0 // 0, 90, 180, 270 degrees
     private var wakeLock: PowerManager.WakeLock? = null
     private var pingJob: kotlinx.coroutines.Job? = null
-    private var autoConnectJob: kotlinx.coroutines.Job? = null
 
     // For dragging stats overlay
     private var isDraggingOverlay = false
@@ -105,42 +103,6 @@ class MainActivity : AppCompatActivity() {
         startChecklistUpdates()
         setupModeToggle()
         setupWirelessController()
-        
-        handleIntent(intent)
-    }
-
-    override fun onNewIntent(intent: Intent?) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        handleIntent(intent)
-    }
-
-    private fun handleIntent(intent: Intent?) {
-        val autoConnect = intent?.getBooleanExtra("auto_connect", false) ?: false
-        if (autoConnect) {
-            mainDiag("Auto-connect flag detected. Attempting to connect...")
-            
-            autoConnectJob?.cancel()
-            autoConnectJob = lifecycleScope.launch {
-                binding.disconnectButton.isEnabled = true
-                val originalText = binding.disconnectButton.text
-                binding.disconnectButton.text = "Cancel Auto-Connect"
-                
-                for (i in 10 downTo 1) {
-                    updateStatus("Auto-connecting in $i seconds...")
-                    delay(1000)
-                }
-                
-                binding.disconnectButton.text = originalText
-                
-                if (prefs.connectionMode == ConnectionMode.USB) {
-                    val host = binding.hostInput.text.toString().ifEmpty { "127.0.0.1" }.let { if (it.equals("localhost", true)) "127.0.0.1" else it }
-                    val port = binding.portInput.text.toString().toIntOrNull() ?: 54321
-                    updateStatus("Connecting...")
-                    connect(host, port)
-                }
-            }
-        }
     }
 
     private fun setupModeToggle() {
@@ -357,10 +319,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupUI() {
         binding.connectButton.setOnClickListener {
-            autoConnectJob?.cancel()
-            autoConnectJob = null
-            binding.disconnectButton.text = "Disconnect"
-            
             var host =
                 binding.hostInput.text
                     .toString()
@@ -1176,10 +1134,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun disconnect() {
-        autoConnectJob?.cancel()
-        autoConnectJob = null
-        binding.disconnectButton.text = "Disconnect"
-        
         stopPingTimer()
         streamClient?.disconnect()
         // Reset display config so next connect defers decoder init until config arrives

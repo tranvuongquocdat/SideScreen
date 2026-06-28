@@ -16,7 +16,6 @@
 
         <activity
             android:name=".MainActivity"
-            android:launchMode="singleTask"
             android:screenOrientation="fullUser"
             android:configChanges="orientation|screenSize|screenLayout"
             android:exported="true">

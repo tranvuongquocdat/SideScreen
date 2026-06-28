@@ -101,6 +101,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             showSettings()
         }
+
+        // Declarative auto-start (no Mac interaction): start the server in the
+        // chosen Startup mode if enabled. No blocking permission modal here —
+        // it cannot be acted on when the Mac is headless.
+        if settings.autoStartStreamingOnLaunch {
+            settings.connectionMode = settings.startupMode
+            Task {
+                await self.checkPermissions()
+                if self.settings.hasScreenRecordingPermission {
+                    await self.startServer()
+                } else {
+                    debugLog("Auto-start skipped: Screen Recording permission not granted")
+                }
+            }
+        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -132,52 +147,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             await MainActor.run { [weak self] in
                 guard let self = self else { return }
                 
-                let wasConnected = self.settings.usbDeviceConnected
                 let isConnected = !devices.isEmpty
-                
+
                 self.settings.usbDeviceConnected = isConnected
                 self.settings.adbReverseConfigured = reverseOK
-                
-                // Auto-connect and ADB tracking
-                let connectionMode = self.settings.connectionMode
-                let isRunning = self.settings.isRunning
-                let autoStartEnabled = self.settings.autoStartOnUSBConnect
 
-                if isConnected && !wasConnected {
-                    debugLog("🔌 USB Device connection detected.")
-                    debugLog("   - State -> connectionMode: \(connectionMode.rawValue), isRunning: \(isRunning), autoStart: \(autoStartEnabled), reverseOK: \(reverseOK)")
-
-                    if connectionMode != .usb {
-                        debugLog("   => Action: Ignored (Not in USB connection mode)")
-                    } else if isRunning {
-                        if !reverseOK {
-                            debugLog("   => Action: Triggering ADB reverse (Server already running)")
-                            Task { await self.setupADBReverse() }
-                        } else {
-                            debugLog("   => Action: Ignored (Server running & ADB reverse already OK)")
-                        }
-                    } else {
-                        if autoStartEnabled {
-                            debugLog("   => Action: Starting server automatically")
-                            Task { await self.startServer() }
-                        } else {
-                            debugLog("   => Action: Ignored (Auto-start setting is disabled)")
-                        }
-                    }
-                } else if !isConnected && wasConnected {
-                    debugLog("🔌 USB Device disconnection detected.")
-                    debugLog("   - State -> connectionMode: \(connectionMode.rawValue), isRunning: \(isRunning), autoStart: \(autoStartEnabled)")
-                    
-                    if connectionMode != .usb {
-                        debugLog("   => Action: Ignored (Not in USB connection mode)")
-                    } else if autoStartEnabled && isRunning {
-                        debugLog("   => Action: Stopping server automatically (Device disconnected)")
-                        self.stopServer()
-                    } else if !autoStartEnabled {
-                        debugLog("   => Action: Ignored (Auto-manage setting is disabled)")
-                    } else {
-                        debugLog("   => Action: Ignored (Server is already stopped)")
-                    }
+                // Self-healing USB bridge (level-triggered, not edge-triggered):
+                // whenever we are in USB mode with the server running and a
+                // device present but adb reverse missing, (re)establish it.
+                // Covers replug, adb-server restart, etc. The server lifecycle
+                // is NOT tied to device events — it stays up and the tablet
+                // reconnects via its own connect button.
+                if self.settings.connectionMode == .usb
+                    && isConnected
+                    && self.settings.isRunning
+                    && !reverseOK {
+                    debugLog("🔌 USB bridge missing while running — (re)establishing adb reverse")
+                    Task { await self.setupADBReverse() }
                 }
             }
         }
@@ -450,16 +436,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     if process.terminationStatus == 0 {
                         print("✅ ADB reverse setup successful: tcp:\(port) -> tcp:\(port)")
                         
-                        // If auto-start is enabled, launch the Android app and tell it to auto-connect
-                        if self.settings.autoStartOnUSBConnect {
-                            let launchProcess = Process()
-                            launchProcess.executableURL = URL(fileURLWithPath: finalAdbPath)
-                            launchProcess.arguments = ["shell", "am", "start", "-n", "com.sidescreen.app/.MainActivity", "--ez", "auto_connect", "true"]
-                            try? launchProcess.run()
-                            launchProcess.waitUntilExit()
-                            debugLog("📱 Auto-launched Android app with auto_connect=true")
-                        }
-                        
+                                                
                         return
                     } else {
                         print("⚠️  ADB reverse attempt \(attempt)/3 failed: \(output.trimmingCharacters(in: .whitespacesAndNewlines))")
