@@ -1219,14 +1219,28 @@ class MainActivity : AppCompatActivity() {
         val primaryPointerIndex = fingerPointers[0]
         val x = event.getX(primaryPointerIndex) / view.width.toFloat()
         val y = event.getY(primaryPointerIndex) / view.height.toFloat()
-        val pointerCount = fingerPointers.size.coerceAtMost(2)
+        val pointerCount = fingerPointers.size.coerceAtMost(4)
 
         var x2 = 0f
         var y2 = 0f
+        var x3 = 0f
+        var y3 = 0f
+        var x4 = 0f
+        var y4 = 0f
         if (pointerCount >= 2) {
             val secondPointerIndex = fingerPointers[1]
             x2 = event.getX(secondPointerIndex) / view.width.toFloat()
             y2 = event.getY(secondPointerIndex) / view.height.toFloat()
+        }
+        if (pointerCount >= 3) {
+            val thirdPointerIndex = fingerPointers[2]
+            x3 = event.getX(thirdPointerIndex) / view.width.toFloat()
+            y3 = event.getY(thirdPointerIndex) / view.height.toFloat()
+        }
+        if (pointerCount >= 4) {
+            val fourthPointerIndex = fingerPointers[3]
+            x4 = event.getX(fourthPointerIndex) / view.width.toFloat()
+            y4 = event.getY(fourthPointerIndex) / view.height.toFloat()
         }
 
         when (event.actionMasked) {
@@ -1235,13 +1249,13 @@ class MainActivity : AppCompatActivity() {
                 inputPredictor.addSample(x, y)
                 activeFingerTouch = true
                 rememberFingerPosition(x, y)
-                streamClient?.sendTouch(x, y, TOUCH_ACTION_DOWN, pointerCount, x2, y2)
+                streamClient?.sendTouch(x, y, TOUCH_ACTION_DOWN, pointerCount, x2, y2, x3, y3, x4, y4)
             }
 
             MotionEvent.ACTION_POINTER_DOWN -> {
                 activeFingerTouch = true
                 rememberFingerPosition(x, y)
-                streamClient?.sendTouch(x, y, TOUCH_ACTION_DOWN, pointerCount, x2, y2)
+                streamClient?.sendTouch(x, y, TOUCH_ACTION_DOWN, pointerCount, x2, y2, x3, y3, x4, y4)
             }
 
             MotionEvent.ACTION_MOVE -> {
@@ -1252,7 +1266,7 @@ class MainActivity : AppCompatActivity() {
                     streamClient?.sendTouch(px, py, TOUCH_ACTION_MOVE, 1)
                 } else {
                     rememberFingerPosition(x, y)
-                    streamClient?.sendTouch(x, y, TOUCH_ACTION_MOVE, pointerCount, x2, y2)
+                    streamClient?.sendTouch(x, y, TOUCH_ACTION_MOVE, pointerCount, x2, y2, x3, y3, x4, y4)
                 }
             }
 
@@ -1265,7 +1279,7 @@ class MainActivity : AppCompatActivity() {
 
             MotionEvent.ACTION_POINTER_UP -> {
                 rememberFingerPosition(x, y)
-                streamClient?.sendTouch(x, y, TOUCH_ACTION_UP, pointerCount, x2, y2)
+                streamClient?.sendTouch(x, y, TOUCH_ACTION_UP, pointerCount, x2, y2, x3, y3, x4, y4)
             }
 
             MotionEvent.ACTION_CANCEL -> {
@@ -1434,7 +1448,7 @@ class MainActivity : AppCompatActivity() {
                 event.eventTime - lastStylusEventTimeMs in 0..PALM_REJECT_AFTER_STYLUS_MS
         if (recentlyUsedStylus) return true
 
-        if (event.pointerCount > 2) return true
+        if (event.pointerCount > 4) return true
 
         val minDimension = minOf(view.width, view.height).coerceAtLeast(1).toFloat()
         return (0 until event.pointerCount).any { pointerIndex ->

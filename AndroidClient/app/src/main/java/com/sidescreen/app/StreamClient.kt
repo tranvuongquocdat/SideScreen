@@ -361,6 +361,10 @@ class StreamClient(
         pointerCount: Int = 1,
         x2: Float = 0f,
         y2: Float = 0f,
+        x3: Float = 0f,
+        y3: Float = 0f,
+        x4: Float = 0f,
+        y4: Float = 0f,
         pressure: Float = 0f,
         tilt: Float = 0f,
         flags: Int = 0,
@@ -370,7 +374,7 @@ class StreamClient(
         touchScope.launch {
             try {
                 socket?.getOutputStream()?.let { out ->
-                    val count = pointerCount.coerceIn(1, 2)
+                    val count = pointerCount.coerceIn(1, 4)
                     // 1 type + 1 count + N*(4x+4y) + 4 action + 4 pressure + 4 tilt + 4 flags
                     val size = 18 + count * 8
                     val buffer = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN)
@@ -378,9 +382,17 @@ class StreamClient(
                     buffer.put(count.toByte())
                     buffer.putFloat(x)
                     buffer.putFloat(y)
-                    if (count == 2) {
+                    if (count >= 2) {
                         buffer.putFloat(x2)
                         buffer.putFloat(y2)
+                    }
+                    if (count >= 3) {
+                        buffer.putFloat(x3)
+                        buffer.putFloat(y3)
+                    }
+                    if (count >= 4) {
+                        buffer.putFloat(x4)
+                        buffer.putFloat(y4)
                     }
                     buffer.putInt(action)
                     buffer.putFloat(pressure)
