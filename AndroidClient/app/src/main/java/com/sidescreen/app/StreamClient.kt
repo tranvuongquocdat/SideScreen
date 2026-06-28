@@ -361,6 +361,9 @@ class StreamClient(
         pointerCount: Int = 1,
         x2: Float = 0f,
         y2: Float = 0f,
+        pressure: Float = 0f,
+        tilt: Float = 0f,
+        flags: Int = 0,
     ) {
         if (!isConnected) return
 
@@ -368,7 +371,8 @@ class StreamClient(
             try {
                 socket?.getOutputStream()?.let { out ->
                     val count = pointerCount.coerceIn(1, 2)
-                    val size = 6 + count * 8 // 1 type + 1 count + N*(4x+4y) + 4 action
+                    // 1 type + 1 count + N*(4x+4y) + 4 action + 4 pressure + 4 tilt + 4 flags
+                    val size = 18 + count * 8
                     val buffer = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN)
                     buffer.put(2.toByte())
                     buffer.put(count.toByte())
@@ -379,6 +383,9 @@ class StreamClient(
                         buffer.putFloat(y2)
                     }
                     buffer.putInt(action)
+                    buffer.putFloat(pressure)
+                    buffer.putFloat(tilt)
+                    buffer.putInt(flags)
                     out.write(buffer.array())
                     out.flush()
                 }

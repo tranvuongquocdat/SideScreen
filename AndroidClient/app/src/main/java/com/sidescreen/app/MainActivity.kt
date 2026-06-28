@@ -39,6 +39,14 @@ import java.net.Socket
 
 private fun mainDiag(msg: String) = DiagLog.log("MA", msg)
 
+private const val TOUCH_ACTION_DOWN = 0
+private const val TOUCH_ACTION_MOVE = 1
+private const val TOUCH_ACTION_UP = 2
+private const val TOUCH_ACTION_HOVER = 3
+private const val TOUCH_ACTION_HOVER_EXIT = 4
+private const val TOUCH_FLAG_STYLUS = 1
+private const val TOUCH_FLAG_HOVER = 1 shl 1
+
 class MainActivity : AppCompatActivity() {
     private lateinit var wirelessController: WirelessTabController
     private val pairedHostStorage by lazy { PairedHostStorage(this) }
@@ -314,6 +322,9 @@ class MainActivity : AppCompatActivity() {
         binding.surfaceView.setOnTouchListener { view, event ->
             handleTouch(view, event)
             true
+        }
+        binding.surfaceView.setOnHoverListener { view, event ->
+            handleStylusHover(view, event)
         }
     }
 
@@ -1186,6 +1197,12 @@ class MainActivity : AppCompatActivity() {
         val x = event.x / view.width.toFloat()
         val y = event.y / view.height.toFloat()
         val pointerCount = event.pointerCount.coerceAtMost(2)
+        val primaryPointerIndex = 0
+        val isStylus =
+            event.getToolType(primaryPointerIndex) == MotionEvent.TOOL_TYPE_STYLUS
+        val pressure = if (isStylus) event.getPressure(primaryPointerIndex) else 0f
+        val tilt = if (isStylus) event.getAxisValue(MotionEvent.AXIS_TILT, primaryPointerIndex) else 0f
+        val flags = if (isStylus) TOUCH_FLAG_STYLUS else 0
 
         var x2 = 0f
         var y2 = 0f
@@ -1198,37 +1215,81 @@ class MainActivity : AppCompatActivity() {
             MotionEvent.ACTION_DOWN -> {
                 inputPredictor.reset()
                 inputPredictor.addSample(x, y)
-                streamClient?.sendTouch(x, y, 0, pointerCount, x2, y2)
+                streamClient?.sendTouch(x, y, TOUCH_ACTION_DOWN, pointerCount, x2, y2, pressure, tilt, flags)
             }
 
             MotionEvent.ACTION_POINTER_DOWN -> {
-                streamClient?.sendTouch(x, y, 0, pointerCount, x2, y2)
+                streamClient?.sendTouch(x, y, TOUCH_ACTION_DOWN, pointerCount, x2, y2, pressure, tilt, flags)
             }
 
             MotionEvent.ACTION_MOVE -> {
-                if (pointerCount == 1) {
+                if (pointerCount == 1 && !isStylus) {
                     inputPredictor.addSample(x, y)
                     val (px, py) = inputPredictor.predictPosition(12f)
                     streamClient?.sendTouch(px, py, 1, 1)
                 } else {
-                    streamClient?.sendTouch(x, y, 1, pointerCount, x2, y2)
+                    streamClient?.sendTouch(x, y, TOUCH_ACTION_MOVE, pointerCount, x2, y2, pressure, tilt, flags)
                 }
             }
 
             MotionEvent.ACTION_UP -> {
                 inputPredictor.reset()
-                streamClient?.sendTouch(x, y, 2, 1)
+                streamClient?.sendTouch(x, y, TOUCH_ACTION_UP, 1, pressure = pressure, tilt = tilt, flags = flags)
             }
 
             MotionEvent.ACTION_POINTER_UP -> {
-                streamClient?.sendTouch(x, y, 2, pointerCount, x2, y2)
+                streamClient?.sendTouch(x, y, TOUCH_ACTION_UP, pointerCount, x2, y2, pressure, tilt, flags)
             }
 
             MotionEvent.ACTION_CANCEL -> {
                 inputPredictor.reset()
-                streamClient?.sendTouch(x, y, 2, 1)
+                streamClient?.sendTouch(x, y, TOUCH_ACTION_UP, 1, pressure = pressure, tilt = tilt, flags = flags)
             }
         }
+    }
+
+    private fun handleStylusHover(
+        view: View,
+        event: MotionEvent,
+    ): Boolean {
+        val pointerIndex = 0
+        if (event.getToolType(pointerIndex) != MotionEvent.TOOL_TYPE_STYLUS) {
+            return false
+        }
+
+        val x = (event.x / view.width.toFloat()).coerceIn(0f, 1f)
+        val y = (event.y / view.height.toFloat()).coerceIn(0f, 1f)
+        val tilt = event.getAxisValue(MotionEvent.AXIS_TILT, pointerIndex)
+        val flags = TOUCH_FLAG_STYLUS or TOUCH_FLAG_HOVER
+
+        when (event.actionMasked) {
+            MotionEvent.ACTION_HOVER_ENTER,
+            MotionEvent.ACTION_HOVER_MOVE -> {
+                streamClient?.sendTouch(
+                    x,
+                    y,
+                    TOUCH_ACTION_HOVER,
+                    pressure = 0f,
+                    tilt = tilt,
+                    flags = flags,
+                )
+                return true
+            }
+
+            MotionEvent.ACTION_HOVER_EXIT -> {
+                streamClient?.sendTouch(
+                    x,
+                    y,
+                    TOUCH_ACTION_HOVER_EXIT,
+                    pressure = 0f,
+                    tilt = tilt,
+                    flags = flags,
+                )
+                return true
+            }
+        }
+
+        return false
     }
 
     /**

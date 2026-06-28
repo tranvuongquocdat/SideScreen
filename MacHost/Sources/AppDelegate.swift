@@ -34,6 +34,19 @@ enum GestureState {
     case pinching         // Pinch zoom
 }
 
+private enum TouchAction {
+    static let down = 0
+    static let move = 1
+    static let up = 2
+    static let hover = 3
+    static let hoverExit = 4
+}
+
+private enum TouchFlags {
+    static let stylus = 1
+    static let hover = 1 << 1
+}
+
 struct GestureThresholds {
     static let tapMaxDistance: CGFloat = 15
     static let tapMaxTime: UInt64 = 250_000_000       // 250ms
@@ -98,6 +111,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settings.adbInstalled = StatusDetector.adbInstalled()
         settings.wifiConnected = StatusDetector.wifiReachable()
         settings.listeningAddress = LANAddressResolver.primaryIPv4()
+        settings.hasAccessibilityPermission = AXIsProcessTrusted()
 
         // While a wireless client is actively streaming, keep its lastConnected
         // rolling forward so the UI shows "just now". On disconnect, the
@@ -554,8 +568,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
 
-            streamingServer?.onTouchEvent = { [weak self] x, y, action, pointerCount, x2, y2 in
-                self?.handleTouch(x: x, y: y, action: action, pointerCount: pointerCount, x2: x2, y2: y2)
+            streamingServer?.onTouchEvent = { [weak self] x, y, action, pointerCount, x2, y2, pressure, tilt, flags in
+                self?.handleTouch(x: x, y: y, action: action, pointerCount: pointerCount, x2: x2, y2: y2, pressure: pressure, tilt: tilt, flags: flags)
             }
 
             streamingServer?.onStats = { [weak self] fps, mbps in
@@ -646,13 +660,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Touch Entry Point
 
-    func handleTouch(x: Float, y: Float, action: Int, pointerCount: Int = 1, x2: Float = 0, y2: Float = 0) {
+    func handleTouch(x: Float, y: Float, action: Int, pointerCount: Int = 1, x2: Float = 0, y2: Float = 0, pressure: Float = 0, tilt: Float = 0, flags: Int = 0) {
         guard settings.touchEnabled else { return }
 
         if !AXIsProcessTrusted() {
             if !accessibilityWarningShown {
                 accessibilityWarningShown = true
-                print("⚠️  Accessibility not granted - touch ignored")
+                debugLog("Accessibility not granted - touch ignored")
                 Task { @MainActor in
                     settings.hasAccessibilityPermission = false
                 }
@@ -672,7 +686,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             y: bounds.origin.y + CGFloat(y2) * bounds.height
         )
 
-        if pointerCount >= 2 {
+        let isStylus = (flags & TouchFlags.stylus) != 0
+        if isStylus {
+            injectTabletEvent(at: p1, action: action, pressure: pressure, tilt: tilt)
+        } else if pointerCount >= 2 {
             handleTwoFingerTouch(p1: p1, p2: p2, action: action)
         } else {
             handleOneFingerTouch(at: p1, action: action)
@@ -884,6 +901,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let event = CGEvent(mouseEventSource: eventSource, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left) {
             event.post(tap: .cghidEventTap)
         }
+    }
+
+    private func injectTabletEvent(at point: CGPoint, action: Int, pressure: Float, tilt: Float) {
+        let eventType: CGEventType
+        switch action {
+        case TouchAction.down:
+            eventType = .leftMouseDown
+        case TouchAction.move:
+            eventType = .leftMouseDragged
+        case TouchAction.up:
+            eventType = .leftMouseUp
+        case TouchAction.hover, TouchAction.hoverExit:
+            eventType = .mouseMoved
+        default:
+            return
+        }
+
+        guard let event = CGEvent(
+            mouseEventSource: eventSource,
+            mouseType: eventType,
+            mouseCursorPosition: point,
+            mouseButton: .left
+        ) else { return }
+
+        event.setIntegerValueField(.mouseEventSubtype, value: Int64(NX_SUBTYPE_TABLET_POINT))
+        event.setDoubleValueField(.tabletEventPointPressure, value: Double(pressure))
+        event.setDoubleValueField(.tabletEventTiltX, value: Double(tilt))
+        event.setDoubleValueField(.tabletEventTiltY, value: 0)
+        event.post(tap: .cghidEventTap)
     }
 
     private func performClick(at point: CGPoint) {

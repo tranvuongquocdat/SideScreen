@@ -45,8 +45,8 @@ class StreamingServer {
     /// config is sent, for every outcome (.hevc or .h264) — so the capture
     /// pipeline can also revert to HEVC after an AVC-only client goes away.
     var onCodecNegotiated: ((StreamCodec) -> Void)?
-    // Touch callback: (x1, y1, action, pointerCount, x2, y2)
-    var onTouchEvent: ((Float, Float, Int, Int, Float, Float) -> Void)?
+    // Touch callback: (x1, y1, action, pointerCount, x2, y2, pressure, tilt, flags)
+    var onTouchEvent: ((Float, Float, Int, Int, Float, Float, Float, Float, Int) -> Void)?
     var onStats: ((Double, Double) -> Void)?
     var onKeyframeRequested: ((Bool) -> Void)?
     // Whether host wants to receive touch events from client. Ping/pong is
@@ -340,8 +340,8 @@ class StreamingServer {
         while let msgType = inputBuffer.first {
             switch msgType {
             case WireMessage.touchEvent:
-                // Touch event: 1 type + 1 pointerCount + N*(4x+4y) + 4 action.
-                // 1 finger: 14 bytes, 2 fingers: 22 bytes.
+                // Touch event: 1 type + 1 pointerCount + N*(4x+4y) + 4 action + 4 pressure + 4 tilt + 4 flags.
+                // 1 finger: 26 bytes, 2 fingers: 34 bytes.
                 guard inputBuffer.count >= 2 else { return }
 
                 let pointerCount = Int(inputByte(at: 1))
@@ -351,7 +351,7 @@ class StreamingServer {
                     continue
                 }
 
-                let expectedSize = 2 + pointerCount * 8 + 4
+                let expectedSize = 2 + pointerCount * 8 + 16
                 guard inputBuffer.count >= expectedSize else { return }
 
                 let message = Data(inputBuffer.prefix(expectedSize))
@@ -424,9 +424,12 @@ class StreamingServer {
 
         let actionOffset = 2 + pointerCount * 8
         let action = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: actionOffset, as: Int32.self) }
+        let pressure = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: actionOffset + 4, as: Float.self) }
+        let tilt = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: actionOffset + 8, as: Float.self) }
+        let flags = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: actionOffset + 12, as: Int32.self) }
 
         DispatchQueue.main.async {
-            self.onTouchEvent?(x1, y1, Int(action), pointerCount, x2, y2)
+            self.onTouchEvent?(x1, y1, Int(action), pointerCount, x2, y2, pressure, tilt, Int(flags))
         }
     }
 
