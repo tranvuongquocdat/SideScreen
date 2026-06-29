@@ -81,7 +81,6 @@ struct SettingsView: View {
     @State private var customWidthText = ""
     @State private var customHeightText = ""
     @State private var daemonEnabled = false
-    @State private var selectedTab = "Display"
 
     private var customWidthValue: Int? { Int(customWidthText.trimmingCharacters(in: .whitespaces)) }
     private var customHeightValue: Int? { Int(customHeightText.trimmingCharacters(in: .whitespaces)) }
@@ -185,38 +184,17 @@ struct SettingsView: View {
                     .fill(Color.primary.opacity(0.06))
                     .frame(height: 1)
 
-                Picker("", selection: $selectedTab) {
-                    Text("Display & Input").tag("Display")
-                    Text("Connection").tag("Connection")
-                    Text("Startup").tag("Startup")
-                    Text("Quality").tag("Quality")
-                    Text("Status").tag("Status")
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 10)
-
-                Rectangle()
-                    .fill(Color.primary.opacity(0.06))
-                    .frame(height: 1)
-
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        if selectedTab == "Display" {
-                            // Display Configuration
-                            FrostedGroupBox(title: "Display Configuration", icon: "display") {
+                        // Display Configuration
+                        FrostedGroupBox(title: "Display Configuration", icon: "display") {
                             VStack(alignment: .leading, spacing: 16) {
                                 // Resolution
                                 VStack(alignment: .leading, spacing: 8) {
                                     HStack {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("Resolution")
-                                                .font(.system(size: 11))
-                                                .foregroundColor(.secondary)
-                                            Text("Sets the virtual display resolution sent to the tablet. Higher resolutions look sharper but require more bandwidth and CPU to encode.")
-                                                .font(.system(size: 10))
-                                                .foregroundColor(.secondary.opacity(0.7))
-                                        }
+                                        Text("Resolution")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.secondary)
                                         Spacer()
                                         Toggle("Show all", isOn: $settings.showAllResolutions)
                                             .toggleStyle(.switch)
@@ -337,14 +315,9 @@ struct SettingsView: View {
 
                                 // Rotation
                                 VStack(alignment: .leading, spacing: 8) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Rotation")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.secondary)
-                                        Text("Adjusts the orientation of the virtual display to match your tablet's physical position. Does not affect performance.")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.secondary.opacity(0.7))
-                                    }
+                                    Text("Rotation")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
 
                                     HStack(spacing: 12) {
                                         ZStack {
@@ -410,14 +383,9 @@ struct SettingsView: View {
                         FrostedGroupBox(title: "Refresh Rate", icon: "speedometer") {
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Frame Rate")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.secondary)
-                                        Text("Determines how many frames are sent per second. 60Hz is standard; 120Hz provides maximum smoothness but doubles network traffic.")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.secondary.opacity(0.7))
-                                    }
+                                    Text("Frame Rate")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
                                     Spacer()
                                     Text("\(settings.refreshRate) Hz")
                                         .font(.system(size: 11, weight: .medium))
@@ -467,21 +435,14 @@ struct SettingsView: View {
                                 }
                             }
                         }
-                        }
 
-                        if selectedTab == "Connection" {
-                            // Network Settings (port — applies to both modes; listener binds on it)
-                            FrostedGroupBox(title: "Network Settings", icon: "network") {
+                        // Network Settings (port — applies to both modes; listener binds on it)
+                        FrostedGroupBox(title: "Network Settings", icon: "network") {
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Server Port")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.secondary)
-                                        Text("The network port used for the streaming server. Only change this if you encounter conflicts with other apps on your Mac.")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.secondary.opacity(0.7))
-                                    }
+                                    Text("Server Port")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
                                     Spacer()
                                     TextField("Port", value: $settings.port, format: .number)
                                         .textFieldStyle(.roundedBorder)
@@ -511,17 +472,15 @@ struct SettingsView: View {
                                             pairedDeviceStore: (NSApp.delegate as? AppDelegate)?.pairedDeviceStore ?? PairedDeviceStore())
                         }
 
-                        }
-
-                        if selectedTab == "Startup" {
-                        if #available(macOS 13.0, *) {
-                            FrostedGroupBox(title: "Startup", icon: "power") {
-                                VStack(alignment: .leading, spacing: 8) {
+                        // Startup / headless behaviour
+                        FrostedGroupBox(title: "Startup", icon: "power") {
+                            VStack(alignment: .leading, spacing: 12) {
+                                if #available(macOS 13.0, *) {
                                     HStack {
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text("Launch at Login")
                                                 .font(.system(size: 12, weight: .medium))
-                                            Text("Start in background automatically after login")
+                                            Text("Run SideScreen in the background automatically after you log in.")
                                                 .font(.system(size: 10))
                                                 .foregroundColor(.secondary)
                                         }
@@ -535,60 +494,60 @@ struct SettingsView: View {
                                                     } else {
                                                         try DaemonManager.shared.disable()
                                                     }
-                                                    daemonEnabled = DaemonManager.shared.isEnabled
                                                 } catch {
                                                     print("Daemon toggle failed: \(error)")
-                                                    // Revert on failure
-                                                    daemonEnabled = DaemonManager.shared.isEnabled
                                                 }
+                                                daemonEnabled = DaemonManager.shared.isEnabled
                                             }
                                         ))
                                         .labelsHidden()
                                     }
-                                    
                                     Divider()
-                                    
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("Auto-start streaming on launch")
-                                                .font(.system(size: 12, weight: .medium))
-                                            Text("Start the server automatically when the app opens, so the tablet can connect without touching the Mac.")
-                                                .font(.system(size: 10))
-                                                .foregroundColor(.secondary)
-                                        }
-                                        Spacer()
-                                        Toggle("", isOn: $settings.autoStartStreamingOnLaunch)
-                                            .labelsHidden()
+                                }
+
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Auto-start streaming on launch")
+                                            .font(.system(size: 12, weight: .medium))
+                                        Text("Start the server automatically when the app opens, so the tablet can connect without touching the Mac.")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary)
                                     }
-
-                                    Divider()
-
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("Startup mode")
-                                                .font(.system(size: 12, weight: .medium))
-                                            Text("Which connection mode to start in when auto-starting.")
-                                                .font(.system(size: 10))
-                                                .foregroundColor(.secondary)
-                                        }
-                                        Spacer()
-                                        Picker("", selection: $settings.startupMode) {
-                                            Text("USB").tag(ConnectionMode.usb)
-                                            Text("Wireless").tag(ConnectionMode.wireless)
-                                        }
-                                        .pickerStyle(.segmented)
+                                    Spacer()
+                                    Toggle("", isOn: $settings.autoStartStreamingOnLaunch)
                                         .labelsHidden()
-                                        .frame(width: 150)
-                                        .disabled(!settings.autoStartStreamingOnLaunch)
+                                }
+
+                                Divider()
+
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Startup mode")
+                                            .font(.system(size: 12, weight: .medium))
+                                        Text("Which connection mode to start in when auto-starting.")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary)
                                     }
+                                    Spacer()
+                                    Picker("", selection: $settings.startupMode) {
+                                        Text("USB").tag(ConnectionMode.usb)
+                                        Text("Wireless").tag(ConnectionMode.wireless)
+                                    }
+                                    .pickerStyle(.segmented)
+                                    .labelsHidden()
+                                    .frame(width: 150)
+                                    .disabled(!settings.autoStartStreamingOnLaunch)
                                 }
                             }
                         }
+                        .onAppear {
+                            if #available(macOS 13.0, *) {
+                                daemonEnabled = DaemonManager.shared.isEnabled
+                            }
                         }
 
-                        if selectedTab == "Quality" {
-                            // Gaming Boost
-                            FrostedGroupBox(title: "Gaming Boost", icon: settings.gamingBoost ? "bolt.fill" : "bolt") {
+                        // Gaming Boost
+                        FrostedGroupBox(title: "Gaming Boost", icon: settings.gamingBoost ? "bolt.fill" : "bolt") {
                             VStack(alignment: .leading, spacing: 16) {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 2) {
@@ -639,14 +598,9 @@ struct SettingsView: View {
                                 // Bitrate
                                 VStack(alignment: .leading, spacing: 10) {
                                     HStack {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("Bitrate")
-                                                .font(.system(size: 11))
-                                                .foregroundColor(.secondary)
-                                            Text("Higher values produce a cleaner image with fewer compression artifacts, but require a stronger USB or Wi-Fi connection to prevent stuttering.")
-                                                .font(.system(size: 10))
-                                                .foregroundColor(.secondary.opacity(0.7))
-                                        }
+                                        Text("Bitrate")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.secondary)
                                         Spacer()
                                         Text("\(settings.effectiveBitrate) Mbps")
                                             .font(.system(size: 13, weight: .semibold, design: .monospaced))
@@ -723,11 +677,9 @@ struct SettingsView: View {
                                 }
                             }
                         }
-                        }
 
-                        if selectedTab == "Status" {
-                            // Status
-                            FrostedGroupBox(title: "Status", icon: "checkmark.circle") {
+                        // Status
+                        FrostedGroupBox(title: "Status", icon: "checkmark.circle") {
                             VStack(alignment: .leading, spacing: 12) {
                                 StatusRow(title: "Virtual Display",
                                           status: settings.displayCreated ? "Active" : "Inactive",
@@ -872,7 +824,6 @@ struct SettingsView: View {
                                 }
                             }
                         }
-                        }
                     }
                     .padding(20)
                 }
@@ -968,11 +919,6 @@ struct SettingsView: View {
                     .padding(.vertical, 14)
                     .background(.ultraThinMaterial)
                 }
-            }
-        }
-        .onAppear {
-            if #available(macOS 13.0, *) {
-                daemonEnabled = DaemonManager.shared.isEnabled
             }
         }
         .frame(width: 480, height: 780)

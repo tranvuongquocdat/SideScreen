@@ -435,8 +435,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
                     if process.terminationStatus == 0 {
                         print("✅ ADB reverse setup successful: tcp:\(port) -> tcp:\(port)")
-                        
-                                                
                         return
                     } else {
                         print("⚠️  ADB reverse attempt \(attempt)/3 failed: \(output.trimmingCharacters(in: .whitespacesAndNewlines))")
