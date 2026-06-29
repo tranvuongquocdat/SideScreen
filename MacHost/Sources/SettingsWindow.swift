@@ -80,6 +80,7 @@ struct SettingsView: View {
     // and .number formatting injected locale grouping separators ("1,200").
     @State private var customWidthText = ""
     @State private var customHeightText = ""
+    @State private var daemonEnabled = false
 
     private var customWidthValue: Int? { Int(customWidthText.trimmingCharacters(in: .whitespaces)) }
     private var customHeightValue: Int? { Int(customHeightText.trimmingCharacters(in: .whitespaces)) }
@@ -469,6 +470,80 @@ struct SettingsView: View {
                         if settings.connectionMode == .wireless {
                             WirelessSection(settings: settings,
                                             pairedDeviceStore: (NSApp.delegate as? AppDelegate)?.pairedDeviceStore ?? PairedDeviceStore())
+                        }
+
+                        // Startup / headless behaviour
+                        FrostedGroupBox(title: "Startup", icon: "power") {
+                            VStack(alignment: .leading, spacing: 12) {
+                                if #available(macOS 13.0, *) {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Launch at Login")
+                                                .font(.system(size: 12, weight: .medium))
+                                            Text("Run SideScreen in the background automatically after you log in.")
+                                                .font(.system(size: 10))
+                                                .foregroundColor(.secondary)
+                                        }
+                                        Spacer()
+                                        Toggle("", isOn: Binding(
+                                            get: { daemonEnabled },
+                                            set: { newValue in
+                                                do {
+                                                    if newValue {
+                                                        try DaemonManager.shared.enable()
+                                                    } else {
+                                                        try DaemonManager.shared.disable()
+                                                    }
+                                                } catch {
+                                                    print("Daemon toggle failed: \(error)")
+                                                }
+                                                daemonEnabled = DaemonManager.shared.isEnabled
+                                            }
+                                        ))
+                                        .labelsHidden()
+                                    }
+                                    Divider()
+                                }
+
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Auto-start streaming on launch")
+                                            .font(.system(size: 12, weight: .medium))
+                                        Text("Start the server automatically when the app opens, so the tablet can connect without touching the Mac.")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    Toggle("", isOn: $settings.autoStartStreamingOnLaunch)
+                                        .labelsHidden()
+                                }
+
+                                Divider()
+
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Startup mode")
+                                            .font(.system(size: 12, weight: .medium))
+                                        Text("Which connection mode to start in when auto-starting.")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    Picker("", selection: $settings.startupMode) {
+                                        Text("USB").tag(ConnectionMode.usb)
+                                        Text("Wireless").tag(ConnectionMode.wireless)
+                                    }
+                                    .pickerStyle(.segmented)
+                                    .labelsHidden()
+                                    .frame(width: 150)
+                                    .disabled(!settings.autoStartStreamingOnLaunch)
+                                }
+                            }
+                        }
+                        .onAppear {
+                            if #available(macOS 13.0, *) {
+                                daemonEnabled = DaemonManager.shared.isEnabled
+                            }
                         }
 
                         // Gaming Boost
@@ -1072,6 +1147,12 @@ class DisplaySettings: ObservableObject {
     @Published var connectionMode: ConnectionMode {
         didSet { save("connectionMode", connectionMode.rawValue) }
     }
+    @Published var autoStartStreamingOnLaunch: Bool {
+        didSet { save("autoStartStreamingOnLaunch", autoStartStreamingOnLaunch) }
+    }
+    @Published var startupMode: ConnectionMode {
+        didSet { save("startupMode", startupMode.rawValue) }
+    }
 
     // Runtime state (not persisted)
     @Published var displayCreated = false
@@ -1110,6 +1191,9 @@ class DisplaySettings: ObservableObject {
         self.touchEnabled = defaults.object(forKey: keyPrefix + "touchEnabled") as? Bool ?? true
         let modeRaw = defaults.string(forKey: keyPrefix + "connectionMode") ?? ConnectionMode.usb.rawValue
         self.connectionMode = ConnectionMode(rawValue: modeRaw) ?? .usb
+        self.autoStartStreamingOnLaunch = defaults.object(forKey: keyPrefix + "autoStartStreamingOnLaunch") as? Bool ?? false
+        let startupRaw = defaults.string(forKey: keyPrefix + "startupMode") ?? modeRaw
+        self.startupMode = ConnectionMode(rawValue: startupRaw) ?? .usb
 
         print("Loaded settings: \(resolution) @ \(refreshRate)Hz, bitrate=\(bitrate), quality=\(quality)")
     }
@@ -1173,7 +1257,7 @@ class DisplaySettings: ObservableObject {
     func resetToDefaults() {
         let keys = ["resolution", "refreshRate", "hiDPI", "bitrate", "quality",
                     "gamingBoost", "port", "rotation", "showAllResolutions",
-                    "customWidth", "customHeight", "touchEnabled"]
+                    "customWidth", "customHeight", "touchEnabled", "autoStartStreamingOnLaunch", "startupMode"]
         for key in keys {
             defaults.removeObject(forKey: keyPrefix + key)
         }
@@ -1190,6 +1274,8 @@ class DisplaySettings: ObservableObject {
         customWidth = 1920
         customHeight = 1200
         touchEnabled = true
+        autoStartStreamingOnLaunch = false
+        startupMode = .usb
 
         print("Settings reset to defaults")
     }

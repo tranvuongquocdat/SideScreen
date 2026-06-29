@@ -3,6 +3,8 @@ import AppKit
 
 print("🚀 Side Screen starting...")
 
+// No args needed
+
 // Entry point
 let app = NSApplication.shared
 
@@ -31,5 +33,8 @@ mainMenu.addItem(editMenuItem)
 app.mainMenu = mainMenu
 
 let delegate = AppDelegate()
+
+app.setActivationPolicy(.regular)
+
 app.delegate = delegate
 app.run()

@@ -60,6 +60,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var cancellables = Set<AnyCancellable>()
     private var permissionCheckTimer: Timer?
     private var statusRefreshTimer: Timer?
+    var isDaemonMode = false // Deprecated: keeping variable for ABI compatibility but unused
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("✅ App launched")
@@ -89,8 +90,39 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             refreshStatusIndicators()
         }
 
-        // Show settings window
-        showSettings()
+        if #available(macOS 13.0, *) {
+            if DaemonManager.shared.isEnabled {
+                print("🚀 Launch at Login is enabled - starting silently in background")
+                // Do not show settings window automatically.
+                // applicationShouldHandleReopen will show it if the user manually launched the app.
+            } else {
+                showSettings()
+            }
+        } else {
+            showSettings()
+        }
+
+        // Declarative auto-start (no Mac interaction): start the server in the
+        // chosen Startup mode if enabled. No blocking permission modal here —
+        // it cannot be acted on when the Mac is headless.
+        if settings.autoStartStreamingOnLaunch {
+            settings.connectionMode = settings.startupMode
+            Task {
+                await self.checkPermissions()
+                if self.settings.hasScreenRecordingPermission {
+                    await self.startServer()
+                } else {
+                    debugLog("Auto-start skipped: Screen Recording permission not granted")
+                }
+            }
+        }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            showSettings()
+        }
+        return true
     }
 
     @MainActor
@@ -114,8 +146,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let reverseOK = StatusDetector.adbReverseConfigured(port: port)
             await MainActor.run { [weak self] in
                 guard let self = self else { return }
-                self.settings.usbDeviceConnected = !devices.isEmpty
+                
+                let isConnected = !devices.isEmpty
+
+                self.settings.usbDeviceConnected = isConnected
                 self.settings.adbReverseConfigured = reverseOK
+
+                // Self-healing USB bridge (level-triggered, not edge-triggered):
+                // whenever we are in USB mode with the server running and a
+                // device present but adb reverse missing, (re)establish it.
+                // Covers replug, adb-server restart, etc. The server lifecycle
+                // is NOT tied to device events — it stays up and the tablet
+                // reconnects via its own connect button.
+                if self.settings.connectionMode == .usb
+                    && isConnected
+                    && self.settings.isRunning
+                    && !reverseOK {
+                    debugLog("🔌 USB bridge missing while running — (re)establishing adb reverse")
+                    Task { await self.setupADBReverse() }
+                }
             }
         }
     }
@@ -317,6 +366,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func setupADBReverse() async {
         let port = settings.port
         print("🔌 Setting up ADB reverse for port \(port)...")
+        debugLog("🔌 setupADBReverse() invoked for port \(port)...")
 
         await Task.detached(priority: .utility) {
             // Try common adb paths
@@ -428,7 +478,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func startServer() async {
+        debugLog("🚀 startServer() invoked. Check permission: \(settings.hasScreenRecordingPermission)")
         guard settings.hasScreenRecordingPermission else {
+            debugLog("❌ startServer aborted: Missing Screen Recording permission")
             await showPermissionAlert()
             return
         }

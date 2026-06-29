@@ -17,6 +17,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+<a id="0.11.0"></a>
+## [0.11.0] - 2026-06-29
+
+Headless auto-start. The Mac host can launch at login and start streaming automatically, so a Mac with no display of its own can boot up and serve the tablet with nothing to press on the Mac — the tablet's own Connect (USB) / Reconnect (Wireless) button is the only thing you touch. Building on the headless groundwork contributed by @shhrohan (#25), reworked to keep wireless mode and the existing settings UI intact, and to start the server *declaratively at launch* rather than reacting to USB plug/unplug events.
+
+### Added
+- **Launch at Login.** Registers the host as a login item (`SMAppService`) so it starts silently in the background after you log in. New toggle in the Settings → "Startup" group.
+- **Auto-start streaming on launch + Startup mode.** When enabled, the server starts automatically when the app opens, in the connection mode (USB or Wireless) you choose. The server then stays up and listens; the tablet connects/reconnects whenever, with no action required on the Mac.
+- **Self-healing USB bridge.** `adb reverse` is now re-established automatically whenever a device is present but the forward is missing (replug, adb-server restart, …), instead of only on the USB connect edge.
+
+### Notes
+- The server lifecycle is no longer tied to USB plug/unplug — it does not auto-stop on disconnect, so the virtual display (and your window layout) persists across tablet reconnects. The tablet's existing Connect / Reconnect buttons remain the connection path; nothing on the Mac needs pressing.
+- First-time setup still needs a screen once (to grant Screen Recording permission); afterwards the Mac can run fully headless. For wireless headless use, pin the Mac to a static IP / DHCP reservation — automatic discovery (mDNS) is still planned.
+
+### Installation
+- **macOS**: Open `SideScreen-0.11.0-mac-universal.dmg`, drag SideScreen to Applications. If Gatekeeper says "damaged"/"cannot be opened": `sudo xattr -cr /Applications/SideScreen.app`. Requires macOS 13 (Ventura) or later.
+- **Android**: Install `SideScreen-0.11.0-android.apk` (enable "Unknown sources" if needed).
+
+---
+
 <a id="0.10.1"></a>
 ## [0.10.1] - 2026-06-12
 
