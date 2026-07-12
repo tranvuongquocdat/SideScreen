@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import SystemConfiguration
 
@@ -15,22 +16,9 @@ enum StatusDetector {
 
     /// Run `adb devices`, return list of device serials in `device` state.
     static func usbDevices() -> [String] {
-        guard let adbPath = adbExecutablePath() else { return [] }
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: adbPath)
-        task.arguments = ["devices"]
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = Pipe()
-        do {
-            try task.run()
-            task.waitUntilExit()
-        } catch {
-            return []
-        }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(data: data, encoding: .utf8) ?? ""
-        return output.split(separator: "\n").compactMap { line in
+        guard let result = runADB(arguments: ["devices"]),
+              result.terminationStatus == 0 else { return [] }
+        return result.output.split(separator: "\n").compactMap { line in
             let parts = line.split(separator: "\t").map(String.init)
             guard parts.count == 2, parts[1] == "device" else { return nil }
             return parts[0]
@@ -39,22 +27,98 @@ enum StatusDetector {
 
     /// Heuristic: parse `adb reverse --list` for `tcp:<port> tcp:<port>`.
     static func adbReverseConfigured(port: Int) -> Bool {
-        guard let adbPath = adbExecutablePath() else { return false }
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: adbPath)
-        task.arguments = ["reverse", "--list"]
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = Pipe()
-        do {
-            try task.run()
-            task.waitUntilExit()
-        } catch {
-            return false
+        guard let result = runADB(arguments: ["reverse", "--list"]),
+              result.terminationStatus == 0 else { return false }
+        return result.output.contains("tcp:\(port) tcp:\(port)")
+    }
+
+    struct CommandResult {
+        let terminationStatus: Int32
+        let output: String
+    }
+
+    private final class CommandOutputBuffer: @unchecked Sendable {
+        private let lock = NSLock()
+        private var data = Data()
+
+        func append(_ chunk: Data) {
+            lock.lock()
+            data.append(chunk)
+            lock.unlock()
         }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(data: data, encoding: .utf8) ?? ""
-        return output.contains("tcp:\(port) tcp:\(port)")
+
+        func snapshot() -> Data {
+            lock.lock()
+            defer { lock.unlock() }
+            return data
+        }
+    }
+
+    static func runADB(arguments: [String], timeout: TimeInterval = 2.5) -> CommandResult? {
+        guard let adbPath = adbExecutablePath() else { return nil }
+        return runProcess(executablePath: adbPath, arguments: arguments, timeout: timeout)
+    }
+
+    private static func runProcess(
+        executablePath: String,
+        arguments: [String],
+        timeout: TimeInterval
+    ) -> CommandResult? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = arguments
+        process.standardInput = FileHandle.nullDevice
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+
+        let outputBuffer = CommandOutputBuffer()
+        let outputFinished = DispatchSemaphore(value: 0)
+        let outputHandle = pipe.fileHandleForReading
+        outputHandle.readabilityHandler = { handle in
+            let chunk = handle.availableData
+            if chunk.isEmpty {
+                handle.readabilityHandler = nil
+                outputFinished.signal()
+            } else {
+                outputBuffer.append(chunk)
+            }
+        }
+
+        let processFinished = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in
+            processFinished.signal()
+        }
+
+        do {
+            try process.run()
+        } catch {
+            outputHandle.readabilityHandler = nil
+            return nil
+        }
+
+        if processFinished.wait(timeout: .now() + timeout) == .timedOut {
+            if process.isRunning {
+                process.terminate()
+            }
+            if processFinished.wait(timeout: .now() + 0.25) == .timedOut,
+               process.isRunning {
+                _ = Darwin.kill(process.processIdentifier, SIGKILL)
+                _ = processFinished.wait(timeout: .now() + 0.25)
+            }
+            outputHandle.readabilityHandler = nil
+            return nil
+        }
+
+        guard outputFinished.wait(timeout: .now() + 0.5) == .success else {
+            outputHandle.readabilityHandler = nil
+            return nil
+        }
+        outputHandle.readabilityHandler = nil
+
+        let output = String(data: outputBuffer.snapshot(), encoding: .utf8) ?? ""
+        return CommandResult(terminationStatus: process.terminationStatus, output: output)
     }
 
     private static var cachedAdbPath: String?
@@ -78,26 +142,18 @@ enum StatusDetector {
         }
 
         // Search PATH first, but only accept an executable absolute path.
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-        task.arguments = ["adb"]
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = FileHandle.nullDevice
-        do {
-            try task.run()
-            task.waitUntilExit()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if task.terminationStatus == 0,
-               let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-               NSString(string: path).isAbsolutePath,
+        if let result = runProcess(
+            executablePath: "/usr/bin/which",
+            arguments: ["adb"],
+            timeout: 2.5
+        ), result.terminationStatus == 0 {
+            let path = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+            if NSString(string: path).isAbsolutePath,
                FileManager.default.isExecutableFile(atPath: path) {
                 cachedAdbPath = path
                 lastAdbCacheCheck = Date()
                 return path
             }
-        } catch {
-            // Continue with known absolute paths.
         }
 
         let candidatePaths = [

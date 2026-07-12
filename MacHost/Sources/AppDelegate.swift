@@ -61,6 +61,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var initialPermissionCheckPending = false
     private var skipNextActivationPermissionCheck = false
     private var statusRefreshTimer: Timer?
+    /// Main-actor-owned single-flight state for periodic status probes and reverse setup.
+    private var adbStatusProbeInFlight = false
+    private var adbStatusGeneration: UInt64 = 0
+    private var adbReverseSetupInFlight = false
     /// Debounce for wake-triggered capture restarts (screensDidWake + didWake can both fire).
     private var lastWakeRestart = Date.distantPast
     var isDaemonMode = false // Deprecated: keeping variable for ABI compatibility but unused
@@ -184,7 +188,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     private func refreshStatusIndicators() {
-        settings.adbInstalled = StatusDetector.adbInstalled()
         settings.wifiConnected = StatusDetector.wifiReachable()
         settings.listeningAddress = LANAddressResolver.primaryIPv4()
 
@@ -197,15 +200,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             pairedDeviceStore.upsert(name: name, lastConnected: Date())
         }
 
+        guard !adbStatusProbeInFlight else { return }
+        adbStatusProbeInFlight = true
+        adbStatusGeneration &+= 1
+
+        let generation = adbStatusGeneration
+        let mode = settings.connectionMode
         let port = Int(settings.port)
-        Task.detached { [weak self] in
-            let devices = StatusDetector.usbDevices()
-            let reverseOK = StatusDetector.adbReverseConfigured(port: port)
+        Task.detached(priority: .utility) { [weak self] in
+            let adbInstalled = StatusDetector.adbInstalled()
+            let devices = mode == .usb && adbInstalled
+                ? StatusDetector.usbDevices()
+                : []
+            let reverseOK = mode == .usb && !devices.isEmpty
+                ? StatusDetector.adbReverseConfigured(port: port)
+                : false
             await MainActor.run { [weak self] in
                 guard let self = self else { return }
                 
-                let isConnected = !devices.isEmpty
+                self.adbStatusProbeInFlight = false
+                guard self.adbStatusGeneration == generation,
+                      self.settings.connectionMode == mode,
+                      mode != .usb || Int(self.settings.port) == port else {
+                    return
+                }
 
+                let isConnected = !devices.isEmpty
+                self.settings.adbInstalled = adbInstalled
                 self.settings.usbDeviceConnected = isConnected
                 self.settings.adbReverseConfigured = reverseOK
 
@@ -215,7 +236,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 // Covers replug, adb-server restart, etc. The server lifecycle
                 // is NOT tied to device events — it stays up and the tablet
                 // reconnects via its own connect button.
-                if self.settings.connectionMode == .usb
+                if mode == .usb
                     && isConnected
                     && self.settings.isRunning
                     && !reverseOK {
@@ -251,12 +272,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func setupSettingsObservers() {
-        // Observer cho gaming boost changes
+        // Observe low-latency mode changes
         settings.$gamingBoost
             .dropFirst() // Skip initial value
             .sink { [weak self] gamingBoost in
                 guard let self = self, self.settings.isRunning else { return }
-                print("🎮 Gaming Boost \(gamingBoost ? "ENABLED" : "DISABLED")")
+                print("⚡️ Low-Latency \(gamingBoost ? "ENABLED" : "DISABLED")")
                 self.screenCapture?.updateEncoderSettings(
                     bitrateMbps: self.settings.effectiveBitrate,
                     quality: self.settings.effectiveQuality,
@@ -265,7 +286,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
-        // Observer cho bitrate/quality changes (chỉ khi không gaming boost)
+        // Observe bitrate/quality changes only outside low-latency mode
         Publishers.CombineLatest(settings.$bitrate, settings.$quality)
             .dropFirst()
             .sink { [weak self] bitrate, quality in
@@ -304,6 +325,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] mode in
                 guard let self = self else { return }
                 Task { @MainActor in
+                    // Reject a result captured before this mode transition.
+                    self.adbStatusGeneration &+= 1
+                    if mode == .wireless {
+                        self.settings.usbDeviceConnected = false
+                        self.settings.adbReverseConfigured = false
+                    }
                     await self.handleConnectionModeChange(to: mode)
                 }
             }
@@ -430,7 +457,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Setup ADB reverse port forwarding for USB connection
+    @MainActor
     func setupADBReverse() async {
+        guard settings.connectionMode == .usb else {
+            debugLog("Wireless mode: skipping ADB reverse setup")
+            return
+        }
+        guard !adbReverseSetupInFlight else {
+            debugLog("ADB reverse setup already in flight — skipping duplicate request")
+            return
+        }
+        adbReverseSetupInFlight = true
+        defer { adbReverseSetupInFlight = false }
+
         let port = settings.port
         print("🔌 Setting up ADB reverse for port \(port)...")
         debugLog("🔌 setupADBReverse() invoked for port \(port)...")
@@ -446,35 +485,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             // Retry adb reverse up to 3 times — handles first-install authorization delay
             for attempt in 1...3 {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: finalAdbPath)
-                process.arguments = ["reverse", "tcp:\(port)", "tcp:\(port)"]
+                let result = StatusDetector.runADB(
+                    arguments: ["reverse", "tcp:\(port)", "tcp:\(port)"],
+                    timeout: 2.5
+                )
 
-                let pipe = Pipe()
-                process.standardOutput = pipe
-                process.standardError = pipe
+                if let result = result, result.terminationStatus == 0 {
+                    print("✅ ADB reverse setup successful: tcp:\(port) -> tcp:\(port)")
+                    return
+                }
 
-                do {
-                    try process.run()
-                    process.waitUntilExit()
+                if let result = result {
+                    print("⚠️  ADB reverse attempt \(attempt)/3 failed: \(result.output.trimmingCharacters(in: .whitespacesAndNewlines))")
+                } else {
+                    print("⚠️  ADB reverse attempt \(attempt)/3 failed or timed out")
+                }
 
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    let output = String(data: data, encoding: .utf8) ?? ""
-
-                    if process.terminationStatus == 0 {
-                        print("✅ ADB reverse setup successful: tcp:\(port) -> tcp:\(port)")
-                        return
-                    } else {
-                        print("⚠️  ADB reverse attempt \(attempt)/3 failed: \(output.trimmingCharacters(in: .whitespacesAndNewlines))")
-                        if attempt < 3 {
-                            try? await Task.sleep(nanoseconds: 1_000_000_000)
-                        }
-                    }
-                } catch {
-                    print("⚠️  Failed to run ADB (attempt \(attempt)/3): \(error.localizedDescription)")
-                    if attempt < 3 {
-                        try? await Task.sleep(nanoseconds: 1_000_000_000)
-                    }
+                if attempt < 3 {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
                 }
             }
 

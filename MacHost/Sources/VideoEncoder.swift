@@ -102,7 +102,7 @@ class VideoEncoder {
         // Critical for low latency - NO frame reordering (no B-frames)
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse)
 
-        // ALWAYS zero frame delay for real-time streaming (not just gaming boost)
+        // ALWAYS zero frame delay for real-time streaming (not just low-latency mode)
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxFrameDelayCount, value: 0 as CFNumber)
 
         // Quality based on preset
@@ -126,7 +126,7 @@ class VideoEncoder {
 
         VTCompressionSessionPrepareToEncodeFrames(session)
 
-        let mode = gamingBoost ? "🎮 GAMING BOOST" : quality.uppercased()
+        let mode = gamingBoost ? "⚡️ LOW-LATENCY" : quality.uppercased()
         debugLog("VideoToolbox encoder configured (\(codec == .hevc ? "H.265" : "H.264"), \(bitrateMbps)Mbps, \(frameRate)fps, \(mode))")
     }
 

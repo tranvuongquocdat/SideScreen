@@ -81,6 +81,8 @@ struct SettingsView: View {
     // and .number formatting injected locale grouping separators ("1,200").
     @State private var customWidthText = ""
     @State private var customHeightText = ""
+    /// Non-published while the slider is moving; committed once on drag end.
+    @State private var bitrateDraft: Double?
     @State private var daemonEnabled = false
 
     private var customWidthValue: Int? { Int(customWidthText.trimmingCharacters(in: .whitespaces)) }
@@ -136,11 +138,14 @@ struct SettingsView: View {
                             }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Reset settings")
                     .help("Reset settings")
                     .alert("Reset Settings", isPresented: $showResetConfirmation) {
                         Button("Cancel", role: .cancel) { }
                         Button("Reset", role: .destructive) {
                             settings.resetToDefaults()
+                            customWidthText = String(settings.customWidth)
+                            customHeightText = String(settings.customHeight)
                             if let window = NSApp.windows.first(where: { $0.title == "Side Screen" }) {
                                 window.center()
                             }
@@ -200,6 +205,7 @@ struct SettingsView: View {
                                         Toggle("Show all", isOn: $settings.showAllResolutions)
                                             .toggleStyle(.switch)
                                             .controlSize(.mini)
+                                            .accessibilityLabel("Show all resolutions")
                                     }
 
                                     ScrollView {
@@ -311,6 +317,7 @@ struct SettingsView: View {
                                     Toggle("", isOn: $settings.hiDPI)
                                         .toggleStyle(.switch)
                                         .controlSize(.mini)
+                                        .accessibilityLabel("HiDPI")
                                         .disabled(settings.isRunning)
                                 }
 
@@ -427,6 +434,7 @@ struct SettingsView: View {
                                     Spacer()
                                     Toggle("", isOn: $settings.touchEnabled)
                                         .labelsHidden()
+                                        .accessibilityLabel("Enable touch input")
                                         .onChange(of: settings.touchEnabled) { enabled in
                                             guard enabled else { return }
                                             (NSApp.delegate as? AppDelegate)?.ensureAccessibilityPermissionForTouch()
@@ -506,6 +514,7 @@ struct SettingsView: View {
                                             }
                                         ))
                                         .labelsHidden()
+                                        .accessibilityLabel("Launch at Login")
                                     }
                                     Divider()
                                 }
@@ -521,6 +530,7 @@ struct SettingsView: View {
                                     Spacer()
                                     Toggle("", isOn: $settings.autoStartStreamingOnLaunch)
                                         .labelsHidden()
+                                        .accessibilityLabel("Auto-start streaming on launch")
                                 }
 
                                 Divider()
@@ -551,7 +561,7 @@ struct SettingsView: View {
                             }
                         }
 
-                        // Gaming Boost
+                        // Low-Latency Mode
                         FrostedGroupBox(title: "Low-Latency Mode", icon: settings.gamingBoost ? "bolt.fill" : "bolt") {
                             VStack(alignment: .leading, spacing: 16) {
                                 HStack {
@@ -565,6 +575,7 @@ struct SettingsView: View {
                                     Spacer()
                                     Toggle("", isOn: $settings.gamingBoost)
                                         .labelsHidden()
+                                        .accessibilityLabel("Enable Low-Latency Mode")
                                 }
 
                                 if settings.gamingBoost {
@@ -607,7 +618,7 @@ struct SettingsView: View {
                                             .font(.system(size: 11))
                                             .foregroundColor(.secondary)
                                         Spacer()
-                                        Text("\(settings.effectiveBitrate) Mbps")
+                                        Text("\(settings.gamingBoost ? settings.effectiveBitrate : Int(bitrateDraft ?? Double(settings.bitrate))) Mbps")
                                             .font(.system(size: 13, weight: .semibold, design: .monospaced))
                                             .foregroundColor(.accentColor)
                                     }
@@ -634,11 +645,26 @@ struct SettingsView: View {
                                         Text("20")
                                             .font(.system(size: 9))
                                             .foregroundColor(.secondary)
-                                        Slider(value: Binding(
-                                            get: { Double(settings.bitrate) },
-                                            set: { settings.bitrate = Int($0) }
-                                        ), in: 20...5000, step: 10)
+                                        Slider(
+                                            value: Binding(
+                                                get: { bitrateDraft ?? Double(settings.bitrate) },
+                                                set: { bitrateDraft = $0 }
+                                            ),
+                                            in: 20...5000,
+                                            step: 10,
+                                            onEditingChanged: { isEditing in
+                                                guard !isEditing, let draft = bitrateDraft else { return }
+                                                let committed = Int(draft)
+                                                if committed != settings.bitrate {
+                                                    settings.bitrate = committed
+                                                }
+                                                bitrateDraft = nil
+                                            }
+                                        )
                                         .disabled(settings.gamingBoost)
+                                        .onChange(of: settings.bitrate) { _ in
+                                            bitrateDraft = nil
+                                        }
                                         Text("5000")
                                             .font(.system(size: 9))
                                             .foregroundColor(.secondary)
@@ -648,7 +674,7 @@ struct SettingsView: View {
                                         HStack(spacing: 4) {
                                             Image(systemName: "bolt.fill")
                                                 .font(.system(size: 10))
-                                            Text("Locked at 1000 Mbps in Gaming Boost")
+                                            Text("50 Mbps target in Low-Latency Mode")
                                                 .font(.system(size: 10))
                                         }
                                         .foregroundColor(.orange)
@@ -671,7 +697,7 @@ struct SettingsView: View {
                                     .disabled(settings.gamingBoost)
 
                                     if settings.gamingBoost {
-                                        Text("Quality locked to Ultra Low in Gaming Boost mode")
+                                        Text("Speed-prioritized quality in Low-Latency Mode")
                                             .font(.system(size: 10))
                                             .foregroundColor(.orange)
                                     } else if settings.quality == "ultralow" {
@@ -908,6 +934,7 @@ struct SettingsView: View {
                                 }
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Restart Side Screen")
                         .help("Restart App")
 
                         // Quit button
@@ -926,6 +953,7 @@ struct SettingsView: View {
                                 }
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Quit Side Screen")
                         .help("Quit Side Screen (⌘Q)")
                     }
                     .padding(.horizontal, 20)
@@ -983,6 +1011,7 @@ struct StatusRow: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Help for \(title)")
                 .onHover { hovering = $0 }
                 .help(hint)
                 .popover(isPresented: $showHint, arrowEdge: .top) {
@@ -1121,6 +1150,24 @@ class DisplaySettings: ObservableObject {
     private let defaults = UserDefaults.standard
     private let keyPrefix = "SideScreen_"
 
+    private enum Defaults {
+        static let resolution = "1920x1200"
+        static let refreshRate = 60
+        static let hiDPI = false
+        static let bitrate = 1000
+        static let quality = "ultralow"
+        static let gamingBoost = false
+        static let port: UInt16 = 54321
+        static let rotation = 0
+        static let showAllResolutions = false
+        static let customWidth = 1920
+        static let customHeight = 1200
+        static let touchEnabled = true
+        static let connectionMode: ConnectionMode = .usb
+        static let autoStartStreamingOnLaunch = false
+        static let startupMode: ConnectionMode = .usb
+    }
+
     @Published var resolution: String {
         didSet { save("resolution", resolution) }
     }
@@ -1188,25 +1235,26 @@ class DisplaySettings: ObservableObject {
     var onToggleServer: (() -> Void)?
 
     init() {
-        self.resolution = defaults.string(forKey: keyPrefix + "resolution") ?? "1920x1200"
-        self.refreshRate = defaults.object(forKey: keyPrefix + "refreshRate") as? Int ?? 60  // Default: 60 — balanced for most tablets. 120 may saturate high-res panel pipelines.
-        self.hiDPI = defaults.bool(forKey: keyPrefix + "hiDPI")
-        self.bitrate = defaults.object(forKey: keyPrefix + "bitrate") as? Int ?? 1000  // Default: 1000 Mbps
-        self.quality = defaults.string(forKey: keyPrefix + "quality") ?? "ultralow"  // Default: fastest encoding
-        self.gamingBoost = defaults.bool(forKey: keyPrefix + "gamingBoost")
+        self.resolution = defaults.string(forKey: keyPrefix + "resolution") ?? Defaults.resolution
+        self.refreshRate = defaults.object(forKey: keyPrefix + "refreshRate") as? Int ?? Defaults.refreshRate
+        self.hiDPI = defaults.object(forKey: keyPrefix + "hiDPI") as? Bool ?? Defaults.hiDPI
+        self.bitrate = defaults.object(forKey: keyPrefix + "bitrate") as? Int ?? Defaults.bitrate
+        self.quality = defaults.string(forKey: keyPrefix + "quality") ?? Defaults.quality
+        self.gamingBoost = defaults.object(forKey: keyPrefix + "gamingBoost") as? Bool ?? Defaults.gamingBoost
         // Default port 54321 (was 8888 in <=0.7.1; 8888 collides with jupyter/splunk/HP printers).
         // Existing users keep their saved value.
-        self.port = UInt16(defaults.object(forKey: keyPrefix + "port") as? Int ?? 54321)
-        self.rotation = defaults.object(forKey: keyPrefix + "rotation") as? Int ?? 0
-        self.showAllResolutions = defaults.bool(forKey: keyPrefix + "showAllResolutions")
-        self.customWidth = defaults.object(forKey: keyPrefix + "customWidth") as? Int ?? 1920
-        self.customHeight = defaults.object(forKey: keyPrefix + "customHeight") as? Int ?? 1200
-        self.touchEnabled = defaults.object(forKey: keyPrefix + "touchEnabled") as? Bool ?? true
-        let modeRaw = defaults.string(forKey: keyPrefix + "connectionMode") ?? ConnectionMode.usb.rawValue
-        self.connectionMode = ConnectionMode(rawValue: modeRaw) ?? .usb
-        self.autoStartStreamingOnLaunch = defaults.object(forKey: keyPrefix + "autoStartStreamingOnLaunch") as? Bool ?? false
+        self.port = UInt16(defaults.object(forKey: keyPrefix + "port") as? Int ?? Int(Defaults.port))
+        self.rotation = defaults.object(forKey: keyPrefix + "rotation") as? Int ?? Defaults.rotation
+        self.showAllResolutions = defaults.object(forKey: keyPrefix + "showAllResolutions") as? Bool ?? Defaults.showAllResolutions
+        self.customWidth = defaults.object(forKey: keyPrefix + "customWidth") as? Int ?? Defaults.customWidth
+        self.customHeight = defaults.object(forKey: keyPrefix + "customHeight") as? Int ?? Defaults.customHeight
+        self.touchEnabled = defaults.object(forKey: keyPrefix + "touchEnabled") as? Bool ?? Defaults.touchEnabled
+        let modeRaw = defaults.string(forKey: keyPrefix + "connectionMode") ?? Defaults.connectionMode.rawValue
+        self.connectionMode = ConnectionMode(rawValue: modeRaw) ?? Defaults.connectionMode
+        self.autoStartStreamingOnLaunch = defaults.object(forKey: keyPrefix + "autoStartStreamingOnLaunch") as? Bool ?? Defaults.autoStartStreamingOnLaunch
+        // Preserve pre-startupMode installs by inheriting their saved connection mode.
         let startupRaw = defaults.string(forKey: keyPrefix + "startupMode") ?? modeRaw
-        self.startupMode = ConnectionMode(rawValue: startupRaw) ?? .usb
+        self.startupMode = ConnectionMode(rawValue: startupRaw) ?? Defaults.startupMode
 
         print("Loaded settings: \(resolution) @ \(refreshRate)Hz, bitrate=\(bitrate), quality=\(quality)")
     }
@@ -1252,7 +1300,7 @@ class DisplaySettings: ObservableObject {
     }
 
     var effectiveBitrate: Int {
-        return gamingBoost ? 1000 : bitrate
+        return gamingBoost ? 50 : bitrate
     }
 
     var effectiveQuality: String {
@@ -1260,7 +1308,7 @@ class DisplaySettings: ObservableObject {
     }
 
     var effectiveRefreshRate: Int {
-        return gamingBoost ? 120 : refreshRate
+        return refreshRate
     }
 
     func toggleServer() {
@@ -1270,25 +1318,27 @@ class DisplaySettings: ObservableObject {
     func resetToDefaults() {
         let keys = ["resolution", "refreshRate", "hiDPI", "bitrate", "quality",
                     "gamingBoost", "port", "rotation", "showAllResolutions",
-                    "customWidth", "customHeight", "touchEnabled", "autoStartStreamingOnLaunch", "startupMode"]
+                    "customWidth", "customHeight", "touchEnabled", "connectionMode",
+                    "autoStartStreamingOnLaunch", "startupMode"]
         for key in keys {
             defaults.removeObject(forKey: keyPrefix + key)
         }
 
-        resolution = "1920x1200"
-        refreshRate = 120  // Default: highest FPS
-        hiDPI = false
-        bitrate = 1000  // Default: 1000 Mbps
-        quality = "ultralow"  // Default: fastest encoding
-        gamingBoost = false
-        port = 54321
-        rotation = 0
-        showAllResolutions = false
-        customWidth = 1920
-        customHeight = 1200
-        touchEnabled = true
-        autoStartStreamingOnLaunch = false
-        startupMode = .usb
+        resolution = Defaults.resolution
+        refreshRate = Defaults.refreshRate
+        hiDPI = Defaults.hiDPI
+        bitrate = Defaults.bitrate
+        quality = Defaults.quality
+        gamingBoost = Defaults.gamingBoost
+        port = Defaults.port
+        rotation = Defaults.rotation
+        showAllResolutions = Defaults.showAllResolutions
+        customWidth = Defaults.customWidth
+        customHeight = Defaults.customHeight
+        touchEnabled = Defaults.touchEnabled
+        connectionMode = Defaults.connectionMode
+        autoStartStreamingOnLaunch = Defaults.autoStartStreamingOnLaunch
+        startupMode = Defaults.startupMode
 
         print("Settings reset to defaults")
     }
@@ -1410,7 +1460,7 @@ struct WirelessSection: View {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.orange)
-                    Text("Click Start at the top to begin listening, then scan the QR.")
+                    Text("Click Start to begin listening, then scan the QR.")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                     Spacer()
@@ -1431,7 +1481,12 @@ struct WirelessSection: View {
                             .background(Color.white)
                             .cornerRadius(8)
                     } else {
-                        Text("Generating QR…").foregroundColor(.secondary)
+                        Text(settings.listeningAddress == nil
+                            ? "No LAN address — connect this Mac and tablet to the same network."
+                            : "Unable to generate QR code.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
                     }
                     Text("Scan this QR from Side Screen Android (Wireless tab)")
                         .font(.system(size: 11))
@@ -1504,6 +1559,7 @@ struct WirelessSection: View {
                         .font(.system(size: 12, weight: .semibold))
                 }
                 .buttonStyle(.borderless)
+                .accessibilityLabel("Refresh paired devices")
                 .help("Refresh list and timestamps")
             })
         }
@@ -1516,6 +1572,7 @@ struct WirelessSection: View {
         // two-parameter form requires macOS 14 and would block Ventura.
         // Deprecation is a compile-time warning only on Xcode 15+ SDKs.
         .onChange(of: settings.port) { _ in refreshQR() }
+        .onChange(of: settings.listeningAddress) { _ in refreshQR() }
         .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { now in
             nowTick = now
             refreshPaired()
@@ -1534,8 +1591,11 @@ struct WirelessSection: View {
     }
 
     private func refreshQR() {
+        guard let host = settings.listeningAddress else {
+            qrImage = nil
+            return
+        }
         let token = WirelessAuth.loadOrCreate()
-        let host = LANAddressResolver.primaryIPv4() ?? "0.0.0.0"
         let name = Host.current().localizedName ?? "Mac"
         let url = PairingURL.build(host: host, port: settings.port, token: token, name: name)
         qrImage = QRRenderer.render(url: url, size: 180)
