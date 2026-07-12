@@ -3,6 +3,104 @@ import Foundation
 import SystemConfiguration
 
 enum StatusDetector {
+    enum ADBStatus: Equatable, Sendable {
+        case checking
+        case missing
+        case noDevice
+        case unauthorized
+        case offline
+        case multipleDevices
+        case ready
+        case reverseMissing
+        case commandError(exitCode: Int32?, message: String)
+    }
+
+    /// Probe the complete USB/ADB path. `CommandResult.output` contains both
+    /// stdout and stderr, so non-zero exits can be classified by diagnostics.
+    static func adbStatus(port: Int) -> ADBStatus {
+        guard adbExecutablePath() != nil else {
+            return .missing
+        }
+
+        guard let devicesResult = runADB(arguments: ["devices"]) else {
+            return .commandError(
+                exitCode: nil,
+                message: "`adb devices` timed out or could not be started."
+            )
+        }
+        guard devicesResult.terminationStatus == 0 else {
+            return classifyADBFailure(devicesResult, command: "adb devices")
+        }
+
+        let deviceStates = devicesResult.output
+            .split(separator: "\n")
+            .compactMap { line -> String? in
+                guard line.contains("\t") else { return nil }
+                let fields = line.split(whereSeparator: { $0 == " " || $0 == "\t" })
+                guard fields.count >= 2 else { return nil }
+                return String(fields[1]).lowercased()
+            }
+
+        if deviceStates.count > 1 {
+            return .multipleDevices
+        }
+        guard let deviceState = deviceStates.first else {
+            return .noDevice
+        }
+
+        switch deviceState {
+        case "unauthorized":
+            return .unauthorized
+        case "offline":
+            return .offline
+        case "device":
+            break
+        default:
+            return .commandError(
+                exitCode: 0,
+                message: "Unexpected ADB device state: \(deviceState)"
+            )
+        }
+
+        guard let reverseResult = runADB(arguments: ["reverse", "--list"]) else {
+            return .commandError(
+                exitCode: nil,
+                message: "`adb reverse --list` timed out or could not be started."
+            )
+        }
+        guard reverseResult.terminationStatus == 0 else {
+            return classifyADBFailure(reverseResult, command: "adb reverse --list")
+        }
+
+        let mapping = "tcp:\(port) tcp:\(port)"
+        return reverseResult.output.contains(mapping) ? .ready : .reverseMissing
+    }
+
+    private static func classifyADBFailure(
+        _ result: CommandResult,
+        command: String
+    ) -> ADBStatus {
+        let normalized = result.output.lowercased()
+        if normalized.contains("more than one device") || normalized.contains("multiple devices") {
+            return .multipleDevices
+        }
+        if normalized.contains("unauthorized") || normalized.contains("no permissions") {
+            return .unauthorized
+        }
+        if normalized.contains("offline") {
+            return .offline
+        }
+        if normalized.contains("no devices/emulators found") || normalized.contains("device not found") {
+            return .noDevice
+        }
+
+        let detail = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        return .commandError(
+            exitCode: result.terminationStatus,
+            message: detail.isEmpty ? "`\(command)` failed." : detail
+        )
+    }
+
     static func adbInstalled() -> Bool {
         return adbExecutablePath() != nil
     }

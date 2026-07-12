@@ -214,13 +214,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let mode = settings.connectionMode
         let port = Int(settings.port)
         Task.detached(priority: .utility) { [weak self] in
-            let adbInstalled = StatusDetector.adbInstalled()
-            let devices = mode == .usb && adbInstalled
-                ? StatusDetector.usbDevices()
-                : []
-            let reverseOK = mode == .usb && !devices.isEmpty
-                ? StatusDetector.adbReverseConfigured(port: port)
-                : false
+            let adbStatus: StatusDetector.ADBStatus? = mode == .usb
+                ? StatusDetector.adbStatus(port: port)
+                : nil
             await MainActor.run { [weak self] in
                 guard let self = self else { return }
                 
@@ -231,10 +227,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     return
                 }
 
-                let isConnected = !devices.isEmpty
-                self.settings.adbInstalled = adbInstalled
+                guard let adbStatus = adbStatus else { return }
+
+                let isConnected = adbStatus == .ready || adbStatus == .reverseMissing
+                self.settings.adbStatus = adbStatus
+                // Keep the legacy booleans coherent for any existing callers.
+                self.settings.adbInstalled = adbStatus != .missing
                 self.settings.usbDeviceConnected = isConnected
-                self.settings.adbReverseConfigured = reverseOK
+                self.settings.adbReverseConfigured = adbStatus == .ready
 
                 // Self-healing USB bridge (level-triggered, not edge-triggered):
                 // whenever we are in USB mode with the server running and a
@@ -245,7 +245,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 if mode == .usb
                     && isConnected
                     && self.settings.isRunning
-                    && !reverseOK {
+                    && adbStatus == .reverseMissing {
                     debugLog("🔌 USB bridge missing while running — (re)establishing adb reverse")
                     Task { await self.setupADBReverse() }
                 }
@@ -331,7 +331,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 Task { @MainActor in
                     // Reject a result captured before this mode transition.
                     self.adbStatusGeneration &+= 1
-                    if mode == .wireless {
+                    if mode == .usb {
+                        self.settings.adbStatus = .checking
+                    } else {
                         self.settings.usbDeviceConnected = false
                         self.settings.adbReverseConfigured = false
                     }

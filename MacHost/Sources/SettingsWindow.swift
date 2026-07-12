@@ -81,9 +81,17 @@ struct SettingsView: View {
     // and .number formatting injected locale grouping separators ("1,200").
     @State private var customWidthText = ""
     @State private var customHeightText = ""
+    // String draft updates on every keystroke; formatted numeric fields commit late.
+    @State private var portDraft = ""
     /// Non-published while the slider is moving; committed once on drag end.
     @State private var bitrateDraft: Double?
     @State private var daemonEnabled = false
+
+    private var portDraftValue: UInt16? {
+        let text = portDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let value = Int(text), (1...65535).contains(value) else { return nil }
+        return UInt16(value)
+    }
 
     private var customWidthValue: Int? { Int(customWidthText.trimmingCharacters(in: .whitespaces)) }
     private var customHeightValue: Int? { Int(customHeightText.trimmingCharacters(in: .whitespaces)) }
@@ -144,6 +152,7 @@ struct SettingsView: View {
                         Button("Cancel", role: .cancel) { }
                         Button("Reset", role: .destructive) {
                             settings.resetToDefaults()
+                            portDraft = String(settings.port)
                             customWidthText = String(settings.customWidth)
                             customHeightText = String(settings.customHeight)
                             if let window = NSApp.windows.first(where: { $0.title == "Side Screen" }) {
@@ -457,21 +466,31 @@ struct SettingsView: View {
                                         .font(.system(size: 11))
                                         .foregroundColor(.secondary)
                                     Spacer()
-                                    TextField("Port", value: $settings.port, format: .number)
+                                    TextField("Port", text: $portDraft)
                                         .textFieldStyle(.roundedBorder)
                                         .frame(width: 80)
                                         .disabled(settings.isRunning)
+                                        .onAppear { portDraft = String(settings.port) }
+                                        .onSubmit {
+                                            guard let port = portDraftValue else { return }
+                                            settings.port = port
+                                            portDraft = String(port)
+                                        }
                                 }
 
                                 if settings.isRunning {
                                     Text("Stop server to change port")
                                         .font(.system(size: 10))
                                         .foregroundColor(.orange)
+                                } else if portDraftValue == nil {
+                                    Text("Enter a whole-number port from 1 to 65535.")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.orange)
                                 } else if settings.connectionMode == .wireless {
                                     Text("Changing the port invalidates existing pairings — re-scan the QR on each tablet.")
                                         .font(.system(size: 10))
                                         .foregroundColor(.secondary)
-                                } else if settings.port != 54321 {
+                                } else if let port = portDraftValue, port != 54321 {
                                     Text("Custom port set — Android client must use the same port.")
                                         .font(.system(size: 10))
                                         .foregroundColor(.secondary)
@@ -740,12 +759,14 @@ struct SettingsView: View {
                                 // Mode-aware contextual rows
                                 Divider().padding(.vertical, 4)
                                 if settings.connectionMode == .usb {
-                                    StatusRow(title: "ADB installed",
-                                              status: settings.adbInstalled ? "Installed" : "Missing",
-                                              color: settings.adbInstalled ? .green : .red,
-                                              hint: "USB mode tunnels the TCP stream through the cable using `adb reverse`. Requires the `adb` command on the Mac. Searched in order: PATH (`which adb`), ~/.local/bin/adb, /opt/homebrew/bin/adb, /usr/local/bin/adb, and ~/Library/Android/sdk/platform-tools/adb.")
-                                    if !settings.adbInstalled {
-                                        Text("brew install android-platform-tools")
+                                    StatusRow(
+                                        title: "USB / ADB",
+                                        status: settings.adbStatus.statusText,
+                                        color: settings.adbStatus.statusColor,
+                                        hint: settings.adbStatus.statusHint(port: settings.port)
+                                    )
+                                    if settings.adbStatus == .missing {
+                                        Text("Install Android Platform Tools; ~/.local/bin/adb is supported.")
                                             .font(.system(size: 10, design: .monospaced))
                                             .padding(6)
                                             .background(Color.black.opacity(0.08))
@@ -753,14 +774,6 @@ struct SettingsView: View {
                                             .frame(maxWidth: .infinity, alignment: .leading)
                                             .textSelection(.enabled)
                                     }
-                                    StatusRow(title: "ADB reverse",
-                                              status: settings.adbReverseConfigured ? "OK" : "Pending",
-                                              color: settings.adbReverseConfigured ? .green : .orange,
-                                              hint: "Whether `adb reverse tcp:\(settings.port) tcp:\(settings.port)` is currently configured. The Mac app sets this up automatically when you click Start. Goes green within ~2 seconds after the tablet is plugged in and authorized.")
-                                    StatusRow(title: "USB device",
-                                              status: settings.usbDeviceConnected ? "Detected" : "Not detected",
-                                              color: settings.usbDeviceConnected ? .green : .red,
-                                              hint: "An Android device authorized for ADB and visible to your Mac. Plug in via USB-C and tap Allow on the device's USB debugging prompt.")
                                 } else {
                                     StatusRow(title: "WiFi",
                                               status: settings.wifiConnected ? "Connected" : "Disconnected",
@@ -876,6 +889,11 @@ struct SettingsView: View {
                     HStack(spacing: 12) {
                         Button(action: {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                if !settings.isRunning {
+                                    guard let port = portDraftValue else { return }
+                                    settings.port = port
+                                    portDraft = String(port)
+                                }
                                 settings.toggleServer()
                             }
                         }) {
@@ -890,7 +908,11 @@ struct SettingsView: View {
                         .buttonStyle(.borderedProminent)
                         .tint(settings.isStopping ? .orange : (settings.isRunning ? .red : .accentColor))
                         .controlSize(.large)
-                        .disabled(settings.isStopping || (!settings.hasScreenRecordingPermission && !settings.isRunning))
+                        .disabled(
+                            settings.isStopping
+                            || (!settings.hasScreenRecordingPermission && !settings.isRunning)
+                            || (!settings.isRunning && portDraftValue == nil)
+                        )
 
                         if settings.isRunning {
                             HStack(spacing: 6) {
@@ -984,6 +1006,69 @@ struct SettingsView: View {
             NSApp.terminate(nil)
         } catch {
             print("❌ Failed to restart: \(error)")
+        }
+    }
+}
+
+private extension StatusDetector.ADBStatus {
+    var statusText: String {
+        switch self {
+        case .checking:
+            return "Checking…"
+        case .missing:
+            return "ADB missing"
+        case .noDevice:
+            return "No device"
+        case .unauthorized:
+            return "Authorization required"
+        case .offline:
+            return "Device offline"
+        case .multipleDevices:
+            return "Multiple devices"
+        case .ready:
+            return "Ready"
+        case .reverseMissing:
+            return "Reverse tunnel missing"
+        case .commandError(_, _):
+            return "ADB command failed"
+        }
+    }
+
+    var statusColor: Color {
+        switch self {
+        case .checking:
+            return .secondary
+        case .ready:
+            return .green
+        case .reverseMissing:
+            return .orange
+        case .missing, .noDevice, .unauthorized, .offline, .multipleDevices, .commandError(_, _):
+            return .red
+        }
+    }
+
+    func statusHint(port: UInt16) -> String {
+        switch self {
+        case .checking:
+            return "Checking the ADB installation, USB device state, and reverse tunnel."
+        case .missing:
+            return "Install Android Platform Tools and place `adb` in ~/.local/bin or another searched executable path."
+        case .noDevice:
+            return "Connect and unlock one Android device, enable USB debugging, and use a data-capable USB cable."
+        case .unauthorized:
+            return "Unlock the device and tap Allow on the USB debugging prompt. If no prompt appears, revoke USB debugging authorizations and reconnect."
+        case .offline:
+            return "Reconnect the USB cable. If the device stays offline, run `adb kill-server`, then reconnect and retry."
+        case .multipleDevices:
+            return "Disconnect extra Android devices or emulators. Side Screen currently requires exactly one ADB target."
+        case .ready:
+            return "One authorized device is available and `adb reverse tcp:\(port) tcp:\(port)` is configured."
+        case .reverseMissing:
+            return "Start or keep the server running so Side Screen can retry automatically. Manual fallback: `adb reverse tcp:\(port) tcp:\(port)`."
+        case .commandError(let exitCode, let message):
+            let code = exitCode.map { " (exit \($0))" } ?? ""
+            let detail = message.trimmingCharacters(in: .whitespacesAndNewlines)
+            return "ADB command failed\(code): \(detail) Run `adb kill-server`, reconnect the device, then retry."
         }
     }
 }
@@ -1222,6 +1307,7 @@ class DisplaySettings: ObservableObject {
     @Published var currentWirelessDevice: String?
     @Published var hasScreenRecordingPermission = false
     @Published var hasAccessibilityPermission = false
+    @Published var adbStatus: StatusDetector.ADBStatus = .checking
     @Published var adbInstalled = false
     @Published var adbReverseConfigured = false
     @Published var usbDeviceConnected = false
