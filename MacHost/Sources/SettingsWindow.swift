@@ -427,6 +427,10 @@ struct SettingsView: View {
                                     Spacer()
                                     Toggle("", isOn: $settings.touchEnabled)
                                         .labelsHidden()
+                                        .onChange(of: settings.touchEnabled) { enabled in
+                                            guard enabled else { return }
+                                            (NSApp.delegate as? AppDelegate)?.ensureAccessibilityPermissionForTouch()
+                                        }
                                 }
 
                                 if !settings.touchEnabled {
@@ -548,13 +552,13 @@ struct SettingsView: View {
                         }
 
                         // Gaming Boost
-                        FrostedGroupBox(title: "Gaming Boost", icon: settings.gamingBoost ? "bolt.fill" : "bolt") {
+                        FrostedGroupBox(title: "Low-Latency Mode", icon: settings.gamingBoost ? "bolt.fill" : "bolt") {
                             VStack(alignment: .leading, spacing: 16) {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text("Enable Gaming Mode")
+                                        Text("Enable Low-Latency Mode")
                                             .font(.system(size: 12, weight: .medium))
-                                        Text("Optimized for competitive gaming")
+                                        Text("Speed-prioritized encoding for lowest latency")
                                             .font(.system(size: 10))
                                             .foregroundColor(.secondary)
                                     }
@@ -569,14 +573,14 @@ struct SettingsView: View {
                                             Image(systemName: "checkmark.circle.fill")
                                                 .foregroundColor(.green)
                                                 .font(.system(size: 10))
-                                            Text("High bitrate (1000 Mbps)")
+                                            Text("50 Mbps target (overrides bitrate slider)")
                                                 .font(.system(size: 11))
                                         }
                                         HStack(spacing: 4) {
                                             Image(systemName: "checkmark.circle.fill")
                                                 .foregroundColor(.green)
                                                 .font(.system(size: 10))
-                                            Text("120 Hz refresh rate")
+                                            Text("Image quality may be reduced for speed")
                                                 .font(.system(size: 11))
                                         }
                                         HStack(spacing: 4) {
@@ -697,9 +701,9 @@ struct SettingsView: View {
                                     hint: "macOS privacy permission required to capture the virtual display. Grant in System Settings → Privacy & Security → Screen Recording."
                                 )
                                 StatusRow(title: "Accessibility",
-                                          status: settings.hasAccessibilityPermission ? "Granted" : "Optional",
-                                          color: settings.hasAccessibilityPermission ? .green : .orange,
-                                          hint: "Optional permission. Required only if you want touch/tap input from the tablet to control the Mac. Streaming works without it.")
+                                          status: settings.hasAccessibilityPermission ? "Granted" : (settings.touchEnabled ? "Required for touch" : "Optional"),
+                                          color: settings.hasAccessibilityPermission ? .green : (settings.touchEnabled ? .orange : .secondary),
+                                          hint: "Required when touch input is on. Streaming remains available without it.")
                                 if settings.isRunning {
                                     StatusRow(title: "Capture Method",
                                               status: settings.captureMethod,
@@ -736,10 +740,14 @@ struct SettingsView: View {
                                               status: settings.wifiConnected ? "Connected" : "Disconnected",
                                               color: settings.wifiConnected ? .green : .red,
                                               hint: "Whether the Mac currently has a working internet route. Wireless mode requires the Mac to be on a WiFi (or Ethernet) network — the same network the tablet is on.")
-                                    StatusRow(title: "Listening on",
-                                              status: settings.listeningAddress.map { "\($0):\(settings.port)" } ?? "—",
-                                              color: settings.listeningAddress != nil ? .green : .secondary,
-                                              hint: "The LAN address the tablet must reach. The QR code embeds this exact host:port — if it changes (e.g. you switch WiFi), re-scan the new QR on the tablet.")
+                                    StatusRow(title: "Server",
+                                              status: !settings.isRunning
+                                                  ? "Server stopped"
+                                                  : (settings.clientConnected ? "Connected" : "Waiting for tablet"),
+                                              color: !settings.isRunning
+                                                  ? .secondary
+                                                  : (settings.clientConnected ? .green : .orange),
+                                              hint: "Shows whether the server is stopped, waiting for a tablet, or connected. A LAN address alone does not mean the server is listening.")
                                 }
 
                                 if !settings.hasScreenRecordingPermission {
@@ -775,23 +783,23 @@ struct SettingsView: View {
                                     .cornerRadius(8)
                                 }
 
-                                if !settings.hasAccessibilityPermission {
+                                if settings.touchEnabled && !settings.hasAccessibilityPermission {
                                     VStack(alignment: .leading, spacing: 8) {
                                         HStack(spacing: 6) {
                                             Image(systemName: "hand.tap.fill")
                                                 .foregroundColor(.blue)
-                                            Text("Enable Touch Control")
+                                            Text("On — needs Accessibility permission")
                                                 .font(.system(size: 12, weight: .medium))
                                         }
-                                        Text("Control your Mac from your tablet.")
+                                        Text("Grant permission so tablet touch can control your Mac.")
                                             .font(.system(size: 11))
                                             .foregroundColor(.secondary)
                                         Button(action: {
-                                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                                            (NSApp.delegate as? AppDelegate)?.promptAccessibilityPermission()
                                         }) {
                                             HStack {
                                                 Image(systemName: "gear")
-                                                Text("Open Settings")
+                                                Text("Grant Permission")
                                             }
                                             .frame(maxWidth: .infinity)
                                         }
@@ -1429,9 +1437,13 @@ struct WirelessSection: View {
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
-                    Text(LANAddressResolver.primaryIPv4().map { "Listening: \($0):\(settings.port)" } ?? "WiFi disconnected — no LAN address")
+                    Text(!settings.isRunning
+                        ? "Server stopped"
+                        : (settings.clientConnected
+                            ? (settings.listeningAddress.map { "Connected: \($0):\(settings.port)" } ?? "Connected")
+                            : (settings.listeningAddress.map { "Waiting for tablet: \($0):\(settings.port)" } ?? "Waiting for tablet — no LAN address")))
                         .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(settings.isRunning && settings.clientConnected ? .green : .secondary)
                 }
                 .frame(maxWidth: .infinity)
             }

@@ -110,7 +110,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Check permissions once, then reuse the result for declarative auto-start.
-        // The check is passive so headless launches never receive a system prompt.
+        // If touch input was persisted on, trigger the Accessibility authorization flow.
         let shouldAutoStart = settings.autoStartStreamingOnLaunch
         if shouldAutoStart {
             settings.connectionMode = settings.startupMode
@@ -119,6 +119,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             do {
                 defer { self.initialPermissionCheckPending = false }
                 await self.checkPermissions()
+                self.ensureAccessibilityPermissionForTouch()
             }
 
             guard shouldAutoStart else { return }
@@ -402,6 +403,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             print("✅ Accessibility permission granted")
         } else {
             print("⚠️  Accessibility permission not granted - touch control will not work")
+        }
+    }
+
+    @MainActor
+    func ensureAccessibilityPermissionForTouch() {
+        guard settings.touchEnabled else { return }
+
+        if AXIsProcessTrusted() {
+            settings.hasAccessibilityPermission = true
+        } else {
+            promptAccessibilityPermission()
         }
     }
 
