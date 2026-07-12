@@ -60,6 +60,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var cancellables = Set<AnyCancellable>()
     private var permissionCheckTimer: Timer?
     private var statusRefreshTimer: Timer?
+    /// Debounce for wake-triggered capture restarts (screensDidWake + didWake can both fire).
+    private var lastWakeRestart = Date.distantPast
     var isDaemonMode = false // Deprecated: keeping variable for ABI compatibility but unused
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -73,6 +75,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Setup settings observers
         setupSettingsObservers()
+
+        // Restore the tablet cursor after the display wakes from sleep
+        setupDisplayWakeObservers()
 
         // Check permissions
         Task {
@@ -123,6 +128,41 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             showSettings()
         }
         return true
+    }
+
+    // MARK: - Display wake handling
+
+    /// After the display idle-sleeps and wakes, ScreenCaptureKit stops compositing
+    /// the cursor onto the virtual display while the desktop is static, and the idle
+    /// keepalive masks it — so the tablet shows a live picture with no cursor until a
+    /// real content change. Rebuild the capture on wake to restore it. (The
+    /// display-sleep assertion normally prevents idle-sleep entirely; this covers
+    /// manual/forced sleep and display reconnects.)
+    private func setupDisplayWakeObservers() {
+        let center = NSWorkspace.shared.notificationCenter
+        // Screens woke from display-sleep — the common case (system sleep is usually
+        // prevented, only the screen sleeps).
+        center.addObserver(forName: NSWorkspace.screensDidWakeNotification,
+                           object: nil, queue: .main) { [weak self] _ in
+            self?.handleDisplayWake(reason: "screensDidWake")
+        }
+        // System woke from full sleep — belt-and-suspenders.
+        center.addObserver(forName: NSWorkspace.didWakeNotification,
+                           object: nil, queue: .main) { [weak self] _ in
+            self?.handleDisplayWake(reason: "didWake")
+        }
+    }
+
+    private func handleDisplayWake(reason: String) {
+        guard settings.isRunning, let capture = screenCapture else { return }
+        let now = Date()
+        guard now.timeIntervalSince(lastWakeRestart) > 2.0 else {
+            debugLog("Display wake (\(reason)) ignored — restart fired \(String(format: "%.1f", now.timeIntervalSince(lastWakeRestart)))s ago")
+            return
+        }
+        lastWakeRestart = now
+        debugLog("Display wake (\(reason)) while streaming — hard-restarting capture to restore cursor")
+        capture.hardRestart(reason: reason)
     }
 
     @MainActor
@@ -634,6 +674,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             print("✅ Server started on port \(settings.port)")
         } catch {
             print("❌ Failed to start: \(error)")
+            // Release anything a partial start acquired (incl. the display-sleep
+            // assertion) so a failed bring-up can't leak it until app exit. Codex-flagged.
+            screenCapture?.stopStreaming()
             await MainActor.run {
                 settings.isRunning = false
                 settings.displayCreated = false

@@ -5,6 +5,7 @@ import CoreMedia
 import CoreGraphics
 import CoreVideo
 import IOSurface
+import IOKit.pwr_mgt
 import os
 
 // MARK: - SCStreamDelegate
@@ -49,9 +50,19 @@ class ScreenCapture {
     // Main-thread-only state
     private var frameMonitorTimer: DispatchSourceTimer?
     private var restartAttempted = false
+    /// True between startStreaming and stopStreaming. Guards wake-triggered restarts
+    /// from re-enabling capture after a stop.
+    private var isStreaming = false
+    /// Bumped on every stopStreaming and every hardRestart so a superseded in-flight
+    /// restart Task aborts instead of resurrecting capture after a stop.
+    private var streamGeneration: UInt64 = 0
 
     // CGDisplayStream fallback
     private var cgDisplayStream: CGDisplayStream?
+
+    // Display-sleep assertion held while streaming (see createDisplaySleepAssertion)
+    private var displaySleepAssertionID: IOPMAssertionID = IOPMAssertionID(0)
+    private var hasDisplaySleepAssertion = false
 
     // Streaming parameters (saved for restart)
     private weak var currentServer: StreamingServer?
@@ -324,6 +335,12 @@ class ScreenCapture {
         currentGamingBoost = gamingBoost
         currentFrameRate = frameRate
 
+        isStreaming = true
+
+        // Keep the display awake for the whole streaming session so the virtual
+        // display never idle-sleeps (the sleep/wake cycle is what strands the cursor).
+        createDisplaySleepAssertion()
+
         let (width, height) = encodeSize(for: codec)
 
         encoder = VideoEncoder(width: width, height: height, codec: codec, bitrateMbps: bitrateMbps, quality: quality, gamingBoost: gamingBoost, frameRate: frameRate)
@@ -459,6 +476,108 @@ class ScreenCapture {
         }
     }
 
+    // MARK: - Hard restart (display wake / screen-parameter change)
+
+    /// Full SCStream rebuild after the display wakes from sleep or the screen
+    /// configuration changes. After a display-sleep/wake cycle, ScreenCaptureKit
+    /// delivers no frames for cursor-only movement over the (idle) virtual display,
+    /// so the idle keepalive re-sends a stale, cursorless frame indefinitely and the
+    /// stall-based restart never fires (the keepalive keeps it satisfied). A wake
+    /// must therefore force a fresh capture. No-ops if capture was never set up.
+    func hardRestart(reason: String) {
+        guard virtualDisplayID != nil, isStreaming else { return }
+        streamGeneration &+= 1
+        let gen = streamGeneration
+        debugLog("hardRestart(\(reason), gen \(gen)) — rebuilding SCStream from scratch")
+        stopFrameMonitor()
+
+        // Return to SCStream if we had fallen back to CGDisplayStream (which
+        // renders no cursor); clear the latch so setupStream runs cleanly.
+        let wasFallback = stateLock.withLock { state -> Bool in
+            let f = state.fallbackActive
+            state.fallbackActive = false
+            return f
+        }
+        if wasFallback {
+            cgDisplayStream?.stop()
+            cgDisplayStream = nil
+        }
+        restartAttempted = false
+        stateLock.withLock { state in
+            state.hasReceivedFirstFrame = false
+            state.lastFrameTime = nil
+        }
+
+        Task {
+            try? await stream?.stopCapture()
+            // A stopStreaming() or a newer hardRestart superseded this one — do NOT
+            // bring capture back up (would resurrect a stopped stream). Codex-flagged.
+            guard isStreaming, gen == streamGeneration else {
+                debugLog("hardRestart(gen \(gen)) superseded before rebuild — aborting")
+                return
+            }
+            stream = nil
+            streamOutput = nil
+            streamDelegate = nil
+            display = nil
+
+            do {
+                try await setupDisplay()
+                try await setupStream()
+                // Re-check after the awaits above in case a stop raced in.
+                guard isStreaming, gen == streamGeneration else {
+                    debugLog("hardRestart(gen \(gen)) superseded during setup — not starting capture")
+                    try? await stream?.stopCapture()
+                    stream = nil
+                    return
+                }
+                configureFrameHandler(label: "wake-restart")
+                try await stream?.startCapture()
+                debugLog("hardRestart complete — SCStream live, frame monitor rearmed")
+                startFrameMonitor()
+            } catch {
+                debugLog("hardRestart failed: \(error) — falling back to CGDisplayStream")
+                if isStreaming, gen == streamGeneration {
+                    attemptFallbackCapture()
+                }
+            }
+        }
+    }
+
+    // MARK: - Display-sleep assertion
+
+    /// Keep the display awake while streaming. The captured surface is a virtual
+    /// display; when the physical display idle-sleeps (pmset displaysleep), the
+    /// virtual display stops producing frames and the cursor overlay is lost on
+    /// wake. Holding kIOPMAssertionTypePreventUserIdleDisplaySleep avoids the whole
+    /// sleep/wake transition. Released in stopStreaming.
+    private func createDisplaySleepAssertion() {
+        guard !hasDisplaySleepAssertion else { return }
+        let reason = "Side Screen is streaming to an external tablet display" as CFString
+        let result = IOPMAssertionCreateWithName(
+            kIOPMAssertionTypePreventUserIdleDisplaySleep as CFString,
+            IOPMAssertionLevel(kIOPMAssertionLevelOn),
+            reason,
+            &displaySleepAssertionID)
+        if result == kIOReturnSuccess {
+            hasDisplaySleepAssertion = true
+            debugLog("Display-sleep assertion held — display stays awake while streaming")
+        } else {
+            debugLog("Failed to create display-sleep assertion: IOReturn \(result)")
+        }
+    }
+
+    private func releaseDisplaySleepAssertion() {
+        guard hasDisplaySleepAssertion else { return }
+        let result = IOPMAssertionRelease(displaySleepAssertionID)
+        if result != kIOReturnSuccess {
+            debugLog("IOPMAssertionRelease failed: IOReturn \(result)")
+        }
+        hasDisplaySleepAssertion = false
+        displaySleepAssertionID = IOPMAssertionID(0)
+        debugLog("Display-sleep assertion released")
+    }
+
     // MARK: - CGDisplayStream fallback
 
     private func attemptFallbackCapture() {
@@ -501,7 +620,7 @@ class ScreenCapture {
             outputWidth: width,
             outputHeight: height,
             pixelFormat: pixelFormat,
-            properties: nil,
+            properties: [kCGDisplayStreamShowCursor: true] as [CFString: Any] as CFDictionary,
             queue: queue,
             handler: { [weak self] _, _, frameSurface, _ in
                 guard let self = self, let surface = frameSurface else { return }
@@ -576,8 +695,15 @@ class ScreenCapture {
     // MARK: - Stop streaming
 
     func stopStreaming() {
+        // Invalidate any in-flight wake restart so it cannot resurrect capture.
+        isStreaming = false
+        streamGeneration &+= 1
+
         // Cancel frame flow monitor
         stopFrameMonitor()
+
+        // Let the display idle-sleep normally again once we stop streaming.
+        releaseDisplaySleepAssertion()
 
         // Stop SCStream
         Task {
