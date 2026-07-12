@@ -880,17 +880,17 @@ struct SettingsView: View {
                             }
                         }) {
                             HStack(spacing: 6) {
-                                Image(systemName: settings.isRunning ? "stop.fill" : "play.fill")
+                                Image(systemName: settings.isStopping ? "hourglass" : (settings.isRunning ? "stop.fill" : "play.fill"))
                                     .font(.system(size: 12))
-                                Text(settings.isRunning ? "Stop" : "Start")
+                                Text(settings.isStopping ? "Stopping…" : (settings.isRunning ? "Stop" : "Start"))
                                     .font(.system(size: 13, weight: .medium))
                             }
                             .frame(width: 90)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(settings.isRunning ? .red : .accentColor)
+                        .tint(settings.isStopping ? .orange : (settings.isRunning ? .red : .accentColor))
                         .controlSize(.large)
-                        .disabled(!settings.hasScreenRecordingPermission)
+                        .disabled(settings.isStopping || (!settings.hasScreenRecordingPermission && !settings.isRunning))
 
                         if settings.isRunning {
                             HStack(spacing: 6) {
@@ -902,7 +902,7 @@ struct SettingsView: View {
                                             .stroke(Color.green.opacity(0.3), lineWidth: 2)
                                             .scaleEffect(1.5)
                                     }
-                                Text("Running on port \(settings.port)")
+                                Text(settings.isStopping ? "Stopping server…" : "Running on port \(settings.port)")
                                     .font(.system(size: 12))
                             }
                             .padding(.horizontal, 12)
@@ -1228,6 +1228,7 @@ class DisplaySettings: ObservableObject {
     @Published var wifiConnected = false
     @Published var listeningAddress: String?
     @Published var isRunning = false
+    @Published var isStopping = false
     @Published var currentFPS: Double = 0
     @Published var currentBitrate: Double = 0
     @Published var captureMethod: String = "Initializing..."

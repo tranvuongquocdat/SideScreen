@@ -67,6 +67,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var adbReverseSetupInFlight = false
     /// Debounce for wake-triggered capture restarts (screensDidWake + didWake can both fire).
     private var lastWakeRestart = Date.distantPast
+    /// Invalidates stale teardown completions before they can clear newer lifecycle state.
+    private var serverLifecycleGeneration: UInt64 = 0
+    /// StreamingServer.stop() performs synchronous queue drains; keep them off the UI queue.
+    private let serverTeardownQueue = DispatchQueue(label: "SideScreen.serverTeardown", qos: .userInitiated)
+    private let serverTeardownGroup = DispatchGroup()
+    private var isTerminating = false
     var isDaemonMode = false // Deprecated: keeping variable for ABI compatibility but unused
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -253,14 +259,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Disconnect any active client immediately (per spec §6 / fix #2).
         let wasRunning = settings.isRunning
         if wasRunning {
-            stopServer()
+            // Restart only after the old queues and display finish teardown.
+            stopServer(restartAfterStop: true)
         }
         if mode == .wireless {
             // Generate token if missing; the QR will reflect it.
             _ = WirelessAuth.loadOrCreate()
-        }
-        if wasRunning {
-            await startServer()
         }
     }
 
@@ -348,8 +352,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 Task { @MainActor in
                     guard self.settings.isRunning else { return }
                     debugLog("Resolution changed to \(resolution) — restarting server to rebuild virtual display")
-                    self.stopServer()
-                    await self.startServer()
+                    self.stopServer(restartAfterStop: true)
                 }
             }
             .store(in: &cancellables)
@@ -375,7 +378,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindow = SettingsWindowController(settings: settings)
 
         settings.onToggleServer = { [weak self] in
-            guard let self else { return }
+            guard let self, !self.settings.isStopping else { return }
             if self.settings.isRunning {
                 self.stopServer()
             } else {
@@ -534,6 +537,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func startServer() async {
+        guard !settings.isStopping, !isTerminating else {
+            debugLog("startServer() ignored during teardown or application termination")
+            return
+        }
         debugLog("🚀 startServer() invoked. Check permission: \(settings.hasScreenRecordingPermission)")
         guard settings.hasScreenRecordingPermission else {
             debugLog("❌ startServer aborted: Missing Screen Recording permission")
@@ -706,21 +713,75 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    func stopServer() {
-        // Save display position before destroying
-        virtualDisplayManager?.saveDisplayPosition()
+    func stopServer(restartAfterStop: Bool = false, waitForCleanup: Bool = false) {
+        if settings.isStopping {
+            if waitForCleanup {
+                serverTeardownGroup.wait()
+            }
+            return
+        }
+        guard settings.isRunning || screenCapture != nil || streamingServer != nil || virtualDisplayManager != nil else { return }
 
-        screenCapture?.stopStreaming()
-        streamingServer?.stop()
-        virtualDisplayManager?.destroyDisplay()
+        serverLifecycleGeneration &+= 1
+        let generation = serverLifecycleGeneration
+        let capture = screenCapture
+        let server = streamingServer
+        let displayManager = virtualDisplayManager
 
-        settings.isRunning = false
-        settings.displayCreated = false
-        settings.clientConnected = false
-        settings.currentFPS = 0
-        settings.currentBitrate = 0
+        if !waitForCleanup {
+            serverTeardownGroup.enter()
+        }
 
-        print("⏹️ Server stopped")
+        // Three-state model: running=true/stopping=true until teardown completes.
+        settings.isStopping = true
+
+        // Keep ScreenCapture's timer/generation mutations on the caller's UI thread.
+        displayManager?.saveDisplayPosition()
+        capture?.stopStreaming()
+
+        // Locals retain resources for background destruction; callbacks immediately
+        // stop reaching the active AppDelegate slots.
+        screenCapture = nil
+        streamingServer = nil
+        virtualDisplayManager = nil
+
+        let cleanup: () -> Void = {
+            _ = capture
+            server?.stop()
+            displayManager?.destroyDisplay()
+        }
+
+        let finishOnMain: () -> Void = { [weak self] in
+            guard let self, self.serverLifecycleGeneration == generation else { return }
+
+            self.settings.isRunning = false
+            self.settings.displayCreated = false
+            self.settings.clientConnected = false
+            self.settings.currentFPS = 0
+            self.settings.currentBitrate = 0
+            self.settings.isStopping = false
+
+            print("⏹️ Server stopped")
+
+            guard restartAfterStop, !self.isTerminating else { return }
+            Task { [weak self] in
+                await self?.startServer()
+            }
+        }
+
+        if waitForCleanup {
+            // No responsive UI to preserve during application termination.
+            cleanup()
+            finishOnMain()
+            return
+        }
+
+        let teardownGroup = serverTeardownGroup
+        serverTeardownQueue.async {
+            cleanup()
+            teardownGroup.leave()
+            DispatchQueue.main.async(execute: finishOnMain)
+        }
     }
 
     // MARK: - Gesture Properties
@@ -1119,8 +1180,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Stop momentum scrolling
         stopMomentumScroll()
 
-        // Stop server and cleanup
-        stopServer()
+        // Stop server and cleanup. Blocking is intentional during process termination.
+        isTerminating = true
+        stopServer(waitForCleanup: true)
 
         // Cancel all combine subscriptions
         cancellables.removeAll()
