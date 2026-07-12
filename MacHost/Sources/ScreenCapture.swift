@@ -447,6 +447,13 @@ class ScreenCapture {
     // MARK: - Stream restart
 
     private func restartStream() {
+        guard isStreaming else {
+            debugLog("restartStream skipped — not streaming")
+            return
+        }
+
+        streamGeneration &+= 1
+        let gen = streamGeneration
         restartAttempted = true
         stateLock.withLock { $0.hasReceivedFirstFrame = false }
 
@@ -454,6 +461,11 @@ class ScreenCapture {
             do {
                 // Stop existing stream
                 try? await stream?.stopCapture()
+                guard isStreaming, gen == streamGeneration else {
+                    debugLog("restartStream(gen \(gen)) superseded after stopCapture — aborting")
+                    return
+                }
+
                 stream = nil
                 streamOutput = nil
                 streamDelegate = nil
@@ -462,16 +474,35 @@ class ScreenCapture {
                 // Re-setup
                 try await setupDisplay()
                 try await setupStream()
+                guard isStreaming, gen == streamGeneration else {
+                    debugLog("restartStream(gen \(gen)) superseded during setup — aborting")
+                    try? await stream?.stopCapture()
+                    stream = nil
+                    return
+                }
 
                 // Re-attach encoding pipeline using shared handler
                 configureFrameHandler(label: "restart")
+                guard isStreaming, gen == streamGeneration else {
+                    debugLog("restartStream(gen \(gen)) superseded before start — aborting")
+                    return
+                }
 
                 try await stream?.startCapture()
+                guard isStreaming, gen == streamGeneration else {
+                    debugLog("restartStream(gen \(gen)) superseded after startCapture — aborting")
+                    return
+                }
+
                 debugLog("SCStream restarted — starting frame flow monitor")
                 startFrameMonitor()
             } catch {
                 debugLog("SCStream restart failed: \(error) — falling back to CGDisplayStream")
-                attemptFallbackCapture()
+                if isStreaming, gen == streamGeneration {
+                    attemptFallbackCapture()
+                } else {
+                    debugLog("restartStream(gen \(gen)) superseded before fallback — aborted")
+                }
             }
         }
     }
@@ -620,7 +651,7 @@ class ScreenCapture {
             outputWidth: width,
             outputHeight: height,
             pixelFormat: pixelFormat,
-            properties: [kCGDisplayStreamShowCursor: true] as [CFString: Any] as CFDictionary,
+            properties: [CGDisplayStream.showCursor: true] as [CFString: Any] as CFDictionary,
             queue: queue,
             handler: { [weak self] _, _, frameSurface, _ in
                 guard let self = self, let surface = frameSurface else { return }
