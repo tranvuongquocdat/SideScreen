@@ -58,7 +58,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// shows "just now" while connected and freezes at the disconnect moment afterward.
     private var currentWirelessDevice: String?
     private var cancellables = Set<AnyCancellable>()
-    private var permissionCheckTimer: Timer?
+    private var initialPermissionCheckPending = false
+    private var skipNextActivationPermissionCheck = false
     private var statusRefreshTimer: Timer?
     /// Debounce for wake-triggered capture restarts (screensDidWake + didWake can both fire).
     private var lastWakeRestart = Date.distantPast
@@ -79,10 +80,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Restore the tablet cursor after the display wakes from sleep
         setupDisplayWakeObservers()
 
-        // Check permissions
-        Task {
-            await checkPermissions()
-        }
+        // Schedule exactly one passive launch check below. Mark it pending before
+        // showSettings() can activate the app and invoke applicationDidBecomeActive.
+        initialPermissionCheckPending = true
 
         // Periodic status refresh for the per-mode checklist (ADB / WiFi / Listening IP).
         statusRefreshTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
@@ -101,26 +101,42 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 // Do not show settings window automatically.
                 // applicationShouldHandleReopen will show it if the user manually launched the app.
             } else {
+                skipNextActivationPermissionCheck = !NSApp.isActive
                 showSettings()
             }
         } else {
+            skipNextActivationPermissionCheck = !NSApp.isActive
             showSettings()
         }
 
-        // Declarative auto-start (no Mac interaction): start the server in the
-        // chosen Startup mode if enabled. No blocking permission modal here —
-        // it cannot be acted on when the Mac is headless.
-        if settings.autoStartStreamingOnLaunch {
+        // Check permissions once, then reuse the result for declarative auto-start.
+        // The check is passive so headless launches never receive a system prompt.
+        let shouldAutoStart = settings.autoStartStreamingOnLaunch
+        if shouldAutoStart {
             settings.connectionMode = settings.startupMode
-            Task {
+        }
+        Task { @MainActor in
+            do {
+                defer { self.initialPermissionCheckPending = false }
                 await self.checkPermissions()
-                if self.settings.hasScreenRecordingPermission {
-                    await self.startServer()
-                } else {
-                    debugLog("Auto-start skipped: Screen Recording permission not granted")
-                }
+            }
+
+            guard shouldAutoStart else { return }
+            if self.settings.hasScreenRecordingPermission {
+                await self.startServer()
+            } else {
+                debugLog("Auto-start skipped: Screen Recording permission not granted")
             }
         }
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        if skipNextActivationPermissionCheck {
+            skipNextActivationPermissionCheck = false
+            return
+        }
+        guard !initialPermissionCheckPending else { return }
+        refreshPermissions()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -226,10 +242,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Check permissions on demand (called when settings window opens or manually)
+    /// Passively recheck permissions after activation or on demand.
     func refreshPermissions() {
-        Task {
-            await checkPermissions()
+        Task { @MainActor in
+            await self.checkPermissions()
         }
     }
 
@@ -371,7 +387,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         } else {
             debugLog("Screen recording permission not granted yet")
-            CGRequestScreenCaptureAccess()
         }
 
         // Check Accessibility permission (required for touch/mouse injection)
@@ -409,46 +424,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         debugLog("🔌 setupADBReverse() invoked for port \(port)...")
 
         await Task.detached(priority: .utility) {
-            // Try common adb paths
-            let adbPaths = [
-                "/usr/local/bin/adb",
-                "/opt/homebrew/bin/adb",
-                "~/Library/Android/sdk/platform-tools/adb",
-                "/Users/\(NSUserName())/Library/Android/sdk/platform-tools/adb"
-            ]
-
-            var adbPath: String?
-            for path in adbPaths {
-                let expandedPath = NSString(string: path).expandingTildeInPath
-                if FileManager.default.fileExists(atPath: expandedPath) {
-                    adbPath = expandedPath
-                    break
-                }
-            }
-
-            // Also try 'which adb' to find it in PATH
-            if adbPath == nil {
-                let whichProcess = Process()
-                whichProcess.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-                whichProcess.arguments = ["adb"]
-                let whichPipe = Pipe()
-                whichProcess.standardOutput = whichPipe
-                whichProcess.standardError = FileHandle.nullDevice
-
-                do {
-                    try whichProcess.run()
-                    whichProcess.waitUntilExit()
-                    let data = whichPipe.fileHandleForReading.readDataToEndOfFile()
-                    if let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       !path.isEmpty {
-                        adbPath = path
-                    }
-                } catch {
-                    // Ignore
-                }
-            }
-
-            guard let finalAdbPath = adbPath else {
+            guard let finalAdbPath = StatusDetector.adbExecutablePath() else {
                 print("⚠️  ADB not found - USB connection may not work")
                 print("💡 Install Android SDK or run manually: adb reverse tcp:\(port) tcp:\(port)")
                 return

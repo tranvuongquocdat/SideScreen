@@ -1,4 +1,5 @@
 import Cocoa
+import CoreGraphics
 import SwiftUI
 
 // MARK: - Frosted GroupBox Component
@@ -712,7 +713,7 @@ struct SettingsView: View {
                                     StatusRow(title: "ADB installed",
                                               status: settings.adbInstalled ? "Installed" : "Missing",
                                               color: settings.adbInstalled ? .green : .red,
-                                              hint: "USB mode tunnels the TCP stream through the cable using `adb reverse`. Requires the `adb` command on the Mac. Searched paths: Homebrew, /usr/local/bin, ~/Library/Android/sdk/platform-tools, and PATH (`which adb`).")
+                                              hint: "USB mode tunnels the TCP stream through the cable using `adb reverse`. Requires the `adb` command on the Mac. Searched in order: PATH (`which adb`), ~/.local/bin/adb, /opt/homebrew/bin/adb, /usr/local/bin/adb, and ~/Library/Android/sdk/platform-tools/adb.")
                                     if !settings.adbInstalled {
                                         Text("brew install android-platform-tools")
                                             .font(.system(size: 10, design: .monospaced))
@@ -755,7 +756,11 @@ struct SettingsView: View {
                                             .font(.system(size: 11))
                                             .foregroundColor(.secondary)
                                         Button(action: {
-                                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+                                            let granted = CGRequestScreenCaptureAccess()
+                                            settings.hasScreenRecordingPermission = granted
+                                            if !granted {
+                                                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+                                            }
                                         }) {
                                             HStack {
                                                 Image(systemName: "gear")
