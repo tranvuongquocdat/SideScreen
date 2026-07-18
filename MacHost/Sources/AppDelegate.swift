@@ -275,16 +275,44 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "display.2", accessibilityDescription: "Virtual Display")
+            button.image = NSImage(systemSymbolName: "display.2", accessibilityDescription: "Side Screen")
         }
 
+        // Items are rebuilt on every open (menuNeedsUpdate) so the menu always
+        // reflects live server/connection state.
         let menu = NSMenu()
-
-        menu.addItem(NSMenuItem(title: "Settings", action: #selector(showSettings), keyEquivalent: "s"))
-        menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
-
+        menu.delegate = self
+        menu.autoenablesItems = false
         statusItem?.menu = menu
+
+        // Dim the menu bar icon while the server is stopped — at-a-glance
+        // state without opening the menu.
+        settings.$isRunning
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] running in
+                self?.statusItem?.button?.appearsDisabled = !running
+            }
+            .store(in: &cancellables)
+    }
+
+    @objc private func toggleServerFromMenu() {
+        if settings.isRunning {
+            stopServer()
+        } else {
+            Task { [weak self] in
+                await self?.startServer()
+            }
+        }
+    }
+
+    @objc private func selectUSBMode() {
+        guard settings.connectionMode != .usb else { return }
+        settings.connectionMode = .usb
+    }
+
+    @objc private func selectWirelessMode() {
+        guard settings.connectionMode != .wireless else { return }
+        settings.connectionMode = .wireless
     }
 
     func setupSettingsWindow() {
@@ -1069,5 +1097,67 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
+    }
+}
+
+// MARK: - Menu bar quick actions
+
+extension AppDelegate: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+
+        // Live status line (not clickable)
+        let statusTitle: String
+        if settings.isRunning {
+            if settings.clientConnected {
+                let device = settings.currentWirelessDevice ?? "tablet"
+                statusTitle = "🟢 Connected — \(device)"
+            } else {
+                statusTitle = "🟡 Waiting for tablet on port \(settings.port)"
+            }
+        } else {
+            statusTitle = "⚪️ Server stopped"
+        }
+        let statusLine = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
+        statusLine.isEnabled = false
+        menu.addItem(statusLine)
+        menu.addItem(.separator())
+
+        // Start / Stop
+        let toggle = NSMenuItem(
+            title: settings.isRunning ? "Stop Streaming" : "Start Streaming",
+            action: #selector(toggleServerFromMenu),
+            keyEquivalent: "t"
+        )
+        toggle.target = self
+        // Mirror the settings-window Start button: starting needs the Screen
+        // Recording permission, stopping is always allowed.
+        toggle.isEnabled = settings.isRunning || settings.hasScreenRecordingPermission
+        menu.addItem(toggle)
+
+        // Connection mode (switching while running restarts the server, same
+        // as changing it in the settings window)
+        let modeMenu = NSMenu()
+        modeMenu.autoenablesItems = false
+        let usb = NSMenuItem(title: "USB", action: #selector(selectUSBMode), keyEquivalent: "")
+        usb.target = self
+        usb.state = settings.connectionMode == .usb ? .on : .off
+        modeMenu.addItem(usb)
+        let wireless = NSMenuItem(title: "Wireless", action: #selector(selectWirelessMode), keyEquivalent: "")
+        wireless.target = self
+        wireless.state = settings.connectionMode == .wireless ? .on : .off
+        modeMenu.addItem(wireless)
+        let modeItem = NSMenuItem(title: "Connection Mode", action: nil, keyEquivalent: "")
+        modeItem.submenu = modeMenu
+        menu.addItem(modeItem)
+
+        menu.addItem(.separator())
+
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: "s")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "Quit Side Screen", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     }
 }
