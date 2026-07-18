@@ -79,7 +79,10 @@ class VideoEncoder {
         // Dynamic bitrate - remove strict rate limiting for smoother streaming
         // All-intra needs higher bitrate for text sharpness
         // USB-C supports 5Gbps, so 80-100Mbps is fine
-        let effectiveBitrate = gamingBoost ? bitrateMbps : max(bitrateMbps, 60)
+        // Honest bitrate: low-latency mode already pinned bitrateMbps to 50 in
+        // init/updateSettings; normal mode respects the user's chosen bitrate with
+        // no hidden floor (Short-GOP IPP no longer needs the old all-intra 60 floor).
+        let effectiveBitrate = bitrateMbps
         let bitrateBps = effectiveBitrate * 1_000_000
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: bitrateBps as CFNumber)
         // Removed DataRateLimits - was causing bursty traffic and buffer stalls
@@ -99,7 +102,7 @@ class VideoEncoder {
         // Critical for low latency - NO frame reordering (no B-frames)
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AllowFrameReordering, value: kCFBooleanFalse)
 
-        // ALWAYS zero frame delay for real-time streaming (not just gaming boost)
+        // ALWAYS zero frame delay for real-time streaming (not just low-latency mode)
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxFrameDelayCount, value: 0 as CFNumber)
 
         // Quality based on preset
@@ -123,7 +126,7 @@ class VideoEncoder {
 
         VTCompressionSessionPrepareToEncodeFrames(session)
 
-        let mode = gamingBoost ? "🎮 GAMING BOOST" : quality.uppercased()
+        let mode = gamingBoost ? "⚡️ LOW-LATENCY" : quality.uppercased()
         debugLog("VideoToolbox encoder configured (\(codec == .hevc ? "H.265" : "H.264"), \(bitrateMbps)Mbps, \(frameRate)fps, \(mode))")
     }
 

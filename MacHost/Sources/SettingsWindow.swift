@@ -1,4 +1,5 @@
 import Cocoa
+import CoreGraphics
 import SwiftUI
 
 // MARK: - Frosted GroupBox Component
@@ -80,7 +81,17 @@ struct SettingsView: View {
     // and .number formatting injected locale grouping separators ("1,200").
     @State private var customWidthText = ""
     @State private var customHeightText = ""
+    // String draft updates on every keystroke; formatted numeric fields commit late.
+    @State private var portDraft = ""
+    /// Non-published while the slider is moving; committed once on drag end.
+    @State private var bitrateDraft: Double?
     @State private var daemonEnabled = false
+
+    private var portDraftValue: UInt16? {
+        let text = portDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let value = Int(text), (1...65535).contains(value) else { return nil }
+        return UInt16(value)
+    }
 
     private var customWidthValue: Int? { Int(customWidthText.trimmingCharacters(in: .whitespaces)) }
     private var customHeightValue: Int? { Int(customHeightText.trimmingCharacters(in: .whitespaces)) }
@@ -135,11 +146,15 @@ struct SettingsView: View {
                             }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Reset settings")
                     .help("Reset settings")
                     .alert("Reset Settings", isPresented: $showResetConfirmation) {
                         Button("Cancel", role: .cancel) { }
                         Button("Reset", role: .destructive) {
                             settings.resetToDefaults()
+                            portDraft = String(settings.port)
+                            customWidthText = String(settings.customWidth)
+                            customHeightText = String(settings.customHeight)
                             if let window = NSApp.windows.first(where: { $0.title == "Side Screen" }) {
                                 window.center()
                             }
@@ -199,6 +214,7 @@ struct SettingsView: View {
                                         Toggle("Show all", isOn: $settings.showAllResolutions)
                                             .toggleStyle(.switch)
                                             .controlSize(.mini)
+                                            .accessibilityLabel("Show all resolutions")
                                     }
 
                                     ScrollView {
@@ -310,6 +326,7 @@ struct SettingsView: View {
                                     Toggle("", isOn: $settings.hiDPI)
                                         .toggleStyle(.switch)
                                         .controlSize(.mini)
+                                        .accessibilityLabel("HiDPI")
                                         .disabled(settings.isRunning)
                                 }
 
@@ -426,6 +443,11 @@ struct SettingsView: View {
                                     Spacer()
                                     Toggle("", isOn: $settings.touchEnabled)
                                         .labelsHidden()
+                                        .accessibilityLabel("Enable touch input")
+                                        .onChange(of: settings.touchEnabled) { enabled in
+                                            guard enabled else { return }
+                                            (NSApp.delegate as? AppDelegate)?.ensureAccessibilityPermissionForTouch()
+                                        }
                                 }
 
                                 if !settings.touchEnabled {
@@ -444,21 +466,31 @@ struct SettingsView: View {
                                         .font(.system(size: 11))
                                         .foregroundColor(.secondary)
                                     Spacer()
-                                    TextField("Port", value: $settings.port, format: .number)
+                                    TextField("Port", text: $portDraft)
                                         .textFieldStyle(.roundedBorder)
                                         .frame(width: 80)
                                         .disabled(settings.isRunning)
+                                        .onAppear { portDraft = String(settings.port) }
+                                        .onSubmit {
+                                            guard let port = portDraftValue else { return }
+                                            settings.port = port
+                                            portDraft = String(port)
+                                        }
                                 }
 
                                 if settings.isRunning {
                                     Text("Stop server to change port")
                                         .font(.system(size: 10))
                                         .foregroundColor(.orange)
+                                } else if portDraftValue == nil {
+                                    Text("Enter a whole-number port from 1 to 65535.")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.orange)
                                 } else if settings.connectionMode == .wireless {
                                     Text("Changing the port invalidates existing pairings — re-scan the QR on each tablet.")
                                         .font(.system(size: 10))
                                         .foregroundColor(.secondary)
-                                } else if settings.port != 54321 {
+                                } else if let port = portDraftValue, port != 54321 {
                                     Text("Custom port set — Android client must use the same port.")
                                         .font(.system(size: 10))
                                         .foregroundColor(.secondary)
@@ -501,6 +533,7 @@ struct SettingsView: View {
                                             }
                                         ))
                                         .labelsHidden()
+                                        .accessibilityLabel("Launch at Login")
                                     }
                                     Divider()
                                 }
@@ -516,6 +549,7 @@ struct SettingsView: View {
                                     Spacer()
                                     Toggle("", isOn: $settings.autoStartStreamingOnLaunch)
                                         .labelsHidden()
+                                        .accessibilityLabel("Auto-start streaming on launch")
                                 }
 
                                 Divider()
@@ -546,20 +580,21 @@ struct SettingsView: View {
                             }
                         }
 
-                        // Gaming Boost
-                        FrostedGroupBox(title: "Gaming Boost", icon: settings.gamingBoost ? "bolt.fill" : "bolt") {
+                        // Low-Latency Mode
+                        FrostedGroupBox(title: "Low-Latency Mode", icon: settings.gamingBoost ? "bolt.fill" : "bolt") {
                             VStack(alignment: .leading, spacing: 16) {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text("Enable Gaming Mode")
+                                        Text("Enable Low-Latency Mode")
                                             .font(.system(size: 12, weight: .medium))
-                                        Text("Optimized for competitive gaming")
+                                        Text("Speed-prioritized encoding for lowest latency")
                                             .font(.system(size: 10))
                                             .foregroundColor(.secondary)
                                     }
                                     Spacer()
                                     Toggle("", isOn: $settings.gamingBoost)
                                         .labelsHidden()
+                                        .accessibilityLabel("Enable Low-Latency Mode")
                                 }
 
                                 if settings.gamingBoost {
@@ -568,14 +603,14 @@ struct SettingsView: View {
                                             Image(systemName: "checkmark.circle.fill")
                                                 .foregroundColor(.green)
                                                 .font(.system(size: 10))
-                                            Text("High bitrate (1000 Mbps)")
+                                            Text("50 Mbps target (overrides bitrate slider)")
                                                 .font(.system(size: 11))
                                         }
                                         HStack(spacing: 4) {
                                             Image(systemName: "checkmark.circle.fill")
                                                 .foregroundColor(.green)
                                                 .font(.system(size: 10))
-                                            Text("120 Hz refresh rate")
+                                            Text("Image quality may be reduced for speed")
                                                 .font(.system(size: 11))
                                         }
                                         HStack(spacing: 4) {
@@ -602,7 +637,7 @@ struct SettingsView: View {
                                             .font(.system(size: 11))
                                             .foregroundColor(.secondary)
                                         Spacer()
-                                        Text("\(settings.effectiveBitrate) Mbps")
+                                        Text("\(settings.gamingBoost ? settings.effectiveBitrate : Int(bitrateDraft ?? Double(settings.bitrate))) Mbps")
                                             .font(.system(size: 13, weight: .semibold, design: .monospaced))
                                             .foregroundColor(.accentColor)
                                     }
@@ -629,11 +664,26 @@ struct SettingsView: View {
                                         Text("20")
                                             .font(.system(size: 9))
                                             .foregroundColor(.secondary)
-                                        Slider(value: Binding(
-                                            get: { Double(settings.bitrate) },
-                                            set: { settings.bitrate = Int($0) }
-                                        ), in: 20...5000, step: 10)
+                                        Slider(
+                                            value: Binding(
+                                                get: { bitrateDraft ?? Double(settings.bitrate) },
+                                                set: { bitrateDraft = $0 }
+                                            ),
+                                            in: 20...5000,
+                                            step: 10,
+                                            onEditingChanged: { isEditing in
+                                                guard !isEditing, let draft = bitrateDraft else { return }
+                                                let committed = Int(draft)
+                                                if committed != settings.bitrate {
+                                                    settings.bitrate = committed
+                                                }
+                                                bitrateDraft = nil
+                                            }
+                                        )
                                         .disabled(settings.gamingBoost)
+                                        .onChange(of: settings.bitrate) { _ in
+                                            bitrateDraft = nil
+                                        }
                                         Text("5000")
                                             .font(.system(size: 9))
                                             .foregroundColor(.secondary)
@@ -643,7 +693,7 @@ struct SettingsView: View {
                                         HStack(spacing: 4) {
                                             Image(systemName: "bolt.fill")
                                                 .font(.system(size: 10))
-                                            Text("Locked at 1000 Mbps in Gaming Boost")
+                                            Text("50 Mbps target in Low-Latency Mode")
                                                 .font(.system(size: 10))
                                         }
                                         .foregroundColor(.orange)
@@ -666,7 +716,7 @@ struct SettingsView: View {
                                     .disabled(settings.gamingBoost)
 
                                     if settings.gamingBoost {
-                                        Text("Quality locked to Ultra Low in Gaming Boost mode")
+                                        Text("Speed-prioritized quality in Low-Latency Mode")
                                             .font(.system(size: 10))
                                             .foregroundColor(.orange)
                                     } else if settings.quality == "ultralow" {
@@ -696,9 +746,9 @@ struct SettingsView: View {
                                     hint: "macOS privacy permission required to capture the virtual display. Grant in System Settings → Privacy & Security → Screen Recording."
                                 )
                                 StatusRow(title: "Accessibility",
-                                          status: settings.hasAccessibilityPermission ? "Granted" : "Optional",
-                                          color: settings.hasAccessibilityPermission ? .green : .orange,
-                                          hint: "Optional permission. Required only if you want touch/tap input from the tablet to control the Mac. Streaming works without it.")
+                                          status: settings.hasAccessibilityPermission ? "Granted" : (settings.touchEnabled ? "Required for touch" : "Optional"),
+                                          color: settings.hasAccessibilityPermission ? .green : (settings.touchEnabled ? .orange : .secondary),
+                                          hint: "Required when touch input is on. Streaming remains available without it.")
                                 if settings.isRunning {
                                     StatusRow(title: "Capture Method",
                                               status: settings.captureMethod,
@@ -709,12 +759,14 @@ struct SettingsView: View {
                                 // Mode-aware contextual rows
                                 Divider().padding(.vertical, 4)
                                 if settings.connectionMode == .usb {
-                                    StatusRow(title: "ADB installed",
-                                              status: settings.adbInstalled ? "Installed" : "Missing",
-                                              color: settings.adbInstalled ? .green : .red,
-                                              hint: "USB mode tunnels the TCP stream through the cable using `adb reverse`. Requires the `adb` command on the Mac. Searched paths: Homebrew, /usr/local/bin, ~/Library/Android/sdk/platform-tools, and PATH (`which adb`).")
-                                    if !settings.adbInstalled {
-                                        Text("brew install android-platform-tools")
+                                    StatusRow(
+                                        title: "USB / ADB",
+                                        status: settings.adbStatus.statusText,
+                                        color: settings.adbStatus.statusColor,
+                                        hint: settings.adbStatus.statusHint(port: settings.port)
+                                    )
+                                    if settings.adbStatus == .missing {
+                                        Text("Install Android Platform Tools; ~/.local/bin/adb is supported.")
                                             .font(.system(size: 10, design: .monospaced))
                                             .padding(6)
                                             .background(Color.black.opacity(0.08))
@@ -722,23 +774,19 @@ struct SettingsView: View {
                                             .frame(maxWidth: .infinity, alignment: .leading)
                                             .textSelection(.enabled)
                                     }
-                                    StatusRow(title: "ADB reverse",
-                                              status: settings.adbReverseConfigured ? "OK" : "Pending",
-                                              color: settings.adbReverseConfigured ? .green : .orange,
-                                              hint: "Whether `adb reverse tcp:\(settings.port) tcp:\(settings.port)` is currently configured. The Mac app sets this up automatically when you click Start. Goes green within ~2 seconds after the tablet is plugged in and authorized.")
-                                    StatusRow(title: "USB device",
-                                              status: settings.usbDeviceConnected ? "Detected" : "Not detected",
-                                              color: settings.usbDeviceConnected ? .green : .red,
-                                              hint: "An Android device authorized for ADB and visible to your Mac. Plug in via USB-C and tap Allow on the device's USB debugging prompt.")
                                 } else {
                                     StatusRow(title: "WiFi",
                                               status: settings.wifiConnected ? "Connected" : "Disconnected",
                                               color: settings.wifiConnected ? .green : .red,
                                               hint: "Whether the Mac currently has a working internet route. Wireless mode requires the Mac to be on a WiFi (or Ethernet) network — the same network the tablet is on.")
-                                    StatusRow(title: "Listening on",
-                                              status: settings.listeningAddress.map { "\($0):\(settings.port)" } ?? "—",
-                                              color: settings.listeningAddress != nil ? .green : .secondary,
-                                              hint: "The LAN address the tablet must reach. The QR code embeds this exact host:port — if it changes (e.g. you switch WiFi), re-scan the new QR on the tablet.")
+                                    StatusRow(title: "Server",
+                                              status: !settings.isRunning
+                                                  ? "Server stopped"
+                                                  : (settings.clientConnected ? "Connected" : "Waiting for tablet"),
+                                              color: !settings.isRunning
+                                                  ? .secondary
+                                                  : (settings.clientConnected ? .green : .orange),
+                                              hint: "Shows whether the server is stopped, waiting for a tablet, or connected. A LAN address alone does not mean the server is listening.")
                                 }
 
                                 if !settings.hasScreenRecordingPermission {
@@ -755,7 +803,11 @@ struct SettingsView: View {
                                             .font(.system(size: 11))
                                             .foregroundColor(.secondary)
                                         Button(action: {
-                                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+                                            let granted = CGRequestScreenCaptureAccess()
+                                            settings.hasScreenRecordingPermission = granted
+                                            if !granted {
+                                                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+                                            }
                                         }) {
                                             HStack {
                                                 Image(systemName: "gear")
@@ -770,23 +822,23 @@ struct SettingsView: View {
                                     .cornerRadius(8)
                                 }
 
-                                if !settings.hasAccessibilityPermission {
+                                if settings.touchEnabled && !settings.hasAccessibilityPermission {
                                     VStack(alignment: .leading, spacing: 8) {
                                         HStack(spacing: 6) {
                                             Image(systemName: "hand.tap.fill")
                                                 .foregroundColor(.blue)
-                                            Text("Enable Touch Control")
+                                            Text("On — needs Accessibility permission")
                                                 .font(.system(size: 12, weight: .medium))
                                         }
-                                        Text("Control your Mac from your tablet.")
+                                        Text("Grant permission so tablet touch can control your Mac.")
                                             .font(.system(size: 11))
                                             .foregroundColor(.secondary)
                                         Button(action: {
-                                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                                            (NSApp.delegate as? AppDelegate)?.promptAccessibilityPermission()
                                         }) {
                                             HStack {
                                                 Image(systemName: "gear")
-                                                Text("Open Settings")
+                                                Text("Grant Permission")
                                             }
                                             .frame(maxWidth: .infinity)
                                         }
@@ -837,21 +889,30 @@ struct SettingsView: View {
                     HStack(spacing: 12) {
                         Button(action: {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                if !settings.isRunning {
+                                    guard let port = portDraftValue else { return }
+                                    settings.port = port
+                                    portDraft = String(port)
+                                }
                                 settings.toggleServer()
                             }
                         }) {
                             HStack(spacing: 6) {
-                                Image(systemName: settings.isRunning ? "stop.fill" : "play.fill")
+                                Image(systemName: settings.isStopping ? "hourglass" : (settings.isRunning ? "stop.fill" : "play.fill"))
                                     .font(.system(size: 12))
-                                Text(settings.isRunning ? "Stop" : "Start")
+                                Text(settings.isStopping ? "Stopping…" : (settings.isRunning ? "Stop" : "Start"))
                                     .font(.system(size: 13, weight: .medium))
                             }
                             .frame(width: 90)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(settings.isRunning ? .red : .accentColor)
+                        .tint(settings.isStopping ? .orange : (settings.isRunning ? .red : .accentColor))
                         .controlSize(.large)
-                        .disabled(!settings.hasScreenRecordingPermission)
+                        .disabled(
+                            settings.isStopping
+                            || (!settings.hasScreenRecordingPermission && !settings.isRunning)
+                            || (!settings.isRunning && portDraftValue == nil)
+                        )
 
                         if settings.isRunning {
                             HStack(spacing: 6) {
@@ -863,7 +924,7 @@ struct SettingsView: View {
                                             .stroke(Color.green.opacity(0.3), lineWidth: 2)
                                             .scaleEffect(1.5)
                                     }
-                                Text("Running on port \(settings.port)")
+                                Text(settings.isStopping ? "Stopping server…" : "Running on port \(settings.port)")
                                     .font(.system(size: 12))
                             }
                             .padding(.horizontal, 12)
@@ -895,6 +956,7 @@ struct SettingsView: View {
                                 }
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Restart Side Screen")
                         .help("Restart App")
 
                         // Quit button
@@ -913,6 +975,7 @@ struct SettingsView: View {
                                 }
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Quit Side Screen")
                         .help("Quit Side Screen (⌘Q)")
                     }
                     .padding(.horizontal, 20)
@@ -947,6 +1010,69 @@ struct SettingsView: View {
     }
 }
 
+private extension StatusDetector.ADBStatus {
+    var statusText: String {
+        switch self {
+        case .checking:
+            return "Checking…"
+        case .missing:
+            return "ADB missing"
+        case .noDevice:
+            return "No device"
+        case .unauthorized:
+            return "Authorization required"
+        case .offline:
+            return "Device offline"
+        case .multipleDevices:
+            return "Multiple devices"
+        case .ready:
+            return "Ready"
+        case .reverseMissing:
+            return "Reverse tunnel missing"
+        case .commandError(_, _):
+            return "ADB command failed"
+        }
+    }
+
+    var statusColor: Color {
+        switch self {
+        case .checking:
+            return .secondary
+        case .ready:
+            return .green
+        case .reverseMissing:
+            return .orange
+        case .missing, .noDevice, .unauthorized, .offline, .multipleDevices, .commandError(_, _):
+            return .red
+        }
+    }
+
+    func statusHint(port: UInt16) -> String {
+        switch self {
+        case .checking:
+            return "Checking the ADB installation, USB device state, and reverse tunnel."
+        case .missing:
+            return "Install Android Platform Tools and place `adb` in ~/.local/bin or another searched executable path."
+        case .noDevice:
+            return "Connect and unlock one Android device, enable USB debugging, and use a data-capable USB cable."
+        case .unauthorized:
+            return "Unlock the device and tap Allow on the USB debugging prompt. If no prompt appears, revoke USB debugging authorizations and reconnect."
+        case .offline:
+            return "Reconnect the USB cable. If the device stays offline, run `adb kill-server`, then reconnect and retry."
+        case .multipleDevices:
+            return "Disconnect extra Android devices or emulators. Side Screen currently requires exactly one ADB target."
+        case .ready:
+            return "One authorized device is available and `adb reverse tcp:\(port) tcp:\(port)` is configured."
+        case .reverseMissing:
+            return "Start or keep the server running so Side Screen can retry automatically. Manual fallback: `adb reverse tcp:\(port) tcp:\(port)`."
+        case .commandError(let exitCode, let message):
+            let code = exitCode.map { " (exit \($0))" } ?? ""
+            let detail = message.trimmingCharacters(in: .whitespacesAndNewlines)
+            return "ADB command failed\(code): \(detail) Run `adb kill-server`, reconnect the device, then retry."
+        }
+    }
+}
+
 // MARK: - Supporting Views
 
 struct StatusRow: View {
@@ -970,6 +1096,7 @@ struct StatusRow: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Help for \(title)")
                 .onHover { hovering = $0 }
                 .help(hint)
                 .popover(isPresented: $showHint, arrowEdge: .top) {
@@ -1108,6 +1235,24 @@ class DisplaySettings: ObservableObject {
     private let defaults = UserDefaults.standard
     private let keyPrefix = "SideScreen_"
 
+    private enum Defaults {
+        static let resolution = "1920x1200"
+        static let refreshRate = 60
+        static let hiDPI = false
+        static let bitrate = 1000
+        static let quality = "ultralow"
+        static let gamingBoost = false
+        static let port: UInt16 = 54321
+        static let rotation = 0
+        static let showAllResolutions = false
+        static let customWidth = 1920
+        static let customHeight = 1200
+        static let touchEnabled = true
+        static let connectionMode: ConnectionMode = .usb
+        static let autoStartStreamingOnLaunch = false
+        static let startupMode: ConnectionMode = .usb
+    }
+
     @Published var resolution: String {
         didSet { save("resolution", resolution) }
     }
@@ -1162,12 +1307,14 @@ class DisplaySettings: ObservableObject {
     @Published var currentWirelessDevice: String?
     @Published var hasScreenRecordingPermission = false
     @Published var hasAccessibilityPermission = false
+    @Published var adbStatus: StatusDetector.ADBStatus = .checking
     @Published var adbInstalled = false
     @Published var adbReverseConfigured = false
     @Published var usbDeviceConnected = false
     @Published var wifiConnected = false
     @Published var listeningAddress: String?
     @Published var isRunning = false
+    @Published var isStopping = false
     @Published var currentFPS: Double = 0
     @Published var currentBitrate: Double = 0
     @Published var captureMethod: String = "Initializing..."
@@ -1175,25 +1322,26 @@ class DisplaySettings: ObservableObject {
     var onToggleServer: (() -> Void)?
 
     init() {
-        self.resolution = defaults.string(forKey: keyPrefix + "resolution") ?? "1920x1200"
-        self.refreshRate = defaults.object(forKey: keyPrefix + "refreshRate") as? Int ?? 60  // Default: 60 — balanced for most tablets. 120 may saturate high-res panel pipelines.
-        self.hiDPI = defaults.bool(forKey: keyPrefix + "hiDPI")
-        self.bitrate = defaults.object(forKey: keyPrefix + "bitrate") as? Int ?? 1000  // Default: 1000 Mbps
-        self.quality = defaults.string(forKey: keyPrefix + "quality") ?? "ultralow"  // Default: fastest encoding
-        self.gamingBoost = defaults.bool(forKey: keyPrefix + "gamingBoost")
+        self.resolution = defaults.string(forKey: keyPrefix + "resolution") ?? Defaults.resolution
+        self.refreshRate = defaults.object(forKey: keyPrefix + "refreshRate") as? Int ?? Defaults.refreshRate
+        self.hiDPI = defaults.object(forKey: keyPrefix + "hiDPI") as? Bool ?? Defaults.hiDPI
+        self.bitrate = defaults.object(forKey: keyPrefix + "bitrate") as? Int ?? Defaults.bitrate
+        self.quality = defaults.string(forKey: keyPrefix + "quality") ?? Defaults.quality
+        self.gamingBoost = defaults.object(forKey: keyPrefix + "gamingBoost") as? Bool ?? Defaults.gamingBoost
         // Default port 54321 (was 8888 in <=0.7.1; 8888 collides with jupyter/splunk/HP printers).
         // Existing users keep their saved value.
-        self.port = UInt16(defaults.object(forKey: keyPrefix + "port") as? Int ?? 54321)
-        self.rotation = defaults.object(forKey: keyPrefix + "rotation") as? Int ?? 0
-        self.showAllResolutions = defaults.bool(forKey: keyPrefix + "showAllResolutions")
-        self.customWidth = defaults.object(forKey: keyPrefix + "customWidth") as? Int ?? 1920
-        self.customHeight = defaults.object(forKey: keyPrefix + "customHeight") as? Int ?? 1200
-        self.touchEnabled = defaults.object(forKey: keyPrefix + "touchEnabled") as? Bool ?? true
-        let modeRaw = defaults.string(forKey: keyPrefix + "connectionMode") ?? ConnectionMode.usb.rawValue
-        self.connectionMode = ConnectionMode(rawValue: modeRaw) ?? .usb
-        self.autoStartStreamingOnLaunch = defaults.object(forKey: keyPrefix + "autoStartStreamingOnLaunch") as? Bool ?? false
+        self.port = UInt16(defaults.object(forKey: keyPrefix + "port") as? Int ?? Int(Defaults.port))
+        self.rotation = defaults.object(forKey: keyPrefix + "rotation") as? Int ?? Defaults.rotation
+        self.showAllResolutions = defaults.object(forKey: keyPrefix + "showAllResolutions") as? Bool ?? Defaults.showAllResolutions
+        self.customWidth = defaults.object(forKey: keyPrefix + "customWidth") as? Int ?? Defaults.customWidth
+        self.customHeight = defaults.object(forKey: keyPrefix + "customHeight") as? Int ?? Defaults.customHeight
+        self.touchEnabled = defaults.object(forKey: keyPrefix + "touchEnabled") as? Bool ?? Defaults.touchEnabled
+        let modeRaw = defaults.string(forKey: keyPrefix + "connectionMode") ?? Defaults.connectionMode.rawValue
+        self.connectionMode = ConnectionMode(rawValue: modeRaw) ?? Defaults.connectionMode
+        self.autoStartStreamingOnLaunch = defaults.object(forKey: keyPrefix + "autoStartStreamingOnLaunch") as? Bool ?? Defaults.autoStartStreamingOnLaunch
+        // Preserve pre-startupMode installs by inheriting their saved connection mode.
         let startupRaw = defaults.string(forKey: keyPrefix + "startupMode") ?? modeRaw
-        self.startupMode = ConnectionMode(rawValue: startupRaw) ?? .usb
+        self.startupMode = ConnectionMode(rawValue: startupRaw) ?? Defaults.startupMode
 
         print("Loaded settings: \(resolution) @ \(refreshRate)Hz, bitrate=\(bitrate), quality=\(quality)")
     }
@@ -1239,7 +1387,7 @@ class DisplaySettings: ObservableObject {
     }
 
     var effectiveBitrate: Int {
-        return gamingBoost ? 1000 : bitrate
+        return gamingBoost ? 50 : bitrate
     }
 
     var effectiveQuality: String {
@@ -1247,7 +1395,7 @@ class DisplaySettings: ObservableObject {
     }
 
     var effectiveRefreshRate: Int {
-        return gamingBoost ? 120 : refreshRate
+        return refreshRate
     }
 
     func toggleServer() {
@@ -1257,25 +1405,27 @@ class DisplaySettings: ObservableObject {
     func resetToDefaults() {
         let keys = ["resolution", "refreshRate", "hiDPI", "bitrate", "quality",
                     "gamingBoost", "port", "rotation", "showAllResolutions",
-                    "customWidth", "customHeight", "touchEnabled", "autoStartStreamingOnLaunch", "startupMode"]
+                    "customWidth", "customHeight", "touchEnabled", "connectionMode",
+                    "autoStartStreamingOnLaunch", "startupMode"]
         for key in keys {
             defaults.removeObject(forKey: keyPrefix + key)
         }
 
-        resolution = "1920x1200"
-        refreshRate = 120  // Default: highest FPS
-        hiDPI = false
-        bitrate = 1000  // Default: 1000 Mbps
-        quality = "ultralow"  // Default: fastest encoding
-        gamingBoost = false
-        port = 54321
-        rotation = 0
-        showAllResolutions = false
-        customWidth = 1920
-        customHeight = 1200
-        touchEnabled = true
-        autoStartStreamingOnLaunch = false
-        startupMode = .usb
+        resolution = Defaults.resolution
+        refreshRate = Defaults.refreshRate
+        hiDPI = Defaults.hiDPI
+        bitrate = Defaults.bitrate
+        quality = Defaults.quality
+        gamingBoost = Defaults.gamingBoost
+        port = Defaults.port
+        rotation = Defaults.rotation
+        showAllResolutions = Defaults.showAllResolutions
+        customWidth = Defaults.customWidth
+        customHeight = Defaults.customHeight
+        touchEnabled = Defaults.touchEnabled
+        connectionMode = Defaults.connectionMode
+        autoStartStreamingOnLaunch = Defaults.autoStartStreamingOnLaunch
+        startupMode = Defaults.startupMode
 
         print("Settings reset to defaults")
     }
@@ -1397,7 +1547,7 @@ struct WirelessSection: View {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.orange)
-                    Text("Click Start at the top to begin listening, then scan the QR.")
+                    Text("Click Start to begin listening, then scan the QR.")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                     Spacer()
@@ -1418,15 +1568,24 @@ struct WirelessSection: View {
                             .background(Color.white)
                             .cornerRadius(8)
                     } else {
-                        Text("Generating QR…").foregroundColor(.secondary)
+                        Text(settings.listeningAddress == nil
+                            ? "No LAN address — connect this Mac and tablet to the same network."
+                            : "Unable to generate QR code.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
                     }
                     Text("Scan this QR from Side Screen Android (Wireless tab)")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
-                    Text(LANAddressResolver.primaryIPv4().map { "Listening: \($0):\(settings.port)" } ?? "WiFi disconnected — no LAN address")
+                    Text(!settings.isRunning
+                        ? "Server stopped"
+                        : (settings.clientConnected
+                            ? (settings.listeningAddress.map { "Connected: \($0):\(settings.port)" } ?? "Connected")
+                            : (settings.listeningAddress.map { "Waiting for tablet: \($0):\(settings.port)" } ?? "Waiting for tablet — no LAN address")))
                         .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(settings.isRunning && settings.clientConnected ? .green : .secondary)
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -1487,6 +1646,7 @@ struct WirelessSection: View {
                         .font(.system(size: 12, weight: .semibold))
                 }
                 .buttonStyle(.borderless)
+                .accessibilityLabel("Refresh paired devices")
                 .help("Refresh list and timestamps")
             })
         }
@@ -1499,6 +1659,7 @@ struct WirelessSection: View {
         // two-parameter form requires macOS 14 and would block Ventura.
         // Deprecation is a compile-time warning only on Xcode 15+ SDKs.
         .onChange(of: settings.port) { _ in refreshQR() }
+        .onChange(of: settings.listeningAddress) { _ in refreshQR() }
         .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { now in
             nowTick = now
             refreshPaired()
@@ -1517,8 +1678,11 @@ struct WirelessSection: View {
     }
 
     private func refreshQR() {
+        guard let host = settings.listeningAddress else {
+            qrImage = nil
+            return
+        }
         let token = WirelessAuth.loadOrCreate()
-        let host = LANAddressResolver.primaryIPv4() ?? "0.0.0.0"
         let name = Host.current().localizedName ?? "Mac"
         let url = PairingURL.build(host: host, port: settings.port, token: token, name: name)
         qrImage = QRRenderer.render(url: url, size: 180)

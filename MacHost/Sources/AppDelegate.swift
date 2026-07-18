@@ -58,8 +58,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// shows "just now" while connected and freezes at the disconnect moment afterward.
     private var currentWirelessDevice: String?
     private var cancellables = Set<AnyCancellable>()
-    private var permissionCheckTimer: Timer?
+    private var initialPermissionCheckPending = false
+    private var skipNextActivationPermissionCheck = false
     private var statusRefreshTimer: Timer?
+    /// Main-actor-owned single-flight state for periodic status probes and reverse setup.
+    private var adbStatusProbeInFlight = false
+    private var adbStatusGeneration: UInt64 = 0
+    private var adbReverseSetupInFlight = false
+    /// Debounce for wake-triggered capture restarts (screensDidWake + didWake can both fire).
+    private var lastWakeRestart = Date.distantPast
+    /// Invalidates stale teardown completions before they can clear newer lifecycle state.
+    private var serverLifecycleGeneration: UInt64 = 0
+    /// StreamingServer.stop() performs synchronous queue drains; keep them off the UI queue.
+    private let serverTeardownQueue = DispatchQueue(label: "SideScreen.serverTeardown", qos: .userInitiated)
+    private let serverTeardownGroup = DispatchGroup()
+    private var isTerminating = false
     var isDaemonMode = false // Deprecated: keeping variable for ABI compatibility but unused
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -74,10 +87,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Setup settings observers
         setupSettingsObservers()
 
-        // Check permissions
-        Task {
-            await checkPermissions()
-        }
+        // Restore the tablet cursor after the display wakes from sleep
+        setupDisplayWakeObservers()
+
+        // Schedule exactly one passive launch check below. Mark it pending before
+        // showSettings() can activate the app and invoke applicationDidBecomeActive.
+        initialPermissionCheckPending = true
 
         // Periodic status refresh for the per-mode checklist (ADB / WiFi / Listening IP).
         statusRefreshTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
@@ -96,26 +111,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 // Do not show settings window automatically.
                 // applicationShouldHandleReopen will show it if the user manually launched the app.
             } else {
+                skipNextActivationPermissionCheck = !NSApp.isActive
                 showSettings()
             }
         } else {
+            skipNextActivationPermissionCheck = !NSApp.isActive
             showSettings()
         }
 
-        // Declarative auto-start (no Mac interaction): start the server in the
-        // chosen Startup mode if enabled. No blocking permission modal here —
-        // it cannot be acted on when the Mac is headless.
-        if settings.autoStartStreamingOnLaunch {
+        // Check permissions once, then reuse the result for declarative auto-start.
+        // If touch input was persisted on, trigger the Accessibility authorization flow.
+        let shouldAutoStart = settings.autoStartStreamingOnLaunch
+        if shouldAutoStart {
             settings.connectionMode = settings.startupMode
-            Task {
+        }
+        Task { @MainActor in
+            do {
+                defer { self.initialPermissionCheckPending = false }
                 await self.checkPermissions()
-                if self.settings.hasScreenRecordingPermission {
-                    await self.startServer()
-                } else {
-                    debugLog("Auto-start skipped: Screen Recording permission not granted")
-                }
+                self.ensureAccessibilityPermissionForTouch()
+            }
+
+            guard shouldAutoStart else { return }
+            if self.settings.hasScreenRecordingPermission {
+                await self.startServer()
+            } else {
+                debugLog("Auto-start skipped: Screen Recording permission not granted")
             }
         }
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        if skipNextActivationPermissionCheck {
+            skipNextActivationPermissionCheck = false
+            return
+        }
+        guard !initialPermissionCheckPending else { return }
+        refreshPermissions()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -125,9 +157,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    // MARK: - Display wake handling
+
+    /// After the display idle-sleeps and wakes, ScreenCaptureKit stops compositing
+    /// the cursor onto the virtual display while the desktop is static, and the idle
+    /// keepalive masks it — so the tablet shows a live picture with no cursor until a
+    /// real content change. Rebuild the capture on wake to restore it. (The
+    /// display-sleep assertion normally prevents idle-sleep entirely; this covers
+    /// manual/forced sleep and display reconnects.)
+    private func setupDisplayWakeObservers() {
+        let center = NSWorkspace.shared.notificationCenter
+        // Screens woke from display-sleep — the common case (system sleep is usually
+        // prevented, only the screen sleeps).
+        center.addObserver(forName: NSWorkspace.screensDidWakeNotification,
+                           object: nil, queue: .main) { [weak self] _ in
+            self?.handleDisplayWake(reason: "screensDidWake")
+        }
+        // System woke from full sleep — belt-and-suspenders.
+        center.addObserver(forName: NSWorkspace.didWakeNotification,
+                           object: nil, queue: .main) { [weak self] _ in
+            self?.handleDisplayWake(reason: "didWake")
+        }
+    }
+
+    private func handleDisplayWake(reason: String) {
+        guard settings.isRunning, let capture = screenCapture else { return }
+        let now = Date()
+        guard now.timeIntervalSince(lastWakeRestart) > 2.0 else {
+            debugLog("Display wake (\(reason)) ignored — restart fired \(String(format: "%.1f", now.timeIntervalSince(lastWakeRestart)))s ago")
+            return
+        }
+        lastWakeRestart = now
+        debugLog("Display wake (\(reason)) while streaming — hard-restarting capture to restore cursor")
+        capture.hardRestart(reason: reason)
+    }
+
     @MainActor
     private func refreshStatusIndicators() {
-        settings.adbInstalled = StatusDetector.adbInstalled()
         settings.wifiConnected = StatusDetector.wifiReachable()
         settings.listeningAddress = LANAddressResolver.primaryIPv4()
 
@@ -140,17 +206,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             pairedDeviceStore.upsert(name: name, lastConnected: Date())
         }
 
+        guard !adbStatusProbeInFlight else { return }
+        adbStatusProbeInFlight = true
+        adbStatusGeneration &+= 1
+
+        let generation = adbStatusGeneration
+        let mode = settings.connectionMode
         let port = Int(settings.port)
-        Task.detached { [weak self] in
-            let devices = StatusDetector.usbDevices()
-            let reverseOK = StatusDetector.adbReverseConfigured(port: port)
+        Task.detached(priority: .utility) { [weak self] in
+            let adbStatus: StatusDetector.ADBStatus? = mode == .usb
+                ? StatusDetector.adbStatus(port: port)
+                : nil
             await MainActor.run { [weak self] in
                 guard let self = self else { return }
                 
-                let isConnected = !devices.isEmpty
+                self.adbStatusProbeInFlight = false
+                guard self.adbStatusGeneration == generation,
+                      self.settings.connectionMode == mode,
+                      mode != .usb || Int(self.settings.port) == port else {
+                    return
+                }
 
+                guard let adbStatus = adbStatus else { return }
+
+                let isConnected = adbStatus == .ready || adbStatus == .reverseMissing
+                self.settings.adbStatus = adbStatus
+                // Keep the legacy booleans coherent for any existing callers.
+                self.settings.adbInstalled = adbStatus != .missing
                 self.settings.usbDeviceConnected = isConnected
-                self.settings.adbReverseConfigured = reverseOK
+                self.settings.adbReverseConfigured = adbStatus == .ready
 
                 // Self-healing USB bridge (level-triggered, not edge-triggered):
                 // whenever we are in USB mode with the server running and a
@@ -158,10 +242,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 // Covers replug, adb-server restart, etc. The server lifecycle
                 // is NOT tied to device events — it stays up and the tablet
                 // reconnects via its own connect button.
-                if self.settings.connectionMode == .usb
+                if mode == .usb
                     && isConnected
                     && self.settings.isRunning
-                    && !reverseOK {
+                    && adbStatus == .reverseMissing {
                     debugLog("🔌 USB bridge missing while running — (re)establishing adb reverse")
                     Task { await self.setupADBReverse() }
                 }
@@ -175,31 +259,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Disconnect any active client immediately (per spec §6 / fix #2).
         let wasRunning = settings.isRunning
         if wasRunning {
-            stopServer()
+            // Restart only after the old queues and display finish teardown.
+            stopServer(restartAfterStop: true)
         }
         if mode == .wireless {
             // Generate token if missing; the QR will reflect it.
             _ = WirelessAuth.loadOrCreate()
         }
-        if wasRunning {
-            await startServer()
-        }
     }
 
-    /// Check permissions on demand (called when settings window opens or manually)
+    /// Passively recheck permissions after activation or on demand.
     func refreshPermissions() {
-        Task {
-            await checkPermissions()
+        Task { @MainActor in
+            await self.checkPermissions()
         }
     }
 
     func setupSettingsObservers() {
-        // Observer cho gaming boost changes
+        // Observe low-latency mode changes
         settings.$gamingBoost
             .dropFirst() // Skip initial value
             .sink { [weak self] gamingBoost in
                 guard let self = self, self.settings.isRunning else { return }
-                print("🎮 Gaming Boost \(gamingBoost ? "ENABLED" : "DISABLED")")
+                print("⚡️ Low-Latency \(gamingBoost ? "ENABLED" : "DISABLED")")
                 self.screenCapture?.updateEncoderSettings(
                     bitrateMbps: self.settings.effectiveBitrate,
                     quality: self.settings.effectiveQuality,
@@ -208,7 +290,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
-        // Observer cho bitrate/quality changes (chỉ khi không gaming boost)
+        // Observe bitrate/quality changes only outside low-latency mode
         Publishers.CombineLatest(settings.$bitrate, settings.$quality)
             .dropFirst()
             .sink { [weak self] bitrate, quality in
@@ -247,6 +329,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] mode in
                 guard let self = self else { return }
                 Task { @MainActor in
+                    // Reject a result captured before this mode transition.
+                    self.adbStatusGeneration &+= 1
+                    if mode == .usb {
+                        self.settings.adbStatus = .checking
+                    } else {
+                        self.settings.usbDeviceConnected = false
+                        self.settings.adbReverseConfigured = false
+                    }
                     await self.handleConnectionModeChange(to: mode)
                 }
             }
@@ -264,8 +354,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 Task { @MainActor in
                     guard self.settings.isRunning else { return }
                     debugLog("Resolution changed to \(resolution) — restarting server to rebuild virtual display")
-                    self.stopServer()
-                    await self.startServer()
+                    self.stopServer(restartAfterStop: true)
                 }
             }
             .store(in: &cancellables)
@@ -291,7 +380,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindow = SettingsWindowController(settings: settings)
 
         settings.onToggleServer = { [weak self] in
-            guard let self else { return }
+            guard let self, !self.settings.isStopping else { return }
             if self.settings.isRunning {
                 self.stopServer()
             } else {
@@ -331,7 +420,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         } else {
             debugLog("Screen recording permission not granted yet")
-            CGRequestScreenCaptureAccess()
         }
 
         // Check Accessibility permission (required for touch/mouse injection)
@@ -351,6 +439,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor
+    func ensureAccessibilityPermissionForTouch() {
+        guard settings.touchEnabled else { return }
+
+        if AXIsProcessTrusted() {
+            settings.hasAccessibilityPermission = true
+        } else {
+            promptAccessibilityPermission()
+        }
+    }
+
+    @MainActor
     func promptAccessibilityPermission() {
         // This will show the system prompt to grant Accessibility permission
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
@@ -363,52 +462,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Setup ADB reverse port forwarding for USB connection
+    @MainActor
     func setupADBReverse() async {
+        guard settings.connectionMode == .usb else {
+            debugLog("Wireless mode: skipping ADB reverse setup")
+            return
+        }
+        guard !adbReverseSetupInFlight else {
+            debugLog("ADB reverse setup already in flight — skipping duplicate request")
+            return
+        }
+        adbReverseSetupInFlight = true
+        defer { adbReverseSetupInFlight = false }
+
         let port = settings.port
         print("🔌 Setting up ADB reverse for port \(port)...")
         debugLog("🔌 setupADBReverse() invoked for port \(port)...")
 
         await Task.detached(priority: .utility) {
-            // Try common adb paths
-            let adbPaths = [
-                "/usr/local/bin/adb",
-                "/opt/homebrew/bin/adb",
-                "~/Library/Android/sdk/platform-tools/adb",
-                "/Users/\(NSUserName())/Library/Android/sdk/platform-tools/adb"
-            ]
-
-            var adbPath: String?
-            for path in adbPaths {
-                let expandedPath = NSString(string: path).expandingTildeInPath
-                if FileManager.default.fileExists(atPath: expandedPath) {
-                    adbPath = expandedPath
-                    break
-                }
-            }
-
-            // Also try 'which adb' to find it in PATH
-            if adbPath == nil {
-                let whichProcess = Process()
-                whichProcess.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-                whichProcess.arguments = ["adb"]
-                let whichPipe = Pipe()
-                whichProcess.standardOutput = whichPipe
-                whichProcess.standardError = FileHandle.nullDevice
-
-                do {
-                    try whichProcess.run()
-                    whichProcess.waitUntilExit()
-                    let data = whichPipe.fileHandleForReading.readDataToEndOfFile()
-                    if let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       !path.isEmpty {
-                        adbPath = path
-                    }
-                } catch {
-                    // Ignore
-                }
-            }
-
-            guard let finalAdbPath = adbPath else {
+            guard let finalAdbPath = StatusDetector.adbExecutablePath() else {
                 print("⚠️  ADB not found - USB connection may not work")
                 print("💡 Install Android SDK or run manually: adb reverse tcp:\(port) tcp:\(port)")
                 return
@@ -418,35 +490,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             // Retry adb reverse up to 3 times — handles first-install authorization delay
             for attempt in 1...3 {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: finalAdbPath)
-                process.arguments = ["reverse", "tcp:\(port)", "tcp:\(port)"]
+                let result = StatusDetector.runADB(
+                    arguments: ["reverse", "tcp:\(port)", "tcp:\(port)"],
+                    timeout: 2.5
+                )
 
-                let pipe = Pipe()
-                process.standardOutput = pipe
-                process.standardError = pipe
+                if let result = result, result.terminationStatus == 0 {
+                    print("✅ ADB reverse setup successful: tcp:\(port) -> tcp:\(port)")
+                    return
+                }
 
-                do {
-                    try process.run()
-                    process.waitUntilExit()
+                if let result = result {
+                    print("⚠️  ADB reverse attempt \(attempt)/3 failed: \(result.output.trimmingCharacters(in: .whitespacesAndNewlines))")
+                } else {
+                    print("⚠️  ADB reverse attempt \(attempt)/3 failed or timed out")
+                }
 
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    let output = String(data: data, encoding: .utf8) ?? ""
-
-                    if process.terminationStatus == 0 {
-                        print("✅ ADB reverse setup successful: tcp:\(port) -> tcp:\(port)")
-                        return
-                    } else {
-                        print("⚠️  ADB reverse attempt \(attempt)/3 failed: \(output.trimmingCharacters(in: .whitespacesAndNewlines))")
-                        if attempt < 3 {
-                            try? await Task.sleep(nanoseconds: 1_000_000_000)
-                        }
-                    }
-                } catch {
-                    print("⚠️  Failed to run ADB (attempt \(attempt)/3): \(error.localizedDescription)")
-                    if attempt < 3 {
-                        try? await Task.sleep(nanoseconds: 1_000_000_000)
-                    }
+                if attempt < 3 {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
                 }
             }
 
@@ -478,6 +539,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func startServer() async {
+        guard !settings.isStopping, !isTerminating else {
+            debugLog("startServer() ignored during teardown or application termination")
+            return
+        }
         debugLog("🚀 startServer() invoked. Check permission: \(settings.hasScreenRecordingPermission)")
         guard settings.hasScreenRecordingPermission else {
             debugLog("❌ startServer aborted: Missing Screen Recording permission")
@@ -634,6 +699,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             print("✅ Server started on port \(settings.port)")
         } catch {
             print("❌ Failed to start: \(error)")
+            // Release anything a partial start acquired (incl. the display-sleep
+            // assertion) so a failed bring-up can't leak it until app exit. Codex-flagged.
+            screenCapture?.stopStreaming()
             await MainActor.run {
                 settings.isRunning = false
                 settings.displayCreated = false
@@ -647,21 +715,75 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    func stopServer() {
-        // Save display position before destroying
-        virtualDisplayManager?.saveDisplayPosition()
+    func stopServer(restartAfterStop: Bool = false, waitForCleanup: Bool = false) {
+        if settings.isStopping {
+            if waitForCleanup {
+                serverTeardownGroup.wait()
+            }
+            return
+        }
+        guard settings.isRunning || screenCapture != nil || streamingServer != nil || virtualDisplayManager != nil else { return }
 
-        screenCapture?.stopStreaming()
-        streamingServer?.stop()
-        virtualDisplayManager?.destroyDisplay()
+        serverLifecycleGeneration &+= 1
+        let generation = serverLifecycleGeneration
+        let capture = screenCapture
+        let server = streamingServer
+        let displayManager = virtualDisplayManager
 
-        settings.isRunning = false
-        settings.displayCreated = false
-        settings.clientConnected = false
-        settings.currentFPS = 0
-        settings.currentBitrate = 0
+        if !waitForCleanup {
+            serverTeardownGroup.enter()
+        }
 
-        print("⏹️ Server stopped")
+        // Three-state model: running=true/stopping=true until teardown completes.
+        settings.isStopping = true
+
+        // Keep ScreenCapture's timer/generation mutations on the caller's UI thread.
+        displayManager?.saveDisplayPosition()
+        capture?.stopStreaming()
+
+        // Locals retain resources for background destruction; callbacks immediately
+        // stop reaching the active AppDelegate slots.
+        screenCapture = nil
+        streamingServer = nil
+        virtualDisplayManager = nil
+
+        let cleanup: () -> Void = {
+            _ = capture
+            server?.stop()
+            displayManager?.destroyDisplay()
+        }
+
+        let finishOnMain: () -> Void = { [weak self] in
+            guard let self, self.serverLifecycleGeneration == generation else { return }
+
+            self.settings.isRunning = false
+            self.settings.displayCreated = false
+            self.settings.clientConnected = false
+            self.settings.currentFPS = 0
+            self.settings.currentBitrate = 0
+            self.settings.isStopping = false
+
+            print("⏹️ Server stopped")
+
+            guard restartAfterStop, !self.isTerminating else { return }
+            Task { [weak self] in
+                await self?.startServer()
+            }
+        }
+
+        if waitForCleanup {
+            // No responsive UI to preserve during application termination.
+            cleanup()
+            finishOnMain()
+            return
+        }
+
+        let teardownGroup = serverTeardownGroup
+        serverTeardownQueue.async {
+            cleanup()
+            teardownGroup.leave()
+            DispatchQueue.main.async(execute: finishOnMain)
+        }
     }
 
     // MARK: - Gesture Properties
@@ -1060,8 +1182,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Stop momentum scrolling
         stopMomentumScroll()
 
-        // Stop server and cleanup
-        stopServer()
+        // Stop server and cleanup. Blocking is intentional during process termination.
+        isTerminating = true
+        stopServer(waitForCleanup: true)
 
         // Cancel all combine subscriptions
         cancellables.removeAll()
