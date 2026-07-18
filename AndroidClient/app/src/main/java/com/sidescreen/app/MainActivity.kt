@@ -39,6 +39,18 @@ import java.net.Socket
 
 private fun mainDiag(msg: String) = DiagLog.log("MA", msg)
 
+private const val TOUCH_ACTION_DOWN = 0
+private const val TOUCH_ACTION_MOVE = 1
+private const val TOUCH_ACTION_UP = 2
+private const val TOUCH_ACTION_HOVER = 3
+private const val TOUCH_ACTION_HOVER_EXIT = 4
+private const val TOUCH_FLAG_STYLUS = 1
+private const val TOUCH_FLAG_HOVER = 1 shl 1
+private const val PALM_REJECT_AFTER_STYLUS_MS = 500L
+private const val PALM_TOUCH_MAJOR_RATIO = 0.08f
+private const val PALM_TOOL_MAJOR_RATIO = 0.12f
+private const val PALM_SIZE_THRESHOLD = 0.45f
+
 class MainActivity : AppCompatActivity() {
     private lateinit var wirelessController: WirelessTabController
     private val pairedHostStorage by lazy { PairedHostStorage(this) }
@@ -61,6 +73,11 @@ class MainActivity : AppCompatActivity() {
 
     // Input prediction for low-latency gaming
     private val inputPredictor = InputPredictor()
+    private var lastStylusEventTimeMs = 0L
+    private var rejectingPalmTouch = false
+    private var activeFingerTouch = false
+    private var lastFingerX = 0f
+    private var lastFingerY = 0f
 
     // Checklist status handler
     private val checklistHandler = Handler(Looper.getMainLooper())
@@ -314,6 +331,9 @@ class MainActivity : AppCompatActivity() {
         binding.surfaceView.setOnTouchListener { view, event ->
             handleTouch(view, event)
             true
+        }
+        binding.surfaceView.setOnHoverListener { view, event ->
+            handleStylusHover(view, event)
         }
     }
 
@@ -1226,52 +1246,280 @@ class MainActivity : AppCompatActivity() {
         view: View,
         event: MotionEvent,
     ) {
-        val x = event.x / view.width.toFloat()
-        val y = event.y / view.height.toFloat()
-        val pointerCount = event.pointerCount.coerceAtMost(2)
+        findStylusPointerIndex(event)?.let { stylusPointerIndex ->
+            handleStylusTouch(view, event, stylusPointerIndex)
+            return
+        }
+
+        if (shouldRejectPalmTouch(view, event)) {
+            rejectPalmTouch(event)
+            return
+        }
+
+        val fingerPointers = collectFingerPointerIndices(event)
+        if (fingerPointers.isEmpty()) return
+
+        val primaryPointerIndex = fingerPointers[0]
+        val x = event.getX(primaryPointerIndex) / view.width.toFloat()
+        val y = event.getY(primaryPointerIndex) / view.height.toFloat()
+        val pointerCount = fingerPointers.size.coerceAtMost(4)
 
         var x2 = 0f
         var y2 = 0f
+        var x3 = 0f
+        var y3 = 0f
+        var x4 = 0f
+        var y4 = 0f
         if (pointerCount >= 2) {
-            x2 = event.getX(1) / view.width.toFloat()
-            y2 = event.getY(1) / view.height.toFloat()
+            val secondPointerIndex = fingerPointers[1]
+            x2 = event.getX(secondPointerIndex) / view.width.toFloat()
+            y2 = event.getY(secondPointerIndex) / view.height.toFloat()
+        }
+        if (pointerCount >= 3) {
+            val thirdPointerIndex = fingerPointers[2]
+            x3 = event.getX(thirdPointerIndex) / view.width.toFloat()
+            y3 = event.getY(thirdPointerIndex) / view.height.toFloat()
+        }
+        if (pointerCount >= 4) {
+            val fourthPointerIndex = fingerPointers[3]
+            x4 = event.getX(fourthPointerIndex) / view.width.toFloat()
+            y4 = event.getY(fourthPointerIndex) / view.height.toFloat()
         }
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 inputPredictor.reset()
                 inputPredictor.addSample(x, y)
-                streamClient?.sendTouch(x, y, 0, pointerCount, x2, y2)
+                activeFingerTouch = true
+                rememberFingerPosition(x, y)
+                streamClient?.sendTouch(x, y, TOUCH_ACTION_DOWN, pointerCount, x2, y2, x3, y3, x4, y4)
             }
 
             MotionEvent.ACTION_POINTER_DOWN -> {
-                streamClient?.sendTouch(x, y, 0, pointerCount, x2, y2)
+                activeFingerTouch = true
+                rememberFingerPosition(x, y)
+                streamClient?.sendTouch(x, y, TOUCH_ACTION_DOWN, pointerCount, x2, y2, x3, y3, x4, y4)
             }
 
             MotionEvent.ACTION_MOVE -> {
                 if (pointerCount == 1) {
                     inputPredictor.addSample(x, y)
                     val (px, py) = inputPredictor.predictPosition(12f)
-                    streamClient?.sendTouch(px, py, 1, 1)
+                    rememberFingerPosition(px, py)
+                    streamClient?.sendTouch(px, py, TOUCH_ACTION_MOVE, 1)
                 } else {
-                    streamClient?.sendTouch(x, y, 1, pointerCount, x2, y2)
+                    rememberFingerPosition(x, y)
+                    streamClient?.sendTouch(x, y, TOUCH_ACTION_MOVE, pointerCount, x2, y2, x3, y3, x4, y4)
                 }
             }
 
             MotionEvent.ACTION_UP -> {
                 inputPredictor.reset()
-                streamClient?.sendTouch(x, y, 2, 1)
+                activeFingerTouch = false
+                rememberFingerPosition(x, y)
+                streamClient?.sendTouch(x, y, TOUCH_ACTION_UP, 1)
             }
 
             MotionEvent.ACTION_POINTER_UP -> {
-                streamClient?.sendTouch(x, y, 2, pointerCount, x2, y2)
+                rememberFingerPosition(x, y)
+                streamClient?.sendTouch(x, y, TOUCH_ACTION_UP, pointerCount, x2, y2, x3, y3, x4, y4)
             }
 
             MotionEvent.ACTION_CANCEL -> {
                 inputPredictor.reset()
-                streamClient?.sendTouch(x, y, 2, 1)
+                activeFingerTouch = false
+                streamClient?.sendTouch(lastFingerX, lastFingerY, TOUCH_ACTION_UP, 1)
             }
         }
+    }
+
+    private fun handleStylusTouch(
+        view: View,
+        event: MotionEvent,
+        pointerIndex: Int,
+    ) {
+        lastStylusEventTimeMs = event.eventTime
+        rejectingPalmTouch = false
+        if (activeFingerTouch) {
+            inputPredictor.reset()
+            activeFingerTouch = false
+            streamClient?.sendTouch(lastFingerX, lastFingerY, TOUCH_ACTION_UP, 1)
+        }
+
+        val x = event.getX(pointerIndex) / view.width.toFloat()
+        val y = event.getY(pointerIndex) / view.height.toFloat()
+        val pressure = event.getPressure(pointerIndex)
+        val tilt = event.getAxisValue(MotionEvent.AXIS_TILT, pointerIndex)
+
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN,
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                if (event.actionIndex == pointerIndex || event.actionMasked == MotionEvent.ACTION_DOWN) {
+                    streamClient?.sendTouch(
+                        x,
+                        y,
+                        TOUCH_ACTION_DOWN,
+                        pressure = pressure,
+                        tilt = tilt,
+                        flags = TOUCH_FLAG_STYLUS,
+                    )
+                }
+            }
+
+            MotionEvent.ACTION_MOVE -> {
+                streamClient?.sendTouch(
+                    x,
+                    y,
+                    TOUCH_ACTION_MOVE,
+                    pressure = pressure,
+                    tilt = tilt,
+                    flags = TOUCH_FLAG_STYLUS,
+                )
+            }
+
+            MotionEvent.ACTION_UP,
+            MotionEvent.ACTION_CANCEL -> {
+                streamClient?.sendTouch(
+                    x,
+                    y,
+                    TOUCH_ACTION_UP,
+                    pressure = pressure,
+                    tilt = tilt,
+                    flags = TOUCH_FLAG_STYLUS,
+                )
+            }
+
+            MotionEvent.ACTION_POINTER_UP -> {
+                if (event.actionIndex == pointerIndex) {
+                    streamClient?.sendTouch(
+                        x,
+                        y,
+                        TOUCH_ACTION_UP,
+                        pressure = pressure,
+                        tilt = tilt,
+                        flags = TOUCH_FLAG_STYLUS,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun handleStylusHover(
+        view: View,
+        event: MotionEvent,
+    ): Boolean {
+        val pointerIndex = 0
+        if (event.getToolType(pointerIndex) != MotionEvent.TOOL_TYPE_STYLUS) {
+            return false
+        }
+
+        lastStylusEventTimeMs = event.eventTime
+        val x = (event.x / view.width.toFloat()).coerceIn(0f, 1f)
+        val y = (event.y / view.height.toFloat()).coerceIn(0f, 1f)
+        val tilt = event.getAxisValue(MotionEvent.AXIS_TILT, pointerIndex)
+        val flags = TOUCH_FLAG_STYLUS or TOUCH_FLAG_HOVER
+
+        when (event.actionMasked) {
+            MotionEvent.ACTION_HOVER_ENTER,
+            MotionEvent.ACTION_HOVER_MOVE -> {
+                streamClient?.sendTouch(
+                    x,
+                    y,
+                    TOUCH_ACTION_HOVER,
+                    pressure = 0f,
+                    tilt = tilt,
+                    flags = flags,
+                )
+                return true
+            }
+
+            MotionEvent.ACTION_HOVER_EXIT -> {
+                streamClient?.sendTouch(
+                    x,
+                    y,
+                    TOUCH_ACTION_HOVER_EXIT,
+                    pressure = 0f,
+                    tilt = tilt,
+                    flags = flags,
+                )
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private fun rememberFingerPosition(
+        x: Float,
+        y: Float,
+    ) {
+        lastFingerX = x
+        lastFingerY = y
+    }
+
+    private fun collectFingerPointerIndices(event: MotionEvent): List<Int> =
+        (0 until event.pointerCount).filter { pointerIndex ->
+            when (event.getToolType(pointerIndex)) {
+                MotionEvent.TOOL_TYPE_FINGER,
+                MotionEvent.TOOL_TYPE_UNKNOWN -> true
+                else -> false
+            }
+        }
+
+    private fun findStylusPointerIndex(event: MotionEvent): Int? =
+        (0 until event.pointerCount).firstOrNull { pointerIndex ->
+            when (event.getToolType(pointerIndex)) {
+                MotionEvent.TOOL_TYPE_STYLUS,
+                MotionEvent.TOOL_TYPE_ERASER -> true
+                else -> false
+            }
+        }
+
+    private fun shouldRejectPalmTouch(
+        view: View,
+        event: MotionEvent,
+    ): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            rejectingPalmTouch = false
+            return false
+        }
+
+        if (rejectingPalmTouch) return true
+
+        val recentlyUsedStylus =
+            lastStylusEventTimeMs > 0 &&
+                event.eventTime - lastStylusEventTimeMs in 0..PALM_REJECT_AFTER_STYLUS_MS
+        if (recentlyUsedStylus) return true
+
+        if (event.pointerCount > 4) return true
+
+        val minDimension = minOf(view.width, view.height).coerceAtLeast(1).toFloat()
+        return (0 until event.pointerCount).any { pointerIndex ->
+            val toolType = event.getToolType(pointerIndex)
+            val isFingerLike =
+                toolType == MotionEvent.TOOL_TYPE_FINGER ||
+                    toolType == MotionEvent.TOOL_TYPE_UNKNOWN
+            if (!isFingerLike) return@any true
+
+            val touchMajorRatio = event.getTouchMajor(pointerIndex) / minDimension
+            val toolMajorRatio = event.getToolMajor(pointerIndex) / minDimension
+            val size = event.getSize(pointerIndex)
+            touchMajorRatio >= PALM_TOUCH_MAJOR_RATIO ||
+                toolMajorRatio >= PALM_TOOL_MAJOR_RATIO ||
+                size >= PALM_SIZE_THRESHOLD
+        }
+    }
+
+    private fun rejectPalmTouch(event: MotionEvent) {
+        if (activeFingerTouch) {
+            inputPredictor.reset()
+            activeFingerTouch = false
+            streamClient?.sendTouch(lastFingerX, lastFingerY, TOUCH_ACTION_UP, 1)
+        }
+
+        rejectingPalmTouch =
+            event.actionMasked != MotionEvent.ACTION_UP &&
+            event.actionMasked != MotionEvent.ACTION_CANCEL
     }
 
     /**

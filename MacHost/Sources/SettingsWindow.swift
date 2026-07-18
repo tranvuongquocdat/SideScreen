@@ -696,9 +696,9 @@ struct SettingsView: View {
                                     hint: "macOS privacy permission required to capture the virtual display. Grant in System Settings → Privacy & Security → Screen Recording."
                                 )
                                 StatusRow(title: "Accessibility",
-                                          status: settings.hasAccessibilityPermission ? "Granted" : "Optional",
-                                          color: settings.hasAccessibilityPermission ? .green : .orange,
-                                          hint: "Optional permission. Required only if you want touch/tap input from the tablet to control the Mac. Streaming works without it.")
+                                          status: settings.hasAccessibilityPermission ? "Granted" : (settings.touchEnabled ? "Required for Touch" : "Optional"),
+                                          color: settings.hasAccessibilityPermission ? .green : (settings.touchEnabled ? .red : .orange),
+                                          hint: "Required for touch, stylus, and mouse-event injection from the tablet. Streaming works without it.")
                                 if settings.isRunning {
                                     StatusRow(title: "Capture Method",
                                               status: settings.captureMethod,
@@ -778,7 +778,7 @@ struct SettingsView: View {
                                             Text("Enable Touch Control")
                                                 .font(.system(size: 12, weight: .medium))
                                         }
-                                        Text("Control your Mac from your tablet.")
+                                        Text("Required for touch and stylus control.")
                                             .font(.system(size: 11))
                                             .foregroundColor(.secondary)
                                         Button(action: {

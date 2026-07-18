@@ -45,8 +45,8 @@ class StreamingServer {
     /// config is sent, for every outcome (.hevc or .h264) — so the capture
     /// pipeline can also revert to HEVC after an AVC-only client goes away.
     var onCodecNegotiated: ((StreamCodec) -> Void)?
-    // Touch callback: (x1, y1, action, pointerCount, x2, y2)
-    var onTouchEvent: ((Float, Float, Int, Int, Float, Float) -> Void)?
+    // Touch callback: (x1, y1, action, pointerCount, x2, y2, x3, y3, x4, y4, pressure, tilt, flags)
+    var onTouchEvent: ((Float, Float, Int, Int, Float, Float, Float, Float, Float, Float, Float, Float, Int) -> Void)?
     var onStats: ((Double, Double) -> Void)?
     var onKeyframeRequested: ((Bool) -> Void)?
     // Whether host wants to receive touch events from client. Ping/pong is
@@ -340,18 +340,18 @@ class StreamingServer {
         while let msgType = inputBuffer.first {
             switch msgType {
             case WireMessage.touchEvent:
-                // Touch event: 1 type + 1 pointerCount + N*(4x+4y) + 4 action.
-                // 1 finger: 14 bytes, 2 fingers: 22 bytes.
+                // Touch event: 1 type + 1 pointerCount + N*(4x+4y) + 4 action + 4 pressure + 4 tilt + 4 flags.
+                // 1 finger: 26 bytes, 2 fingers: 34 bytes, 3 fingers: 42 bytes, 4 fingers: 50 bytes.
                 guard inputBuffer.count >= 2 else { return }
 
                 let pointerCount = Int(inputByte(at: 1))
-                guard pointerCount == 1 || pointerCount == 2 else {
+                guard (1...4).contains(pointerCount) else {
                     debugLog("Invalid touch pointer count: \(pointerCount)")
                     consumeInputBytes(1)
                     continue
                 }
 
-                let expectedSize = 2 + pointerCount * 8 + 4
+                let expectedSize = 2 + pointerCount * 8 + 16
                 guard inputBuffer.count >= expectedSize else { return }
 
                 let message = Data(inputBuffer.prefix(expectedSize))
@@ -417,16 +417,31 @@ class StreamingServer {
 
         var x2: Float = 0
         var y2: Float = 0
+        var x3: Float = 0
+        var y3: Float = 0
+        var x4: Float = 0
+        var y4: Float = 0
         if pointerCount >= 2 {
             x2 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 10, as: Float.self) }
             y2 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 14, as: Float.self) }
         }
+        if pointerCount >= 3 {
+            x3 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 18, as: Float.self) }
+            y3 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 22, as: Float.self) }
+        }
+        if pointerCount >= 4 {
+            x4 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 26, as: Float.self) }
+            y4 = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 30, as: Float.self) }
+        }
 
         let actionOffset = 2 + pointerCount * 8
         let action = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: actionOffset, as: Int32.self) }
+        let pressure = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: actionOffset + 4, as: Float.self) }
+        let tilt = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: actionOffset + 8, as: Float.self) }
+        let flags = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: actionOffset + 12, as: Int32.self) }
 
         DispatchQueue.main.async {
-            self.onTouchEvent?(x1, y1, Int(action), pointerCount, x2, y2)
+            self.onTouchEvent?(x1, y1, Int(action), pointerCount, x2, y2, x3, y3, x4, y4, pressure, tilt, Int(flags))
         }
     }
 
