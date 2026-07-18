@@ -479,6 +479,7 @@ class MainActivity : AppCompatActivity() {
 
         val view = dialog.findViewById<View>(android.R.id.content)
         val showStatsSwitch = view.findViewById<SwitchMaterial>(R.id.showStatsSwitch)
+        val hideSettingsSwitch = view.findViewById<SwitchMaterial>(R.id.hideSettingsSwitch)
         val opacitySlider = view.findViewById<Slider>(R.id.opacitySlider)
         val opacityValue = view.findViewById<TextView>(R.id.opacityValue)
         val resetButton = view.findViewById<View>(R.id.resetPositionButton)
@@ -502,6 +503,7 @@ class MainActivity : AppCompatActivity() {
 
         // Load current settings
         showStatsSwitch.isChecked = prefs.showStatsOverlay
+        hideSettingsSwitch.isChecked = prefs.hideSettingsButton
         opacitySlider.value = prefs.overlayOpacity
         opacityValue.text = "${(prefs.overlayOpacity * 100).toInt()}%"
 
@@ -536,6 +538,21 @@ class MainActivity : AppCompatActivity() {
         showStatsSwitch.setOnCheckedChangeListener { _, isChecked ->
             prefs.showStatsOverlay = isChecked
             updateOverlayVisibility(isChecked)
+        }
+
+        hideSettingsSwitch.setOnCheckedChangeListener { _, isChecked ->
+            prefs.hideSettingsButton = isChecked
+            if (isConnected) {
+                applySettingsButtonVisibility()
+            }
+            if (isChecked) {
+                android.widget.Toast
+                    .makeText(
+                        this,
+                        "Settings icon hidden — use the back gesture to reveal it",
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+            }
         }
 
         opacitySlider.addOnChangeListener { _, value, _ ->
@@ -641,6 +658,46 @@ class MainActivity : AppCompatActivity() {
         binding.settingsButton.setOnClickListener {
             showSettingsDialog()
         }
+
+        // Escape hatch for the hidden icon: the back gesture briefly reveals it
+        // instead of leaving the app. Back is not forwarded to the Mac, so this
+        // cannot conflict with streamed touch input.
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : androidx.activity.OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    if (isConnected && prefs.hideSettingsButton &&
+                        binding.settingsButton.visibility != View.VISIBLE
+                    ) {
+                        revealSettingsButtonTemporarily()
+                    } else {
+                        isEnabled = false
+                        onBackPressedDispatcher.onBackPressed()
+                        isEnabled = true
+                    }
+                }
+            },
+        )
+    }
+
+    /** Streaming-time visibility of the settings icon, honoring the hide preference. */
+    private fun applySettingsButtonVisibility() {
+        binding.settingsButton.visibility =
+            if (prefs.hideSettingsButton) View.GONE else View.VISIBLE
+    }
+
+    private val revealHandler = Handler(Looper.getMainLooper())
+    private val hideSettingsButtonRunnable =
+        Runnable {
+            if (isConnected && prefs.hideSettingsButton) {
+                binding.settingsButton.visibility = View.GONE
+            }
+        }
+
+    private fun revealSettingsButtonTemporarily() {
+        binding.settingsButton.visibility = View.VISIBLE
+        revealHandler.removeCallbacks(hideSettingsButtonRunnable)
+        revealHandler.postDelayed(hideSettingsButtonRunnable, 5_000L)
     }
 
     private fun restoreSettingsButtonPosition() {
@@ -905,7 +962,7 @@ class MainActivity : AppCompatActivity() {
                     stopChecklistUpdates()
                     enableFullscreenMode()
                     binding.settingsPanel.visibility = View.GONE
-                    binding.settingsButton.visibility = View.VISIBLE
+                    applySettingsButtonVisibility()
                     restoreSettingsButtonPosition()
                     updateOverlayVisibility(prefs.showStatsOverlay)
                     // For wireless mode, transition controller to CONNECTED here —
@@ -1080,7 +1137,7 @@ class MainActivity : AppCompatActivity() {
                             enableFullscreenMode()
 
                             binding.settingsPanel.visibility = View.GONE
-                            binding.settingsButton.visibility = View.VISIBLE
+                            applySettingsButtonVisibility()
                             restoreSettingsButtonPosition()
                             updateOverlayVisibility(prefs.showStatsOverlay)
                         } else {
