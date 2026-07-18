@@ -220,7 +220,10 @@ class VirtualDisplayManager {
             throw VirtualDisplayError.configurationFailed("Failed to set display origin: \(originResult)")
         }
 
-        let completeResult = CGCompleteDisplayConfiguration(config, .permanently)
+        // Session-scoped on purpose: position is persisted via UserDefaults, and
+        // baking the virtual display into WindowServer's permanent prefs lets the
+        // system re-adopt it as main on later startups (#39).
+        let completeResult = CGCompleteDisplayConfiguration(config, .forSession)
 
         if completeResult != CGError.success {
             throw VirtualDisplayError.configurationFailed("Failed to complete configuration: \(completeResult)")
@@ -241,6 +244,11 @@ class VirtualDisplayManager {
 
     /// Restore saved display position
     func restoreDisplayPosition() {
+        // Run the main-display safety net on every path, including early
+        // returns: WindowServer can re-adopt the virtual display as main from
+        // its own remembered arrangement even when we restore nothing (#39).
+        defer { ensurePhysicalDisplayStaysMain() }
+
         let defaults = UserDefaults.standard
         guard defaults.bool(forKey: "SideScreen_hasPosition") else {
             print("📍 No saved display position found")
@@ -250,11 +258,63 @@ class VirtualDisplayManager {
         let x = defaults.integer(forKey: "SideScreen_positionX")
         let y = defaults.integer(forKey: "SideScreen_positionY")
 
+        // A position saved while the tablet was the Mac's only screen is the
+        // main slot (0,0). Re-applying it with a physical display attached
+        // moves the menu bar and all input focus onto a screen that may not be
+        // visible anywhere — e.g. right after the tablet was unpaired (#39).
+        if x == 0 && y == 0 && !onlinePhysicalDisplays().isEmpty {
+            print("🛟 Skipping saved main-slot position — a physical display is attached")
+            return
+        }
+
         do {
             try setDisplayPosition(x: Int32(x), y: Int32(y))
             print("📍 Restored display position: (\(x), \(y))")
         } catch {
             print("⚠️  Failed to restore display position: \(error)")
+        }
+    }
+
+    /// Online displays other than this virtual display. Filters by the vendor
+    /// ID our descriptor registers (0xEEEE) so a stale SideScreen display from
+    /// a previous instance is not mistaken for a physical screen.
+    private func onlinePhysicalDisplays() -> [CGDirectDisplayID] {
+        var online = [CGDirectDisplayID](repeating: 0, count: 16)
+        var count: UInt32 = 0
+        guard CGGetOnlineDisplayList(16, &online, &count) == .success else { return [] }
+        return online.prefix(Int(count)).filter { id in
+            id != displayID && CGDisplayVendorNumber(id) != 0xEEEE
+        }
+    }
+
+    /// Safety net for #39: whenever at least one physical display is online,
+    /// the main slot (0,0) must belong to a physical display, never to the
+    /// virtual one. Otherwise the menu bar, dock, and keyboard focus land on a
+    /// screen nobody can see, which presents as a completely unresponsive Mac.
+    /// No-ops in true headless operation (no physical display online).
+    func ensurePhysicalDisplayStaysMain() {
+        guard let displayID = displayID else { return }
+        guard CGMainDisplayID() == displayID,
+              let physicalMain = onlinePhysicalDisplays().first else { return }
+
+        var config: CGDisplayConfigRef?
+        guard CGBeginDisplayConfiguration(&config) == CGError.success, let config = config else { return }
+
+        // Give the physical display the main slot and park the virtual display
+        // to its right.
+        let physicalWidth = Int32(CGDisplayBounds(physicalMain).width)
+        var result = CGConfigureDisplayOrigin(config, physicalMain, 0, 0)
+        if result == CGError.success {
+            result = CGConfigureDisplayOrigin(config, displayID, physicalWidth, 0)
+        }
+        guard result == CGError.success else {
+            CGCancelDisplayConfiguration(config)
+            print("⚠️  Failed to rearrange displays: \(result)")
+            return
+        }
+
+        if CGCompleteDisplayConfiguration(config, .forSession) == CGError.success {
+            print("🛟 Physical display restored as main — virtual display parked beside it")
         }
     }
 
