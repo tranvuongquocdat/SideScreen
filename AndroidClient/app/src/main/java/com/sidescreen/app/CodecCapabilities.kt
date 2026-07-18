@@ -45,4 +45,43 @@ object CodecCapabilities {
             true // fail open: assume HEVC, preserving legacy behavior
         }
     }
+
+    /** Mime the client will ask the Mac to stream: HEVC when usable, else AVC. */
+    val streamMime: String
+        get() = if (hasHevcDecoder) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
+
+    /**
+     * Upper decode bounds (width × height) of the largest usable *hardware*
+     * decoder for [mime] — the software fallback is too slow for real-time
+     * mirroring to count as a ceiling. Null when nothing usable exists or the
+     * probe fails (legacy behavior: no limit advertised to the Mac).
+     */
+    fun maxDecodeSize(mime: String): Pair<Int, Int>? =
+        try {
+            MediaCodecList(MediaCodecList.ALL_CODECS)
+                .codecInfos
+                .asSequence()
+                .filter { !it.isEncoder }
+                .filter { info -> info.supportedTypes.any { it.equals(mime, ignoreCase = true) } }
+                .filter { info ->
+                    val name = info.name.lowercase()
+                    val isSoftware = name.startsWith("c2.android.") || name.startsWith("omx.google.")
+                    val isBrokenHevc =
+                        mime.equals(MediaFormat.MIMETYPE_VIDEO_HEVC, ignoreCase = true) &&
+                            BROKEN_HEVC_HW_PREFIXES.any { name.startsWith(it) }
+                    !isSoftware && !isBrokenHevc
+                }
+                .mapNotNull { info ->
+                    val videoCaps =
+                        try {
+                            info.getCapabilitiesForType(mime).videoCapabilities
+                        } catch (_: Exception) {
+                            null
+                        }
+                    videoCaps?.let { it.supportedWidths.upper to it.supportedHeights.upper }
+                }
+                .maxByOrNull { (w, h) -> w.toLong() * h.toLong() }
+        } catch (_: Exception) {
+            null
+        }
 }

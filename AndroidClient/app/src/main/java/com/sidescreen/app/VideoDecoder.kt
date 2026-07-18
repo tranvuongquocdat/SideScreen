@@ -59,6 +59,12 @@ class VideoDecoder(
     var onFrameDecoded: ((ByteArray) -> Unit)? = null
     var onKeyframeRequired: ((force: Boolean, reason: String) -> Unit)? = null
 
+    /** Fired once when frames keep arriving but the decoder never outputs any —
+     *  the black-screen-with-live-stats signature (stream above the device's
+     *  decode limit, or an unusable decoder). */
+    var onDecoderStalled: (() -> Unit)? = null
+    private var stallReported = false
+
     // Available input buffer indices — fed by onInputBufferAvailable callback
     private val availableInputBuffers = ConcurrentLinkedQueue<Int>()
 
@@ -315,6 +321,11 @@ class VideoDecoder(
                     "dropped=$droppedFrames, availBufs=${availableInputBuffers.size}",
             )
         }
+        if (inputFrameCount == STALL_DETECT_INPUT_FRAMES && outputFrameCount == 0L && !stallReported) {
+            stallReported = true
+            diagLog("Decoder stalled: $inputFrameCount frames in, none out")
+            onDecoderStalled?.invoke()
+        }
 
         val codec =
             decoder ?: run {
@@ -529,6 +540,7 @@ class VideoDecoder(
 
     companion object {
         private const val TAG = "VideoDecoder"
+        private const val STALL_DETECT_INPUT_FRAMES = 120L
         private const val KEYFRAME_REQUEST_INTERVAL_NS = 1_000_000_000L
         private const val FORCE_KEYFRAME_REQUEST_INTERVAL_NS = 200_000_000L
         private const val MAX_RENDER_LATENCY_NS = 100_000_000L

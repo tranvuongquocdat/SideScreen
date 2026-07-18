@@ -43,4 +43,31 @@ final class CodecLimitsTests: XCTestCase {
         XCTAssertLessThanOrEqual(r.width, 1920)
         XCTAssertLessThanOrEqual(r.height, 1088)
     }
+
+    // MARK: - Client decoder limit clamp (issue #41)
+
+    func testHiDpiStreamClampsToClientDecoderLimit() {
+        // rm2109cmyk's case: 1200x720 HiDPI = 2400x1440 physical, budget
+        // tablet decoder caps around 2048x1152.
+        let r = CodecLimits.clamp(width: 2400, height: 1440, maxWidth: 2048, maxHeight: 1152)
+        XCTAssertLessThanOrEqual(r.width, 2048)
+        XCTAssertLessThanOrEqual(r.height, 1152)
+        XCTAssertEqual(r.width % 16, 0)
+        XCTAssertEqual(r.height % 16, 0)
+    }
+
+    func testStreamWithinClientLimitIsUntouched() {
+        let r = CodecLimits.clamp(width: 1920, height: 1200, maxWidth: 4096, maxHeight: 2304)
+        XCTAssertEqual(r.width, 1920)
+        XCTAssertEqual(r.height, 1200)
+    }
+
+    func testClientLimitPreservesAspectRatio() {
+        let r = CodecLimits.clamp(width: 3840, height: 2400, maxWidth: 1920, maxHeight: 1920)
+        // 16:10 in, ~16:10 out (within 16-alignment error)
+        let aspectIn = Double(3840) / Double(2400)
+        let aspectOut = Double(r.width) / Double(r.height)
+        XCTAssertEqual(aspectIn, aspectOut, accuracy: 0.05)
+        XCTAssertLessThanOrEqual(r.width, 1920)
+    }
 }

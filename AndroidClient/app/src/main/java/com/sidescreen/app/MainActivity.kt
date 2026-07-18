@@ -909,6 +909,23 @@ class MainActivity : AppCompatActivity() {
             videoDecoder?.onKeyframeRequired = { force, reason ->
                 streamClient?.requestKeyframe(force = force, reason = reason)
             }
+            videoDecoder?.onDecoderStalled = {
+                // Black screen with live stats: tell the user why instead of
+                // staying silent (issue #41). Toast renders above the (black)
+                // SurfaceView; the settings panel is hidden while streaming.
+                val cap = CodecCapabilities.maxDecodeSize(mime)
+                runOnUiThread {
+                    val capText = cap?.let { " (max ~${it.first}×${it.second})" } ?: ""
+                    android.widget.Toast
+                        .makeText(
+                            this,
+                            "No video output — the stream resolution may exceed " +
+                                "this tablet's decoder limit$capText. " +
+                                "Lower the resolution or disable HiDPI on the Mac.",
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
+                }
+            }
             streamClient?.requestKeyframe(force = true, reason = "decoder initialized")
             mainDiag("Decoder initialized OK ${displayWidth}x$displayHeight mime=$mime, videoDecoder=$videoDecoder")
             log("✅ Decoder initialized ${displayWidth}x$displayHeight $mime (${displayObj?.refreshRate ?: 60f}Hz)")

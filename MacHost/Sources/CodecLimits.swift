@@ -18,18 +18,23 @@ enum CodecLimits {
     static let avcMaxWidth = 1920
     static let avcMaxHeight = 1088
 
-    /// Scale (width, height) down to fit within the AVC limit, preserving
-    /// aspect ratio, flooring each dimension to a multiple of 16 (codec
-    /// macroblock alignment). Sizes already within the limit pass through
-    /// unchanged so HEVC-era resolutions keep working verbatim.
-    static func clampForAvc(width: Int, height: Int) -> (width: Int, height: Int) {
-        guard width > avcMaxWidth || height > avcMaxHeight else {
+    /// Scale (width, height) down to fit within (maxWidth, maxHeight),
+    /// preserving aspect ratio, flooring each dimension to a multiple of 16
+    /// (codec macroblock alignment). Sizes already within the limit pass
+    /// through unchanged.
+    static func clamp(width: Int, height: Int, maxWidth: Int, maxHeight: Int) -> (width: Int, height: Int) {
+        guard width > maxWidth || height > maxHeight else {
             return (width, height)
         }
-        let scale = min(Double(avcMaxWidth) / Double(width),
-                        Double(avcMaxHeight) / Double(height))
+        let scale = min(Double(maxWidth) / Double(width),
+                        Double(maxHeight) / Double(height))
         let w = max(16, Int((Double(width) * scale).rounded()) & ~15)
         let h = max(16, Int((Double(height) * scale).rounded()) & ~15)
         return (w, h)
+    }
+
+    /// Conservative fallback for AVC clients that report no decoder limit.
+    static func clampForAvc(width: Int, height: Int) -> (width: Int, height: Int) {
+        clamp(width: width, height: height, maxWidth: avcMaxWidth, maxHeight: avcMaxHeight)
     }
 }

@@ -127,6 +127,7 @@ class StreamClient(
                 streamCodecIsHevc = true
                 codecNegotiated = false
                 advertiseAvcOnlyIfNeeded() // MUST precede type 8: type 8 can trigger the server's early protocol finish
+                advertiseDecoderLimits() // Also before type 8, for the same reason
                 advertiseFrameMetadataSupport()
                 isConnected = true
                 lastKeyframeReceivedNs = 0L
@@ -255,6 +256,7 @@ class StreamClient(
                 streamCodecIsHevc = true
                 codecNegotiated = false
                 advertiseAvcOnlyIfNeeded() // MUST precede type 8: type 8 can trigger the server's early protocol finish
+                advertiseDecoderLimits() // Also before type 8, for the same reason
                 advertiseFrameMetadataSupport()
                 isConnected = true
                 diagLog("Wireless connected to $host:$port")
@@ -292,6 +294,25 @@ class StreamClient(
             out.writeByte(MESSAGE_CLIENT_AVC_ONLY)
             out.flush()
             diagLog("Advertised AVC-only (no HEVC decoder on this device)")
+        }
+    }
+
+    private fun advertiseDecoderLimits() {
+        val (maxW, maxH) = CodecCapabilities.maxDecodeSize(CodecCapabilities.streamMime) ?: return
+        val w = maxW.coerceAtMost(16383)
+        val h = maxH.coerceAtMost(16383)
+        if (w < 256 || h < 256) return
+        outputStream?.let { out ->
+            out.writeByte(MESSAGE_CLIENT_DECODER_LIMITS)
+            // 7 data bits per byte with the high bit always set: an old Mac
+            // skips unknown types one byte at a time, so payload bytes must
+            // never collide with real message-type values.
+            out.writeByte(0x80 or ((w shr 7) and 0x7F))
+            out.writeByte(0x80 or (w and 0x7F))
+            out.writeByte(0x80 or ((h shr 7) and 0x7F))
+            out.writeByte(0x80 or (h and 0x7F))
+            out.flush()
+            diagLog("Advertised decoder limit ${w}x$h for ${CodecCapabilities.streamMime}")
         }
     }
 
@@ -581,6 +602,7 @@ class StreamClient(
         private const val MESSAGE_CLIENT_SUPPORTS_FRAME_METADATA = 8
         private const val MESSAGE_CLIENT_AVC_ONLY = 9
         private const val MESSAGE_CODEC_SELECTED = 10
+        private const val MESSAGE_CLIENT_DECODER_LIMITS = 11
         private const val FRAME_FLAG_KEYFRAME = 1
         private const val KEYFRAME_REQUEST_FLAG_FORCE = 1
 

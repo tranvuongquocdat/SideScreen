@@ -17,6 +17,10 @@ private enum WireMessage {
     /// clients that sent clientAvcOnly — old clients disconnect on unknown
     /// message types, so this must never be sent unsolicited.
     static let codecSelected: UInt8 = 10
+    /// Client→server, 4-byte payload: the client's max decode size (issue
+    /// #41). Every payload byte has the high bit set, so old hosts that
+    /// consume unknown types byte-by-byte skip the payload harmlessly.
+    static let clientDecoderLimits: UInt8 = 11
 }
 
 private extension NWEndpoint {
@@ -76,6 +80,8 @@ class StreamingServer {
     private var waitingForSyncFrame = false
     private var clientSupportsFrameMetadata = false
     private var clientIsAvcOnly = false
+    /// Max decode size reported by the connected client (issue #41).
+    private(set) var clientDecodeLimits: (width: Int, height: Int)?
     private var inputBuffer = Data()
 
     init(port: UInt16) {
@@ -128,6 +134,7 @@ class StreamingServer {
         connectionReady = false
         clientSupportsFrameMetadata = false
         clientIsAvcOnly = false
+        clientDecodeLimits = nil
         waitingForSyncFrame = true
         inputBuffer.removeAll(keepingCapacity: true)
         connection = newConnection
@@ -402,6 +409,26 @@ class StreamingServer {
                 if !clientIsAvcOnly {
                     clientIsAvcOnly = true
                     debugLog("Client is AVC-only — will negotiate H.264")
+                }
+
+            case WireMessage.clientDecoderLimits:
+                // Type + 4 payload bytes: [w-hi][w-lo][h-hi][h-lo], 7 data
+                // bits each with the high bit always set (old hosts skip the
+                // payload harmlessly). Sent BEFORE type 8, like type 9.
+                guard inputBuffer.count >= 5 else { return }
+
+                let payload = (1...4).map { inputByte(at: $0) }
+                consumeInputBytes(5)
+                guard payload.allSatisfy({ $0 & 0x80 != 0 }) else {
+                    debugLog("Malformed decoder-limits payload — ignoring")
+                    continue
+                }
+                let w = (Int(payload[0] & 0x7F) << 7) | Int(payload[1] & 0x7F)
+                let h = (Int(payload[2] & 0x7F) << 7) | Int(payload[3] & 0x7F)
+                // Anything below QVGA-ish is a nonsense report — ignore it.
+                if w >= 256 && h >= 256 {
+                    clientDecodeLimits = (w, h)
+                    debugLog("Client decoder limit: \(w)x\(h)")
                 }
 
             default:

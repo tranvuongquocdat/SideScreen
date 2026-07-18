@@ -122,11 +122,22 @@ class ScreenCapture {
     /// Codec for the current encode session. Switching restarts the stream.
     private(set) var codec: StreamCodec = .hevc
 
+    /// Decoder ceiling reported by the connected client (issue #41). Nil for
+    /// legacy clients that report nothing.
+    private var clientDecodeLimit: (width: Int, height: Int)?
+
     /// Encode dimensions for a codec: physical display pixels, clamped to the
-    /// AVC decoder limit when streaming H.264. SCStream/CGDisplayStream scale
-    /// the capture into this size, so no virtual-display change is needed.
+    /// client's reported decoder limit when known, else to the conservative
+    /// AVC floor when streaming H.264. SCStream/CGDisplayStream scale the
+    /// capture into this size, so no virtual-display change is needed.
     func encodeSize(for codec: StreamCodec) -> (width: Int, height: Int) {
         let phys = (displayWidth, displayHeight)
+        // A reported limit is authoritative for both codecs: it is what the
+        // client's own MediaCodec claims it can decode.
+        if let limit = clientDecodeLimit {
+            return CodecLimits.clamp(width: phys.0, height: phys.1,
+                                     maxWidth: limit.width, maxHeight: limit.height)
+        }
         switch codec {
         case .hevc: return phys
         case .h264: return CodecLimits.clampForAvc(width: phys.0, height: phys.1)
@@ -554,16 +565,34 @@ class ScreenCapture {
     /// Note: if the CGDisplayStream fallback is active, restartStream() only
     /// rebuilds the SCStream path; the rare fallback+codec-switch combination
     /// recovers on the next fallback restart rather than immediately.
-    func setCodec(_ newCodec: StreamCodec) {
-        guard newCodec != codec else { return }
-        debugLog("Switching stream codec: \(codec) -> \(newCodec)")
+    /// Apply the per-connection negotiation result: stream codec plus the
+    /// client's reported decoder ceiling. Rebuilds the encoder mid-session
+    /// when either changes the encode setup (a codec switch, or a ceiling
+    /// that alters the encode dimensions — issue #41).
+    func negotiate(codec newCodec: StreamCodec, clientLimit: (width: Int, height: Int)?) {
+        let sizeBefore = encodeSize(for: codec)
+        let codecChanged = newCodec != codec
+        if codecChanged {
+            debugLog("Switching stream codec: \(codec) -> \(newCodec)")
+        }
         codec = newCodec
+        clientDecodeLimit = clientLimit
 
-        guard encoder != nil else { return }  // not streaming yet; startStreaming will pick it up
+        guard encoder != nil else { return }  // not streaming yet; startStreaming will pick both up
 
-        let (width, height) = encodeSize(for: newCodec)
+        let sizeAfter = encodeSize(for: newCodec)
+        guard codecChanged || sizeBefore != sizeAfter else { return }
+        if sizeBefore != sizeAfter {
+            let limitDesc = clientLimit.map { "\($0.width)x\($0.height)" } ?? "none"
+            debugLog("Encode size \(sizeBefore.width)x\(sizeBefore.height) -> \(sizeAfter.width)x\(sizeAfter.height) (client decoder limit: \(limitDesc))")
+        }
+        rebuildEncoder()
+    }
+
+    private func rebuildEncoder() {
+        let (width, height) = encodeSize(for: codec)
         let server = currentServer
-        let newEncoder = VideoEncoder(width: width, height: height, codec: newCodec, bitrateMbps: currentBitrateMbps, quality: currentQuality, gamingBoost: currentGamingBoost, frameRate: currentFrameRate)
+        let newEncoder = VideoEncoder(width: width, height: height, codec: codec, bitrateMbps: currentBitrateMbps, quality: currentQuality, gamingBoost: currentGamingBoost, frameRate: currentFrameRate)
         newEncoder.onEncodedFrame = { [weak server] data, timestamp, isKeyframe in
             server?.sendFrame(data, timestamp: timestamp, isKeyframe: isKeyframe)
         }

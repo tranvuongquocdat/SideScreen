@@ -574,16 +574,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // dimensions for the negotiated codec.
             streamingServer?.onCodecNegotiated = { [weak self] codec in
                 guard let self = self, let capture = self.screenCapture else { return }
-                capture.setCodec(codec)
-                switch codec {
-                case .hevc:
-                    // Logical user-picked resolution, exactly as at startup.
+                capture.negotiate(codec: codec, clientLimit: self.streamingServer?.clientDecodeLimits)
+                let enc = capture.encodeSize(for: codec)
+                if codec == .hevc && enc == (capture.displayWidth, capture.displayHeight) {
+                    // Unclamped HEVC: logical user-picked resolution, exactly
+                    // as at startup.
                     self.streamingServer?.setDisplaySize(width: size.width, height: size.height, rotation: self.settings.rotation)
-                case .h264:
-                    // Clamped physical encode size: the client must configure
-                    // its (weak) AVC decoder within its supported range, and
-                    // this matches what the stream's SPS will carry.
-                    let enc = capture.encodeSize(for: .h264)
+                } else {
+                    // Clamped (client decoder limit, or the AVC floor): the
+                    // client must configure its decoder within its supported
+                    // range, and this matches what the stream's SPS will carry.
                     self.streamingServer?.setDisplaySize(width: enc.width, height: enc.height, rotation: self.settings.rotation)
                 }
             }
