@@ -780,6 +780,38 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Recreate the decoder when the negotiated stream codec doesn't match the
+     * decoder's mime. Display config and codecSelected can arrive in either
+     * order on reconnect; without this, a decoder created with the default
+     * HEVC mime keeps consuming the H.264 stream and never outputs a frame —
+     * a permanent black screen on AVC-only devices (e.g. Unisoc tablets).
+     */
+    private fun onStreamCodecSelected(isHevc: Boolean) {
+        val expectedMime =
+            if (isHevc) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
+        runOnUiThread {
+            val dec = videoDecoder
+            val holder = currentSurfaceHolder
+            when {
+                dec == null -> {
+                    if (holder != null && holder.surface.isValid) {
+                        mainDiag("Codec selected ($expectedMime) — initializing deferred decoder")
+                        initializeDecoder(holder)
+                    }
+                }
+                dec.mime != expectedMime -> {
+                    mainDiag("Stream codec is $expectedMime but decoder is ${dec.mime} — recreating")
+                    dec.release()
+                    videoDecoder = null
+                    if (holder != null && holder.surface.isValid) {
+                        initializeDecoder(holder)
+                    }
+                }
+            }
+        }
+    }
+
     private fun initializeDecoder(holder: SurfaceHolder) {
         mainDiag(
             "initializeDecoder called, surface=${holder.surface}, " +
@@ -787,6 +819,13 @@ class MainActivity : AppCompatActivity() {
         )
         if (displayWidth <= 0 || displayHeight <= 0) {
             mainDiag("initializeDecoder skipped — no display config yet")
+            return
+        }
+        // AVC-only device: an HEVC decoder can never decode the H.264 stream
+        // the Mac will send — defer until codecSelected arrives, then
+        // onStreamCodecSelected initializes with the correct mime.
+        if (!CodecCapabilities.hasHevcDecoder && streamClient?.codecNegotiated != true) {
+            mainDiag("initializeDecoder deferred — AVC-only device awaiting codec negotiation")
             return
         }
         try {
@@ -904,6 +943,8 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+
+        streamClient?.onCodecSelected = { isHevc -> onStreamCodecSelected(isHevc) }
 
         streamClient?.onDisplaySize = { width, height, rotation ->
             mainDiag("onDisplaySize: ${width}x$height @ $rotation°")
@@ -1062,6 +1103,8 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 }
+
+                streamClient?.onCodecSelected = { isHevc -> onStreamCodecSelected(isHevc) }
 
                 streamClient?.onDisplaySize = { width, height, rotation ->
                     mainDiag("onDisplaySize: ${width}x$height @ $rotation°")

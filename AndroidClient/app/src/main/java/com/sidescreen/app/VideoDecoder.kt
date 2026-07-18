@@ -18,7 +18,9 @@ class VideoDecoder(
     private val display: Display? = null,
     initialWidth: Int = 1920,
     initialHeight: Int = 1200,
-    private val mime: String = MediaFormat.MIMETYPE_VIDEO_HEVC,
+    // Exposed so MainActivity can detect a codec-negotiation/decoder mismatch
+    // and recreate the decoder (see MainActivity.onStreamCodecSelected).
+    val mime: String = MediaFormat.MIMETYPE_VIDEO_HEVC,
 ) {
     private var decoder: MediaCodec? = null
     private var decoderThread: HandlerThread? = null
