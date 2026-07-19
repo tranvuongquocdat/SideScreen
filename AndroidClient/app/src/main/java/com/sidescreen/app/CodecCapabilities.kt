@@ -50,13 +50,22 @@ object CodecCapabilities {
     val streamMime: String
         get() = if (hasHevcDecoder) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
 
+    private val maxDecodeSizeCache = HashMap<String, Pair<Int, Int>?>()
+
     /**
      * Upper decode bounds (width × height) of the largest usable *hardware*
      * decoder for [mime] — the software fallback is too slow for real-time
      * mirroring to count as a ceiling. Null when nothing usable exists or the
      * probe fails (legacy behavior: no limit advertised to the Mac).
+     * Cached per mime: enumerating MediaCodecList is not cheap and the answer
+     * never changes at runtime (same reason hasHevcDecoder is lazy).
      */
     fun maxDecodeSize(mime: String): Pair<Int, Int>? =
+        synchronized(maxDecodeSizeCache) {
+            maxDecodeSizeCache.getOrPut(mime.lowercase()) { probeMaxDecodeSize(mime) }
+        }
+
+    private fun probeMaxDecodeSize(mime: String): Pair<Int, Int>? =
         try {
             MediaCodecList(MediaCodecList.ALL_CODECS)
                 .codecInfos

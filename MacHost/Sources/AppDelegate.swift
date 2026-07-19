@@ -60,6 +60,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var cancellables = Set<AnyCancellable>()
     private var permissionCheckTimer: Timer?
     private var statusRefreshTimer: Timer?
+    /// Reentrancy latch for startServer() — a second Start (double-clicked menu
+    /// item, auto-start racing a manual click) must not build a second virtual
+    /// display / server. Main-actor confined.
+    private var isStartingServer = false
     var isDaemonMode = false // Deprecated: keeping variable for ABI compatibility but unused
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -505,6 +509,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func startServer() async {
+        let canStart = await MainActor.run { () -> Bool in
+            guard !isStartingServer, !settings.isRunning else { return false }
+            isStartingServer = true
+            return true
+        }
+        guard canStart else {
+            debugLog("startServer() ignored — already starting or already running")
+            return
+        }
+        defer {
+            Task { @MainActor [weak self] in self?.isStartingServer = false }
+        }
         debugLog("🚀 startServer() invoked. Check permission: \(settings.hasScreenRecordingPermission)")
         guard settings.hasScreenRecordingPermission else {
             debugLog("❌ startServer aborted: Missing Screen Recording permission")

@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import CoreGraphics
 import CGVirtualDisplayBridge
 
@@ -7,6 +8,7 @@ class VirtualDisplayManager {
     private var virtualDisplay: CGVirtualDisplay?
     private var displayDescriptor: CGVirtualDisplayDescriptor?
     private var displaySettings: CGVirtualDisplaySettings?
+    private var screenParamsObserver: NSObjectProtocol?
 
     var displayID: CGDirectDisplayID? {
         return virtualDisplay?.displayID
@@ -99,6 +101,32 @@ class VirtualDisplayManager {
 
         let modeDesc = hiDPI ? "\(width)x\(height) HiDPI (physical \(physW)x\(physH))" : "\(width)x\(height)"
         print("✅ Virtual display created: \(modeDesc) @ \(refreshRate)Hz (ID: \(display.displayID))")
+
+        registerScreenParamsObserver()
+    }
+
+    /// Re-assert the physical-main invariant on every display-topology change:
+    /// WindowServer can re-adopt the virtual display as main from a remembered
+    /// arrangement at any point after creation (issue #39), not only during
+    /// the one-shot restore — e.g. when a physical display is hot-plugged.
+    /// Our own re-arrangement re-fires the notification, but the main-display
+    /// guard in ensurePhysicalDisplayStaysMain makes that pass a no-op.
+    private func registerScreenParamsObserver() {
+        guard screenParamsObserver == nil else { return }
+        screenParamsObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.ensurePhysicalDisplayStaysMain()
+        }
+    }
+
+    private func removeScreenParamsObserver() {
+        if let token = screenParamsObserver {
+            NotificationCenter.default.removeObserver(token)
+            screenParamsObserver = nil
+        }
     }
 
     /// Clone the main display configuration
@@ -342,6 +370,7 @@ class VirtualDisplayManager {
 
     /// Destroy the virtual display
     func destroyDisplay() {
+        removeScreenParamsObserver()
         if virtualDisplay != nil {
             virtualDisplay = nil
             displayDescriptor = nil
