@@ -17,6 +17,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+<a id="0.11.1"></a>
+## [0.11.1] - 2026-07-19
+
+Safety and quality-of-life release. Fixes the headless lockout that could force a recovery boot (#39), the remaining random black screen on reconnect (#44), and black screens on tablets whose video decoder can't keep up with high resolutions (#41) — plus display flip for teleprompter setups contributed by @peterdenham (#28).
+
+### Added
+- **Horizontal/Vertical flip (#28).** Two new toggles next to Rotation on the Mac mirror the picture left↔right and/or top↕bottom — built for teleprompter rigs. Touch input is mirrored to match. Contributed by @peterdenham. *Requires updating both the Mac app and the Android app*: with an older Android app, enabling flip shows an unflipped picture and temporarily forces landscape until the tablet is updated.
+- **Decoder-aware resolution (#41).** The tablet now tells the Mac the maximum size its hardware video decoder can actually handle, and the Mac scales the stream to fit (aspect preserved). High resolutions + HiDPI no longer black-screen on budget tablets — they just stream at the largest size the device can decode. Fully backward compatible in both directions. If decoding still fails, the tablet now shows a clear message naming its decoder limit instead of staying silently black.
+- **Hide settings icon (#36).** New toggle in the tablet's streaming settings hides the floating settings button — handy for drawing and teleprompter use. Swipe back to reveal it for a few seconds.
+- **Menu bar quick actions.** The Mac menu bar icon now shows live status (stopped / waiting / connected with device name), Start/Stop Streaming, and a USB↔Wireless mode switch — no need to open the settings window. The icon dims while the server is stopped.
+
+### Fixed
+- **Headless lockout (#39, severity 0).** After using the tablet as the Mac's only screen, the app could restore the invisible virtual display as the *main* display on the next auto-start — menu bar, dock, and keyboard focus moved to a screen nobody could see, which looked like a completely dead Mac and forced a recovery boot. Three layers of protection now guarantee a physically attached display always owns the main slot: the saved main-slot position is never re-applied while a physical display is online, the invariant is re-asserted on every display-topology change (including hot-plugging a display into a running headless Mac, which now hands the main slot back immediately), and display arrangements are no longer written into WindowServer's permanent preferences.
+- **Random black screen on reconnect (#44, follow-up to #40).** Display config and codec negotiation can arrive in either order on reconnect; a decoder created with the wrong codec now recreates itself instead of silently consuming the stream forever. Contributed by @ltminh88.
+- **Start button double-trigger.** Rapid double Start (menu bar or settings window) can no longer create two virtual displays or bind the port twice.
+
+### Installation
+- **macOS**: Open `SideScreen-0.11.1-mac-universal.dmg`, drag SideScreen to Applications. If Gatekeeper says "damaged"/"cannot be opened": `sudo xattr -cr /Applications/SideScreen.app`. Requires macOS 13 (Ventura) or later.
+- **Android**: Install `SideScreen-0.11.1-android.apk` (enable "Unknown sources" if needed).
+
+---
+
 <a id="0.11.0"></a>
 ## [0.11.0] - 2026-06-29
 
