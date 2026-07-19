@@ -6,6 +6,7 @@ import CoreMedia
 import CoreGraphics
 import CoreVideo
 import IOSurface
+import IOKit.pwr_mgt
 import os
 
 // MARK: - SCStreamDelegate
@@ -51,6 +52,16 @@ class ScreenCapture {
     private var frameMonitorTimer: DispatchSourceTimer?
     private var restartAttempted = false
     private var wakeObservers: [NSObjectProtocol] = []
+    /// True between startStreaming and stopStreaming. Guards wake-triggered
+    /// restarts from re-enabling capture after a stop.
+    private var isStreaming = false
+    /// Bumped on every stopStreaming and every restart so a superseded
+    /// in-flight restart Task aborts instead of resurrecting capture.
+    private var streamGeneration: UInt64 = 0
+
+    // Display-sleep assertion held while streaming (see createDisplaySleepAssertion)
+    private var displaySleepAssertionID: IOPMAssertionID = IOPMAssertionID(0)
+    private var hasDisplaySleepAssertion = false
     private var wakeRestartPending = false
 
     // CGDisplayStream fallback
@@ -401,6 +412,13 @@ class ScreenCapture {
         currentGamingBoost = gamingBoost
         currentFrameRate = frameRate
 
+        isStreaming = true
+
+        // Keep the display awake for the whole streaming session so the virtual
+        // display never idle-sleeps (the sleep/wake cycle is what strands the
+        // cursor — see the wake handling above for the residual cases).
+        createDisplaySleepAssertion()
+
         let (width, height) = encodeSize(for: codec)
 
         encoder = VideoEncoder(width: width, height: height, codec: codec, bitrateMbps: bitrateMbps, quality: quality, gamingBoost: gamingBoost, frameRate: frameRate)
@@ -507,6 +525,13 @@ class ScreenCapture {
     // MARK: - Stream restart
 
     private func restartStream() {
+        guard isStreaming else {
+            debugLog("restartStream skipped — not streaming")
+            return
+        }
+
+        streamGeneration &+= 1
+        let gen = streamGeneration
         restartAttempted = true
         stateLock.withLock { $0.hasReceivedFirstFrame = false }
 
@@ -514,6 +539,13 @@ class ScreenCapture {
             do {
                 // Stop existing stream
                 try? await stream?.stopCapture()
+                // A stopStreaming() or a newer restart superseded this one — do
+                // NOT bring capture back up (would resurrect a stopped stream).
+                guard isStreaming, gen == streamGeneration else {
+                    debugLog("restartStream(gen \(gen)) superseded after stopCapture — aborting")
+                    return
+                }
+
                 stream = nil
                 streamOutput = nil
                 streamDelegate = nil
@@ -522,18 +554,75 @@ class ScreenCapture {
                 // Re-setup
                 try await setupDisplay()
                 try await setupStream()
+                guard isStreaming, gen == streamGeneration else {
+                    debugLog("restartStream(gen \(gen)) superseded during setup — aborting")
+                    try? await stream?.stopCapture()
+                    stream = nil
+                    return
+                }
 
                 // Re-attach encoding pipeline using shared handler
                 configureFrameHandler(label: "restart")
+                guard isStreaming, gen == streamGeneration else {
+                    debugLog("restartStream(gen \(gen)) superseded before start — aborting")
+                    return
+                }
 
                 try await stream?.startCapture()
+                guard isStreaming, gen == streamGeneration else {
+                    debugLog("restartStream(gen \(gen)) superseded after startCapture — aborting")
+                    try? await stream?.stopCapture()
+                    return
+                }
+
                 debugLog("SCStream restarted — starting frame flow monitor")
                 startFrameMonitor()
             } catch {
                 debugLog("SCStream restart failed: \(error) — falling back to CGDisplayStream")
-                attemptFallbackCapture()
+                if isStreaming, gen == streamGeneration {
+                    attemptFallbackCapture()
+                } else {
+                    debugLog("restartStream(gen \(gen)) superseded before fallback — aborted")
+                }
             }
         }
+    }
+
+    // MARK: - Display-sleep assertion
+
+    /// Keep the display awake while streaming. The captured surface is a
+    /// virtual display; when the physical display idle-sleeps (pmset
+    /// displaysleep), the virtual display stops producing frames and the
+    /// cursor overlay is lost on wake. Holding
+    /// kIOPMAssertionTypePreventUserIdleDisplaySleep avoids the whole
+    /// sleep/wake transition; the wake observers above cover what it cannot
+    /// (manual/forced sleep, lid close, display reconnects). Released in
+    /// stopStreaming.
+    private func createDisplaySleepAssertion() {
+        guard !hasDisplaySleepAssertion else { return }
+        let reason = "Side Screen is streaming to an external tablet display" as CFString
+        let result = IOPMAssertionCreateWithName(
+            kIOPMAssertionTypePreventUserIdleDisplaySleep as CFString,
+            IOPMAssertionLevel(kIOPMAssertionLevelOn),
+            reason,
+            &displaySleepAssertionID)
+        if result == kIOReturnSuccess {
+            hasDisplaySleepAssertion = true
+            debugLog("Display-sleep assertion held — display stays awake while streaming")
+        } else {
+            debugLog("Failed to create display-sleep assertion: IOReturn \(result)")
+        }
+    }
+
+    private func releaseDisplaySleepAssertion() {
+        guard hasDisplaySleepAssertion else { return }
+        let result = IOPMAssertionRelease(displaySleepAssertionID)
+        if result != kIOReturnSuccess {
+            debugLog("IOPMAssertionRelease failed: IOReturn \(result)")
+        }
+        hasDisplaySleepAssertion = false
+        displaySleepAssertionID = IOPMAssertionID(0)
+        debugLog("Display-sleep assertion released")
     }
 
     // MARK: - CGDisplayStream fallback
@@ -677,8 +766,16 @@ class ScreenCapture {
     // MARK: - Stop streaming
 
     func stopStreaming() {
+        // Invalidate any in-flight restart (incl. the delayed wake restart) so
+        // it cannot resurrect capture after this stop.
+        isStreaming = false
+        streamGeneration &+= 1
+
         // Cancel frame flow monitor
         stopFrameMonitor()
+
+        // Let the display idle-sleep normally again once we stop streaming.
+        releaseDisplaySleepAssertion()
 
         // Stop SCStream
         Task {
