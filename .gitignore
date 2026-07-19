@@ -58,3 +58,6 @@ tmp/
 temp/
 *.tmp
 .superpowers/
+
+# Local ktlint binary (CI downloads its own)
+AndroidClient/ktlint

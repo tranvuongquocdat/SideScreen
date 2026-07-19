@@ -1,5 +1,6 @@
 package com.sidescreen.app
 
+import android.media.MediaCodecInfo
 import android.media.MediaCodecList
 import android.media.MediaFormat
 
@@ -27,19 +28,32 @@ object CodecCapabilities {
     /** Decoder-name prefixes whose HEVC implementation is unusable for surface output. */
     private val BROKEN_HEVC_HW_PREFIXES = listOf("omx.sprd.", "c2.sprd.")
 
+    /**
+     * Usable *hardware* decoder for [mime]: not an encoder, not the (too slow
+     * for real-time mirroring) Google software implementation, and for HEVC
+     * not one of the vendor implementations that never render to a Surface.
+     * Shared by [hasHevcDecoder] and [maxDecodeSize] so the classification
+     * cannot drift between them. Same hardware/software split
+     * VideoDecoder.findBestDecoder uses.
+     */
+    private fun isUsableHardwareDecoder(
+        info: MediaCodecInfo,
+        mime: String,
+    ): Boolean {
+        if (info.isEncoder) return false
+        if (info.supportedTypes.none { it.equals(mime, ignoreCase = true) }) return false
+        val name = info.name.lowercase()
+        val isSoftware = name.startsWith("c2.android.") || name.startsWith("omx.google.")
+        val isBrokenHevc =
+            mime.equals(MediaFormat.MIMETYPE_VIDEO_HEVC, ignoreCase = true) &&
+                BROKEN_HEVC_HW_PREFIXES.any { name.startsWith(it) }
+        return !isSoftware && !isBrokenHevc
+    }
+
     val hasHevcDecoder: Boolean by lazy {
         try {
-            MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos.any { info ->
-                if (info.isEncoder) return@any false
-                val handlesHevc =
-                    info.supportedTypes.any { it.equals(MediaFormat.MIMETYPE_VIDEO_HEVC, ignoreCase = true) }
-                if (!handlesHevc) return@any false
-
-                val name = info.name.lowercase()
-                // Same hardware/software split VideoDecoder.findBestDecoder uses.
-                val isSoftware = name.startsWith("c2.android.") || name.startsWith("omx.google.")
-                val isBrokenHardware = BROKEN_HEVC_HW_PREFIXES.any { name.startsWith(it) }
-                !isSoftware && !isBrokenHardware
+            MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos.any {
+                isUsableHardwareDecoder(it, MediaFormat.MIMETYPE_VIDEO_HEVC)
             }
         } catch (_: Exception) {
             true // fail open: assume HEVC, preserving legacy behavior
@@ -70,16 +84,7 @@ object CodecCapabilities {
             MediaCodecList(MediaCodecList.ALL_CODECS)
                 .codecInfos
                 .asSequence()
-                .filter { !it.isEncoder }
-                .filter { info -> info.supportedTypes.any { it.equals(mime, ignoreCase = true) } }
-                .filter { info ->
-                    val name = info.name.lowercase()
-                    val isSoftware = name.startsWith("c2.android.") || name.startsWith("omx.google.")
-                    val isBrokenHevc =
-                        mime.equals(MediaFormat.MIMETYPE_VIDEO_HEVC, ignoreCase = true) &&
-                            BROKEN_HEVC_HW_PREFIXES.any { name.startsWith(it) }
-                    !isSoftware && !isBrokenHevc
-                }
+                .filter { isUsableHardwareDecoder(it, mime) }
                 .mapNotNull { info ->
                     val videoCaps =
                         try {

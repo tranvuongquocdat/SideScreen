@@ -619,16 +619,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self = self, let capture = self.screenCapture else { return }
                 capture.negotiate(codec: codec, clientLimit: self.streamingServer?.clientDecodeLimits)
                 let enc = capture.encodeSize(for: codec)
-                if codec == .hevc && enc == (capture.displayWidth, capture.displayHeight) {
-                    // Unclamped HEVC: logical user-picked resolution, exactly
-                    // as at startup.
-                    self.streamingServer?.setDisplaySize(width: size.width, height: size.height, rotation: self.settings.rotation, flipHorizontal: self.settings.flipHorizontal, flipVertical: self.settings.flipVertical)
-                } else {
-                    // Clamped (client decoder limit, or the AVC floor): the
-                    // client must configure its decoder within its supported
-                    // range, and this matches what the stream's SPS will carry.
-                    self.streamingServer?.setDisplaySize(width: enc.width, height: enc.height, rotation: self.settings.rotation, flipHorizontal: self.settings.flipHorizontal, flipVertical: self.settings.flipVertical)
-                }
+                // Unclamped HEVC keeps the logical user-picked resolution,
+                // exactly as at startup; any clamped size (client decoder
+                // limit, or the AVC floor) must match what the stream's SPS
+                // will carry so the client sizes its decoder correctly.
+                let unclampedHevc = codec == .hevc && enc == (capture.displayWidth, capture.displayHeight)
+                let (w, h) = unclampedHevc ? (size.width, size.height) : (enc.width, enc.height)
+                self.streamingServer?.setDisplaySize(width: w, height: h, rotation: self.settings.rotation, flipHorizontal: self.settings.flipHorizontal, flipVertical: self.settings.flipVertical)
             }
             streamingServer?.onKeyframeRequested = { [weak self] force in
                 self?.screenCapture?.requestKeyframeOrReplayCachedFrame(force: force)
