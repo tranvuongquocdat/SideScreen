@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 @preconcurrency import ScreenCaptureKit
 import VideoToolbox
 import CoreMedia
@@ -49,6 +50,8 @@ class ScreenCapture {
     // Main-thread-only state
     private var frameMonitorTimer: DispatchSourceTimer?
     private var restartAttempted = false
+    private var wakeObservers: [NSObjectProtocol] = []
+    private var wakeRestartPending = false
 
     // CGDisplayStream fallback
     private var cgDisplayStream: CGDisplayStream?
@@ -169,6 +172,69 @@ class ScreenCapture {
         self.refreshRate = refreshRate
         try await setupDisplay()
         try await setupStream()
+        await MainActor.run { registerWakeObservers() }
+    }
+
+    // MARK: - Display wake handling
+
+    /// Display sleep tears down SCStream (SCStreamErrorDomain -3815, "no
+    /// displays or windows to capture"), which silently drops capture onto
+    /// the CGDisplayStream fallback for the rest of the session. Restart
+    /// the capture whenever the screens wake so it returns to SCStream.
+    private func registerWakeObservers() {
+        guard wakeObservers.isEmpty else { return }
+        let center = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.screensDidWakeNotification, NSWorkspace.didWakeNotification] {
+            let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                self?.handleWake()
+            }
+            wakeObservers.append(token)
+        }
+        debugLog("Wake observers registered")
+    }
+
+    private func unregisterWakeObservers() {
+        let center = NSWorkspace.shared.notificationCenter
+        wakeObservers.forEach { center.removeObserver($0) }
+        wakeObservers.removeAll()
+    }
+
+    deinit {
+        // Defensive: stopStreaming() already unregisters, but make sure a
+        // dropped instance never leaves observer tokens behind.
+        unregisterWakeObservers()
+    }
+
+    private func handleWake() {
+        // Only act while a capture is actually running.
+        guard stream != nil || cgDisplayStream != nil else { return }
+        // A full system wake fires both screensDidWake and didWake —
+        // coalesce them into a single restart.
+        guard !wakeRestartPending else { return }
+        wakeRestartPending = true
+        debugLog("Screens woke — scheduling capture restart")
+        // Give WindowServer a moment to settle before touching the stream.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            guard let self else { return }
+            self.wakeRestartPending = false
+            guard self.stream != nil || self.cgDisplayStream != nil else { return }
+            // Display sleep usually kills SCStream with error -3815 ("no
+            // displays or windows to capture"), which pushes capture onto the
+            // CGDisplayStream fallback. After wake, always try to get back
+            // onto SCStream — restartStream() re-enters the fallback by
+            // itself if SCStream still cannot start.
+            let fallbackActive = self.stateLock.withLock { $0.fallbackActive }
+            if fallbackActive {
+                debugLog("Wake restart: leaving CGDisplayStream fallback, retrying SCStream")
+                self.cgDisplayStream?.stop()
+                self.cgDisplayStream = nil
+                self.stateLock.withLock { $0.fallbackActive = false }
+            }
+            self.restartStream()
+            // A wake-triggered restart must not consume the one-shot budget
+            // the frame monitor uses for stall recovery.
+            self.restartAttempted = false
+        }
     }
 
     // MARK: - SCShareableContent with timeout
@@ -507,12 +573,18 @@ class ScreenCapture {
         let pixelFormat = Int32(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)
         let queue = DispatchQueue(label: "com.sidescreen.cgdisplaystream", qos: .userInteractive)
 
+        // Without kCGDisplayStreamShowCursor the fallback stream never
+        // composites the cursor at all (the key defaults to false), so any
+        // session that degrades to CGDisplayStream loses the pointer on the
+        // tablet even when WindowServer is healthy.
+        let streamProps = [CGDisplayStream.showCursor as String: true] as CFDictionary
+
         guard let displayStream = CGDisplayStream(
             dispatchQueueDisplay: displayID,
             outputWidth: width,
             outputHeight: height,
             pixelFormat: pixelFormat,
-            properties: nil,
+            properties: streamProps,
             queue: queue,
             handler: { [weak self] _, _, frameSurface, _ in
                 guard let self = self, let surface = frameSurface else { return }
@@ -632,6 +704,7 @@ class ScreenCapture {
             state.fallbackActive = false
         }
         restartAttempted = false
+        unregisterWakeObservers()
     }
 }
 
