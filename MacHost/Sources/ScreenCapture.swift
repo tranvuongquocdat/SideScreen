@@ -318,7 +318,11 @@ class ScreenCapture {
         let (width, height) = encodeSize(for: codec)
         let fps = refreshRate
 
-        streamOutput = StreamOutput()
+        // Keep a local reference. `streamOutput` is cleared by the restart, fallback
+        // and stop paths, so force-unwrapping the property further down races with
+        // any of them and crashes setup with "Unexpectedly found nil".
+        let output = StreamOutput()
+        streamOutput = output
 
         let delegate = StreamDelegate()
         delegate.onStreamError = { [weak self] _ in
@@ -345,7 +349,7 @@ class ScreenCapture {
         config.scalesToFit = false
 
         let scStream = SCStream(filter: filter, configuration: config, delegate: delegate)
-        try scStream.addStreamOutput(streamOutput!, type: .screen, sampleHandlerQueue: .global(qos: .userInteractive))
+        try scStream.addStreamOutput(output, type: .screen, sampleHandlerQueue: .global(qos: .userInteractive))
 
         stream = scStream
         debugLog("Stream configured: \(width)x\(height) @ \(fps)fps (with delegate)")
