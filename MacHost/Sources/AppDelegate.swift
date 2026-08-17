@@ -243,7 +243,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settings.$touchEnabled
             .dropFirst()
             .sink { [weak self] enabled in
-                self?.streamingServer?.touchEnabled = enabled
+                guard let self else { return }
+                self.streamingServer?.touchEnabled = enabled
+                if !enabled {
+                    self.cancelActiveRemoteGesture()
+                }
             }
             .store(in: &cancellables)
 
@@ -664,6 +668,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             streamingServer?.onClientDisconnected = { [weak self] in
                 guard let self = self else { return }
                 Task { @MainActor in
+                    self.cancelActiveRemoteGesture()
                     self.settings.clientConnected = false
                     // Final lastConnected snapshot at the disconnect moment, then
                     // freeze (currentWirelessDevice = nil stops the rolling update
@@ -750,6 +755,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func stopServer() {
+        cancelActiveRemoteGesture()
+
         // Save display position before destroying
         virtualDisplayManager?.saveDisplayPosition()
         settings.pairingCode = nil
@@ -799,6 +806,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var momentumVelocityX: CGFloat = 0
     private var momentumVelocityY: CGFloat = 0
     private var lastMomentumPosition: CGPoint = .zero
+
+    /// Balance any synthetic mouse-down before remote touch control goes away
+    /// or changes to a gesture that no longer owns the mouse button.
+    private func cancelActiveRemoteGesture() {
+        cancelLongPressTimer()
+        stopMomentumScroll()
+        if gestureState == .dragging {
+            injectMouseUp(at: touchLastPosition)
+        }
+        gestureState = .idle
+    }
 
     // MARK: - Touch Entry Point
 
@@ -982,9 +1000,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         switch action {
         case 0: // Down
-            cancelLongPressTimer()
-            stopMomentumScroll()
-            gestureState = .idle  // Reset so 2-finger detection starts fresh
+            // A second finger can arrive while a long-press drag owns the
+            // synthetic left button. Release it before replacing that state.
+            cancelActiveRemoteGesture()
             initialPinchDistance = distance
             lastPinchDistance = distance
             touchLastPosition = midpoint
