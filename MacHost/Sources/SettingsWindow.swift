@@ -495,6 +495,28 @@ struct SettingsView: View {
                                         .font(.system(size: 10))
                                         .foregroundColor(.orange)
                                 }
+
+                                Divider()
+
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Pen / Draw Mode")
+                                            .font(.system(size: 12, weight: .medium))
+                                        Text("Draw with a stylus instead of scrolling")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    Toggle("", isOn: $settings.penModeEnabled)
+                                        .labelsHidden()
+                                }
+                                .disabled(!settings.touchEnabled)
+
+                                if settings.penModeEnabled && settings.touchEnabled {
+                                    Text("Drawing mode is on — 1-finger scroll, momentum and tap-and-hold right click are off. Tap, double tap, two-finger scroll and pinch still work.")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.orange)
+                                }
                             }
                         }
 
@@ -1212,6 +1234,9 @@ class DisplaySettings: ObservableObject {
     @Published var touchEnabled: Bool {
         didSet { save("touchEnabled", touchEnabled) }
     }
+    @Published var penModeEnabled: Bool {
+        didSet { save("penModeEnabled", penModeEnabled) }
+    }
     @Published var connectionMode: ConnectionMode {
         didSet { save("connectionMode", connectionMode.rawValue) }
     }
@@ -1262,6 +1287,8 @@ class DisplaySettings: ObservableObject {
         self.customWidth = defaults.object(forKey: keyPrefix + "customWidth") as? Int ?? 1920
         self.customHeight = defaults.object(forKey: keyPrefix + "customHeight") as? Int ?? 1200
         self.touchEnabled = defaults.object(forKey: keyPrefix + "touchEnabled") as? Bool ?? true
+        // Default off: without it the touch pipeline keeps its original trackpad behaviour.
+        self.penModeEnabled = defaults.object(forKey: keyPrefix + "penModeEnabled") as? Bool ?? false
         let modeRaw = defaults.string(forKey: keyPrefix + "connectionMode") ?? ConnectionMode.usb.rawValue
         self.connectionMode = ConnectionMode(rawValue: modeRaw) ?? .usb
         self.autoStartStreamingOnLaunch = defaults.object(forKey: keyPrefix + "autoStartStreamingOnLaunch") as? Bool ?? false
@@ -1330,7 +1357,8 @@ class DisplaySettings: ObservableObject {
     func resetToDefaults() {
         let keys = ["resolution", "refreshRate", "hiDPI", "bitrate", "quality",
                     "gamingBoost", "port", "rotation", "flipHorizontal", "flipVertical", "showAllResolutions",
-                    "customWidth", "customHeight", "touchEnabled", "autoStartStreamingOnLaunch", "startupMode"]
+                    "customWidth", "customHeight", "touchEnabled", "penModeEnabled",
+                    "autoStartStreamingOnLaunch", "startupMode"]
         for key in keys {
             defaults.removeObject(forKey: keyPrefix + key)
         }
@@ -1349,6 +1377,7 @@ class DisplaySettings: ObservableObject {
         customWidth = 1920
         customHeight = 1200
         touchEnabled = true
+        penModeEnabled = false
         autoStartStreamingOnLaunch = false
         startupMode = .usb
 

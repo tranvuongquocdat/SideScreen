@@ -197,6 +197,7 @@ First-time setup still needs a screen once to grant Screen Recording permission;
 | HiDPI (Retina) | On/Off | Off |
 | Gaming Boost | On/Off (1 Gbps, 120 Hz) | Off |
 | Touch Input | On/Off | On |
+| Pen / Draw Mode | On/Off | Off |
 
 ---
 

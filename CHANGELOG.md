@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Pen / Draw Mode.** New toggle under Touch Control on the Mac. With it on, a single pointer presses the left button the moment it touches down instead of waiting out the long-press threshold, so a stylus draws a continuous stroke in drawing apps rather than scrolling the canvas. Two-finger scroll and pinch are unchanged, so panning and zooming still work. Off by default — every existing gesture behaves exactly as before unless it is enabled. This is direct-pointer input only: the touch protocol carries no pressure or tilt, so it does not close out the planned full stylus support.
+
+### Fixed
+- **Left mouse button could stay stuck down.** A drag that never received its touch-up — client disconnected, server stopped, touch input switched off, or the app quit mid-drag — left the left button physically pressed, so every later cursor movement dragged across the Mac until a real mouse was clicked. All of those paths now release the button. Rare with long-press dragging, but constant once Pen / Draw Mode makes a held button the normal state of every stroke.
+
 ### Planned
 - mDNS auto-discovery for wireless mode
 - Audio streaming
