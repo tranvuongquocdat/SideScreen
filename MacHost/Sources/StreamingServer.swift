@@ -40,6 +40,102 @@ private extension NWEndpoint {
     }
 }
 
+enum StreamingServerStartError: LocalizedError {
+    case listenerFailed(port: UInt16, underlying: Error)
+    case cancelledBeforeReady(port: UInt16)
+    case startupTimedOut(port: UInt16, lastWaitingError: Error?)
+
+    var errorDescription: String? {
+        switch self {
+        case .listenerFailed(let port, let underlying):
+            return "Could not listen on port \(port): \(underlying.localizedDescription)"
+        case .cancelledBeforeReady(let port):
+            return "Server startup on port \(port) was cancelled before the listener became ready."
+        case .startupTimedOut(let port, let lastWaitingError):
+            let detail = lastWaitingError.map { " Last listener error: \($0.localizedDescription)" } ?? ""
+            return "Timed out while waiting for the server to listen on port \(port).\(detail)"
+        }
+    }
+}
+
+/// Bridges NWListener's state callback to async startup without risking a
+/// leaked or double-resumed continuation. The listener may publish a state
+/// before `wait()` installs its continuation, so the first result is cached.
+final class ListenerStartupGate: @unchecked Sendable {
+    private enum State {
+        case pending
+        case waiting(CheckedContinuation<Void, Error>)
+        case completed(Result<Void, Error>)
+    }
+
+    private let lock = NSLock()
+    private var state: State = .pending
+    private var lastWaitingError: Error?
+
+    func wait() async throws {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                let completedResult: Result<Void, Error>?
+                lock.lock()
+                switch state {
+                case .pending:
+                    state = .waiting(continuation)
+                    completedResult = nil
+                case .completed(let result):
+                    completedResult = result
+                case .waiting:
+                    // A StreamingServer has exactly one startup waiter.
+                    completedResult = .failure(
+                        NSError(
+                            domain: "StreamingServer",
+                            code: 1,
+                            userInfo: [NSLocalizedDescriptionKey: "Server startup was awaited more than once."]
+                        )
+                    )
+                }
+                lock.unlock()
+
+                if let completedResult {
+                    continuation.resume(with: completedResult)
+                }
+            }
+        } onCancel: {
+            resolve(.failure(CancellationError()))
+        }
+    }
+
+    func noteWaitingError(_ error: Error) {
+        lock.lock()
+        lastWaitingError = error
+        lock.unlock()
+    }
+
+    func resolveTimeout(port: UInt16) {
+        lock.lock()
+        let waitingError = lastWaitingError
+        lock.unlock()
+        resolve(.failure(StreamingServerStartError.startupTimedOut(port: port, lastWaitingError: waitingError)))
+    }
+
+    func resolve(_ result: Result<Void, Error>) {
+        let continuation: CheckedContinuation<Void, Error>?
+        lock.lock()
+        switch state {
+        case .pending:
+            state = .completed(result)
+            continuation = nil
+        case .waiting(let waiter):
+            state = .completed(result)
+            continuation = waiter
+        case .completed:
+            continuation = nil
+        }
+        lock.unlock()
+
+        continuation?.resume(with: result)
+    }
+}
+
 class StreamingServer {
     private let port: UInt16
     private var listener: NWListener?
@@ -128,8 +224,16 @@ class StreamingServer {
         self.port = port
     }
 
-    func start() {
+    var boundPort: UInt16? {
+        listener?.port?.rawValue
+    }
+
+    func start(startupTimeout: TimeInterval = 10) async throws {
         isStopped = false
+        let startupGate = ListenerStartupGate()
+        let startupPort = port
+
+        let newListener: NWListener
         do {
             let params = NWParameters.tcp
             params.allowLocalEndpointReuse = true
@@ -139,26 +243,69 @@ class StreamingServer {
                 tcpOptions.noDelay = true  // Disable Nagle's algorithm
             }
 
-            listener = try NWListener(using: params, on: NWEndpoint.Port(integerLiteral: port))
-
-            listener?.newConnectionHandler = { [weak self] newConnection in
-                self?.handleConnection(newConnection)
-            }
-
-            listener?.stateUpdateHandler = { state in
-                switch state {
-                case .ready:
-                    debugLog("TCP Server listening on port \(self.port)")
-                case .failed(let error):
-                    debugLog("Server failed: \(error)")
-                default:
-                    break
-                }
-            }
-
-            listener?.start(queue: networkQueue)
+            newListener = try NWListener(using: params, on: NWEndpoint.Port(integerLiteral: port))
         } catch {
             debugLog("Failed to start server: \(error)")
+            throw StreamingServerStartError.listenerFailed(port: port, underlying: error)
+        }
+
+        listener = newListener
+        newListener.newConnectionHandler = { [weak self] newConnection in
+            self?.handleConnection(newConnection)
+        }
+
+        newListener.stateUpdateHandler = { [weak self, startupGate] state in
+            guard let self else {
+                startupGate.resolve(.failure(CancellationError()))
+                return
+            }
+            switch state {
+            case .ready:
+                debugLog("TCP Server listening on port \(self.port)")
+                startupGate.resolve(.success(()))
+            case .waiting(let error):
+                debugLog("Server waiting to listen: \(error)")
+                if case .posix(.EADDRINUSE) = error {
+                    startupGate.resolve(
+                        .failure(StreamingServerStartError.listenerFailed(port: self.port, underlying: error))
+                    )
+                } else {
+                    startupGate.noteWaitingError(error)
+                }
+            case .failed(let error):
+                debugLog("Server failed: \(error)")
+                startupGate.resolve(
+                    .failure(StreamingServerStartError.listenerFailed(port: self.port, underlying: error))
+                )
+            case .cancelled:
+                startupGate.resolve(
+                    .failure(StreamingServerStartError.cancelledBeforeReady(port: self.port))
+                )
+            default:
+                break
+            }
+        }
+
+        let timeoutWorkItem = DispatchWorkItem { [startupGate] in
+            startupGate.resolveTimeout(port: startupPort)
+        }
+        networkQueue.asyncAfter(
+            deadline: .now() + max(0, startupTimeout),
+            execute: timeoutWorkItem
+        )
+        newListener.start(queue: networkQueue)
+
+        defer { timeoutWorkItem.cancel() }
+        do {
+            try await startupGate.wait()
+            try Task.checkCancellation()
+        } catch {
+            newListener.cancel()
+            if listener === newListener {
+                listener = nil
+            }
+            debugLog("Failed to start server: \(error)")
+            throw error
         }
     }
 
