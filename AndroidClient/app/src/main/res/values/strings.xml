@@ -1,4 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Side Screen</string>
+    <string name="show_stats_accessibility">Show or hide the stats overlay</string>
+    <string name="hide_settings_accessibility">Hide the floating settings button</string>
+    <string name="overlay_opacity_accessibility">Stats overlay opacity</string>
+    <string name="position_top_left">Move settings button to top left</string>
+    <string name="position_top_center">Move settings button to top center</string>
+    <string name="position_top_right">Move settings button to top right</string>
+    <string name="position_center_left">Move settings button to center left</string>
+    <string name="position_center_right">Move settings button to center right</string>
+    <string name="position_bottom_left">Move settings button to bottom left</string>
+    <string name="position_bottom_center">Move settings button to bottom center</string>
+    <string name="position_bottom_right">Move settings button to bottom right</string>
 </resources>
