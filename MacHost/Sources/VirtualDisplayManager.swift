@@ -18,6 +18,33 @@ class VirtualDisplayManager {
         return virtualDisplay != nil
     }
 
+    /// Fractions of the chosen logical size offered as HiDPI scaling steps. The chosen size stays
+    /// the top rung, so picking a resolution in this app sets the ceiling and macOS scales down
+    /// from there. Five steps matches what System Settings draws for a built-in Retina panel.
+    private static let hiDPILadderRatios: [Double] = [1.0, 0.875, 0.75, 0.625, 0.5]
+
+    /// Logical sizes to register for a HiDPI display, largest first.
+    ///
+    /// Height is derived from the scaled width so every rung keeps the chosen aspect ratio: a rung
+    /// that drifts off it would letterbox on the client. Sizes are rounded to even numbers because
+    /// the physical mode is exactly twice the logical one, and duplicates are dropped so a small
+    /// chosen resolution cannot register the same mode twice.
+    static func hiDPILogicalLadder(width: Int, height: Int) -> [(width: Int, height: Int)] {
+        guard width > 0, height > 0 else { return [] }
+        let aspect = Double(width) / Double(height)
+        var seen = Set<String>()
+        var ladder: [(width: Int, height: Int)] = []
+        for ratio in hiDPILadderRatios {
+            let w = max(2, Int((Double(width) * ratio).rounded()) & ~1)
+            let h = max(2, Int((Double(w) / aspect).rounded()) & ~1)
+            let key = "\(w)x\(h)"
+            if seen.insert(key).inserted {
+                ladder.append((width: w, height: h))
+            }
+        }
+        return ladder
+    }
+
     /// Create a virtual display with specified configuration
     /// - Parameters:
     ///   - width: Display width in pixels
@@ -65,9 +92,12 @@ class VirtualDisplayManager {
         let settings = CGVirtualDisplaySettings()
         settings.hiDPI = hiDPI ? 1 : 0
 
-        // HiDPI: anchor mode (physical) + logical mode
-        // The anchor tells macOS "this display is high-density" → unlocks HiDPI for logical mode
-        // non-HiDPI: single mode at requested resolution
+        // HiDPI: anchor mode (physical) + a ladder of logical modes.
+        // The anchor tells macOS "this display is high-density" → unlocks HiDPI for logical mode.
+        // The ladder is what System Settings turns into its "Larger Text … More Space" picker:
+        // that control is drawn from the display's desktop-usable HiDPI modes, so a single
+        // logical mode leaves the user with no scaling choice outside this app.
+        // non-HiDPI: single mode at requested resolution.
         var modes: [CGVirtualDisplayMode] = []
         if hiDPI {
             modes.append(CGVirtualDisplayMode(
@@ -75,12 +105,20 @@ class VirtualDisplayManager {
                 height: UInt32(physH),
                 refreshRate: Double(refreshRate)
             ))
+            for rung in Self.hiDPILogicalLadder(width: width, height: height) {
+                modes.append(CGVirtualDisplayMode(
+                    width: UInt32(rung.width),
+                    height: UInt32(rung.height),
+                    refreshRate: Double(refreshRate)
+                ))
+            }
+        } else {
+            modes.append(CGVirtualDisplayMode(
+                width: UInt32(width),
+                height: UInt32(height),
+                refreshRate: Double(refreshRate)
+            ))
         }
-        modes.append(CGVirtualDisplayMode(
-            width: UInt32(width),
-            height: UInt32(height),
-            refreshRate: Double(refreshRate)
-        ))
         settings.modes = modes
 
         self.displaySettings = settings
