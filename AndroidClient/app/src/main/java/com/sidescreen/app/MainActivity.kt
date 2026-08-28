@@ -36,6 +36,7 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.slider.Slider
 import com.google.android.material.switchmaterial.SwitchMaterial
 import com.sidescreen.app.databinding.ActivityMainBinding
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
@@ -1249,6 +1250,8 @@ class MainActivity : AppCompatActivity() {
                 // listener (above) right after handshake OK — not here. This line
                 // would otherwise run AFTER the receive loop exits, i.e. AFTER
                 // disconnect, incorrectly transitioning back to CONNECTED.
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: StreamClient.WirelessConnectError) {
                 runOnUiThread {
                     wirelessController.onConnectError(e)
@@ -1381,6 +1384,8 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 streamClient?.connect()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 val errorMessage =
                     when {
