@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Configuration changes no longer drop the connection.** Connecting or disconnecting a Bluetooth keyboard on the tablet changed `keyboard`/`keyboardHidden`/`navigation` in the Android configuration; `MainActivity` didn't declare those in `configChanges`, so Android destroyed and recreated it mid-stream — `onDestroy` ran `cleanup()`, which closed the socket, and the Mac logged `Connection reset by peer`. Since nothing is restored on recreation, the tablet sat on the connect screen until you tapped connect again. Affects USB and wireless alike. The same path fired on an automatic dark-theme switch (`uiMode`), so a tablet left streaming across sunset dropped too; both dimensions are now declared.
+
 ### Planned
 - mDNS auto-discovery for wireless mode
 - Audio streaming
