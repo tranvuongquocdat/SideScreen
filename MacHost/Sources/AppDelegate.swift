@@ -672,6 +672,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self.streamingServer?.setDesktopSize(width: size.width, height: size.height)
                 self.streamingServer?.setDisplaySize(width: enc.width, height: enc.height, rotation: self.settings.rotation, flipHorizontal: self.settings.flipHorizontal, flipVertical: self.settings.flipVertical)
             }
+            // Switching the scaling rung in System Settings changes the display's mode under a
+            // live session. The encode setup follows only when the new mode actually changes the
+            // encode size; the desktop size always does, since it is the rung the user picked.
+            virtualDisplayManager?.onDisplayModeChanged = { [weak self] logicalWidth, logicalHeight in
+                guard let self = self, let capture = self.screenCapture else { return }
+                let enc = capture.displayModeChanged()
+                self.streamingServer?.setDesktopSize(width: logicalWidth, height: logicalHeight)
+                self.streamingServer?.setDisplaySize(
+                    width: enc.width,
+                    height: enc.height,
+                    rotation: self.settings.rotation,
+                    flipHorizontal: self.settings.flipHorizontal,
+                    flipVertical: self.settings.flipVertical
+                )
+                self.streamingServer?.sendDisplaySize()
+            }
             streamingServer?.onKeyframeRequested = { [weak self] force in
                 self?.screenCapture?.requestKeyframeOrReplayCachedFrame(force: force)
             }

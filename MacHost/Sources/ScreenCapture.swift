@@ -75,6 +75,10 @@ class ScreenCapture {
     private var currentFrameRate: Int = 60
 
     // Encoding pipeline state (captured by frame handler closure)
+    /// Dimensions the live encoder and SCStream were built for. A mode change alters the
+    /// display's physical size underneath both, so the old value is the only way to tell
+    /// whether the new encode size actually differs.
+    private var activeEncodeSize: (width: Int, height: Int)?
     private var encodeQueue: DispatchQueue?
     private var pendingEncodes: Int32 = 0
     private var lastPixelBuffer: CVPixelBuffer?
@@ -440,6 +444,7 @@ class ScreenCapture {
         let (width, height) = encodeSize(for: codec)
 
         encoder = VideoEncoder(width: width, height: height, codec: codec, bitrateMbps: bitrateMbps, quality: quality, gamingBoost: gamingBoost, frameRate: frameRate)
+        activeEncodeSize = (width, height)
         encoder?.onEncodedFrame = { [weak server] data, timestamp, isKeyframe in
             server?.sendFrame(data, timestamp: timestamp, isKeyframe: isKeyframe)
         }
@@ -769,6 +774,27 @@ class ScreenCapture {
         rebuildEncoder()
     }
 
+    /// Re-evaluate the encode setup after macOS switches the virtual display to another mode.
+    /// Returns the size now in force so the caller can tell the client about it.
+    ///
+    /// Most switches need no work: every rung of a HiDPI ladder shares one aspect ratio, so when
+    /// the client's ceiling is below the doubled framebuffer they all clamp to the same encode
+    /// size and SCStream's configuration stays correct. Rungs off that aspect (the fallback modes
+    /// macOS adds itself) do change it, and leaving the old configuration in place letterboxes the
+    /// picture into a frame shaped for the previous mode.
+    @discardableResult
+    func displayModeChanged() -> (width: Int, height: Int) {
+        let size = encodeSize(for: codec)
+        guard encoder != nil, let previous = activeEncodeSize else { return size }
+        guard previous != size else {
+            debugLog("Display mode changed — encode size unchanged at \(size.width)x\(size.height)")
+            return size
+        }
+        debugLog("Display mode changed — encode size \(previous.width)x\(previous.height) -> \(size.width)x\(size.height)")
+        rebuildEncoder()
+        return size
+    }
+
     private func rebuildEncoder() {
         let (width, height) = encodeSize(for: codec)
         let server = currentServer
@@ -778,6 +804,7 @@ class ScreenCapture {
         }
         newEncoder.requestKeyframe()
         encoder = newEncoder
+        activeEncodeSize = (width, height)
 
         restartStream()
     }
