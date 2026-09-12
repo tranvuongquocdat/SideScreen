@@ -9,6 +9,13 @@ class VirtualDisplayManager {
     private var displayDescriptor: CGVirtualDisplayDescriptor?
     private var displaySettings: CGVirtualDisplaySettings?
     private var screenParamsObserver: NSObjectProtocol?
+    /// Mode the display was last seen in, so the screen-params handler can tell a real
+    /// mode change from the many other topology events that fire the same notification.
+    private var lastSeenMode: (width: Int, height: Int, pixelWidth: Int, pixelHeight: Int)?
+
+    /// Fired when macOS switches the virtual display to a different mode, which the user
+    /// does from System Settings' scaling control. Carries the new logical size.
+    var onDisplayModeChanged: ((_ logicalWidth: Int, _ logicalHeight: Int) -> Void)?
 
     var displayID: CGDirectDisplayID? {
         return virtualDisplay?.displayID
@@ -140,7 +147,28 @@ class VirtualDisplayManager {
         let modeDesc = hiDPI ? "\(width)x\(height) HiDPI (physical \(physW)x\(physH))" : "\(width)x\(height)"
         print("✅ Virtual display created: \(modeDesc) @ \(refreshRate)Hz (ID: \(display.displayID))")
 
+        recordCurrentMode()
         registerScreenParamsObserver()
+    }
+
+    private func recordCurrentMode() {
+        guard let displayID = displayID, let mode = CGDisplayCopyDisplayMode(displayID) else { return }
+        lastSeenMode = (mode.width, mode.height, mode.pixelWidth, mode.pixelHeight)
+    }
+
+    /// The screen-params notification fires for every topology change, so compare against the
+    /// mode we last saw and stay silent unless this display actually switched.
+    private func reportModeChangeIfNeeded() {
+        guard let displayID = displayID, let mode = CGDisplayCopyDisplayMode(displayID) else { return }
+        let current = (mode.width, mode.height, mode.pixelWidth, mode.pixelHeight)
+        guard let previous = lastSeenMode else {
+            lastSeenMode = current
+            return
+        }
+        guard previous != current else { return }
+        lastSeenMode = current
+        print("🖥️  Virtual display mode changed: \(previous.width)x\(previous.height) -> \(current.0)x\(current.1) (physical \(current.2)x\(current.3))")
+        onDisplayModeChanged?(current.0, current.1)
     }
 
     /// Re-assert the physical-main invariant on every display-topology change:
@@ -157,6 +185,7 @@ class VirtualDisplayManager {
             queue: .main
         ) { [weak self] _ in
             self?.ensurePhysicalDisplayStaysMain()
+            self?.reportModeChangeIfNeeded()
         }
     }
 
@@ -165,6 +194,7 @@ class VirtualDisplayManager {
             NotificationCenter.default.removeObserver(token)
             screenParamsObserver = nil
         }
+        lastSeenMode = nil
     }
 
     /// Clone the main display configuration
