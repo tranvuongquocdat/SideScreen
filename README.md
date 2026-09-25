@@ -215,7 +215,7 @@ Then open the app again.
 <details>
 <summary><strong>"Connection refused" on Android</strong></summary>
 
-The Mac app sets up `adb reverse` automatically when streaming starts. If it still fails, make sure `adb` is installed (via Android SDK or Homebrew: `brew install android-platform-tools`) and your device has USB debugging enabled.
+The Mac app sets up `adb reverse` automatically when streaming starts. It ignores ADB emulators and Wi-Fi devices and uses the only connected physical USB tablet automatically. If several physical USB devices are connected, it uses your previous choice or asks you to choose; you can change the choice in the Status panel. If it still fails, make sure `adb` is installed (via Android SDK or Homebrew: `brew install android-platform-tools`) and your device has USB debugging enabled.
 </details>
 
 <details>

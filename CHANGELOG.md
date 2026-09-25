@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **USB connection with emulators or multiple physical devices.** The Mac now targets the selected physical USB device explicitly when setting up and checking `adb reverse`. Emulators and ADB Wi-Fi devices are ignored. With multiple physical USB devices, a picker lets the user choose and remembers that choice.
+
 ### Known issue — "Screen & System Audio: Required" after updating (#77, #8, #5)
 The Mac app is ad-hoc signed, so every release has a new code hash. macOS ties the Screen Recording grant to that hash: after an update the toggle in System Settings still shows SideScreen as on, but the app sees the permission as missing, the Status row stays red and Start is disabled. Removing and re-adding the entry in System Settings often does not clear it. Fix, in Terminal:
 

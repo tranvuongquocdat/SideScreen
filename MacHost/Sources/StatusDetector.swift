@@ -1,6 +1,53 @@
 import Foundation
 import SystemConfiguration
 
+struct USBADBDevice: Equatable, Identifiable {
+    let serial: String
+    let model: String?
+
+    var id: String { serial }
+    var displayName: String {
+        let name = model?.replacingOccurrences(of: "_", with: " ") ?? "Android device"
+        return "\(name) (\(serial))"
+    }
+
+    /// Only transports marked `usb:` by ADB are physical USB devices. This
+    /// excludes both emulators and devices paired over ADB Wi-Fi.
+    static func parse(_ output: String) -> [USBADBDevice] {
+        output.split(whereSeparator: \.isNewline).compactMap { line in
+            let fields = line.split(whereSeparator: \.isWhitespace).map(String.init)
+            guard fields.count >= 3, fields[1] == "device",
+                  fields.dropFirst(2).contains(where: { $0.hasPrefix("usb:") }) else {
+                return nil
+            }
+            let model = fields.dropFirst(2).first(where: { $0.hasPrefix("model:") })
+                .map { String($0.dropFirst("model:".count)) }
+            return USBADBDevice(serial: fields[0], model: model)
+        }
+    }
+}
+
+enum USBADBSelection {
+    static func serial(
+        from devices: [USBADBDevice],
+        current: String?,
+        preferred: String?
+    ) -> String? {
+        if devices.count == 1 { return devices[0].serial }
+        guard devices.count > 1 else { return nil }
+        if let current, devices.contains(where: { $0.serial == current }) { return current }
+        if let preferred, devices.contains(where: { $0.serial == preferred }) { return preferred }
+        return nil
+    }
+}
+
+struct ADBCommandResult {
+    let exitCode: Int32
+    let output: String
+
+    var succeeded: Bool { exitCode == 0 }
+}
+
 enum StatusDetector {
     static func adbInstalled() -> Bool {
         return adbExecutablePath() != nil
@@ -13,54 +60,51 @@ enum StatusDetector {
         return flags.contains(.reachable) && !flags.contains(.connectionRequired)
     }
 
-    /// Run `adb devices`, return list of device serials in `device` state.
-    static func usbDevices() -> [String] {
-        guard let adbPath = adbExecutablePath() else { return [] }
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: adbPath)
-        task.arguments = ["devices"]
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = Pipe()
-        do {
-            try task.run()
-            task.waitUntilExit()
-        } catch {
-            return []
-        }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(data: data, encoding: .utf8) ?? ""
-        return output.split(separator: "\n").compactMap { line in
-            let parts = line.split(separator: "\t").map(String.init)
-            guard parts.count == 2, parts[1] == "device" else { return nil }
-            return parts[0]
-        }
+    static func usbDevices(adbPath: String? = nil) -> [USBADBDevice] {
+        guard let result = runADB(["devices", "-l"], adbPath: adbPath), result.succeeded else { return [] }
+        return USBADBDevice.parse(result.output)
     }
 
-    /// Heuristic: parse `adb reverse --list` for `tcp:<port> tcp:<port>`.
-    static func adbReverseConfigured(port: Int) -> Bool {
-        guard let adbPath = adbExecutablePath() else { return false }
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: adbPath)
-        task.arguments = ["reverse", "--list"]
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = Pipe()
-        do {
-            try task.run()
-            task.waitUntilExit()
-        } catch {
+    static func adbReverseConfigured(port: Int, serial: String, adbPath: String? = nil) -> Bool {
+        guard let result = runADB(["-s", serial, "reverse", "--list"], adbPath: adbPath), result.succeeded else {
             return false
         }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(data: data, encoding: .utf8) ?? ""
-        return output.contains("tcp:\(port) tcp:\(port)")
+        return result.output.split(whereSeparator: \.isNewline).contains { line in
+            let fields = line.split(whereSeparator: \.isWhitespace)
+            return fields.suffix(2).map(String.init) == ["tcp:\(port)", "tcp:\(port)"]
+        }
     }
 
+    static func configureADBReverse(port: Int, serial: String, adbPath: String? = nil) -> ADBCommandResult? {
+        runADB(["-s", serial, "reverse", "tcp:\(port)", "tcp:\(port)"], adbPath: adbPath)
+    }
+
+    private static func runADB(_ arguments: [String], adbPath: String? = nil) -> ADBCommandResult? {
+        guard let adbPath = adbPath ?? adbExecutablePath() else { return nil }
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: adbPath)
+        task.arguments = arguments
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+        do {
+            try task.run()
+        } catch {
+            return nil
+        }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        task.waitUntilExit()
+        let output = String(data: data, encoding: .utf8) ?? ""
+        return ADBCommandResult(exitCode: task.terminationStatus, output: output)
+    }
+
+    private static let adbPathLock = NSLock()
     private static var cachedAdbPath: String?
     private static var lastAdbCacheCheck: Date = .distantPast
 
     private static func adbExecutablePath() -> String? {
+        adbPathLock.lock()
+        defer { adbPathLock.unlock() }
         // Re-resolve every 5 s so install/uninstall is reflected.
         if let cached = cachedAdbPath, Date().timeIntervalSince(lastAdbCacheCheck) < 5.0 {
             return cached
