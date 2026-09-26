@@ -340,17 +340,18 @@ class StreamingServer {
         connection = newConnection
         droppedFrames = 0
 
-        connection?.stateUpdateHandler = { [weak self] state in
+        connection?.stateUpdateHandler = { [weak self, weak newConnection] state in
+            guard let self, let newConnection, self.connection === newConnection else { return }
             debugLog("Connection state: \(state)")
             switch state {
             case .ready:
-                self?.onConnectionReady(newConnection)
+                self.onConnectionReady(newConnection)
             case .failed(let error):
                 debugLog("Connection failed: \(error)")
-                self?.onClientDisconnected?()
+                self.onClientDisconnected?()
             case .cancelled:
                 debugLog("Connection cancelled")
-                self?.onClientDisconnected?()
+                self.onClientDisconnected?()
             default:
                 break
             }
@@ -638,7 +639,8 @@ class StreamingServer {
         }
 
         connection.receive(minimumIncompleteLength: 1, maximumLength: 256) { [weak self] data, _, isComplete, error in
-            guard let self = self, self.isReceiving, !self.isStopped else { return }
+            guard let self = self, self.connection === connection,
+                  self.isReceiving, !self.isStopped else { return }
 
             if error != nil || isComplete {
                 self.isReceiving = false
@@ -896,6 +898,22 @@ class StreamingServer {
             totalFrameAgeNs = 0
             profiledFrameCount = 0
             lastStatsTime = now
+        }
+    }
+
+    /// End the current stream while keeping the listener and virtual display ready.
+    func disconnectClient() async {
+        await withCheckedContinuation { continuation in
+            networkQueue.async(execute: DispatchWorkItem {
+                self.connectionReady = false
+                self.isReceiving = false
+                let previous = self.connection
+                self.connection = nil
+                previous?.cancel()
+                self.inputBuffer.removeAll(keepingCapacity: true)
+                if previous != nil { self.onClientDisconnected?() }
+                continuation.resume()
+            })
         }
     }
 

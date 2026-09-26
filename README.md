@@ -215,7 +215,7 @@ Then open the app again.
 <details>
 <summary><strong>"Connection refused" on Android</strong></summary>
 
-The Mac app ignores emulators and Wi-Fi devices, selects a sole USB device automatically, and asks you to choose if several are connected. The Status panel shows ADB errors. If connection fails, check USB debugging and install ADB with `brew install --cask android-platform-tools`.
+The Mac app ignores emulators and Wi-Fi devices, selects a sole USB device automatically, and asks you to choose if several are connected. Changing tablets closes the previous stream; tap Connect on the chosen tablet. The Status panel shows ADB errors and explains when USB debugging needs approval or a device is offline. If connection fails, check USB debugging and install ADB with `brew install --cask android-platform-tools`.
 </details>
 
 <details>

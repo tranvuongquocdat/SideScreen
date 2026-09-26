@@ -790,8 +790,14 @@ struct SettingsView: View {
                                               hint: "Whether `adb reverse tcp:\(settings.port) tcp:\(settings.port)` is configured on the selected USB tablet. The Mac app sets this up automatically when you click Start.")
                                     StatusRow(title: "USB device",
                                               status: settings.selectedUSBDeviceName ?? (settings.usbDevices.count > 1 ? "Choose a device" : "Not detected"),
-                                              color: settings.selectedUSBDeviceName != nil ? .green : (settings.usbDevices.count > 1 ? .orange : .red),
-                                              hint: "Only authorized physical USB devices are listed; ADB emulators and Wi-Fi devices are ignored. Plug in via USB-C and allow USB debugging on the tablet.")
+                                              color: settings.selectedUSBDevice?.isReady == true ? .green : (settings.usbDevices.isEmpty ? .red : .orange),
+                                              hint: "ADB emulators and Wi-Fi devices are ignored. Plug in via USB-C and allow USB debugging on the tablet.")
+                                    if let notice = settings.usbDeviceNotice {
+                                        Text(notice)
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.orange)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
                                     if let error = settings.adbError, settings.adbInstalled {
                                         Text(error)
                                             .font(.system(size: 11))
@@ -1029,7 +1035,10 @@ struct SettingsView: View {
         .frame(width: 480, height: 780)
         .confirmationDialog("Choose USB tablet", isPresented: $settings.showUSBDevicePicker, titleVisibility: .visible) {
             ForEach(settings.usbDevices) { device in
-                Button(device.displayName) { settings.onSelectUSBDevice?(device.serial) }
+                Button(device.isReady ? device.displayName : "\(device.displayName) — \(device.state)") {
+                    settings.onSelectUSBDevice?(device.serial)
+                }
+                .disabled(!device.isReady)
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -1299,8 +1308,14 @@ class DisplaySettings: ObservableObject {
     @Published var selectedUSBSerial: String?
     @Published var showUSBDevicePicker = false
     @Published var adbError: String?
-    var selectedUSBDeviceName: String? {
-        usbDevices.first(where: { $0.serial == selectedUSBSerial })?.displayName
+    var selectedUSBDevice: USBADBDevice? {
+        usbDevices.first(where: { $0.serial == selectedUSBSerial })
+    }
+    var selectedUSBDeviceName: String? { selectedUSBDevice?.displayName }
+    var usbDeviceNotice: String? {
+        if let selectedUSBDevice { return selectedUSBDevice.connectionHint }
+        let hints = usbDevices.compactMap(\.connectionHint)
+        return hints.isEmpty ? nil : hints.joined(separator: "\n")
     }
     @Published var wifiConnected = false
     @Published var listeningAddress: String?

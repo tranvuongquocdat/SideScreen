@@ -11,9 +11,12 @@ final class USBADBDeviceTests: XCTestCase {
     OTHER                  unauthorized usb:2-3 transport_id:29
     """
 
-    func testOnlyAuthorizedPhysicalUSBDeviceIsSelectedAmongEmulatorsAndWirelessDevices() {
+    func testPhysicalDevicesAreListedButOnlyReadyDeviceIsAutomaticallySelected() {
         let devices = USBADBDevice.parse(mixedDevices)
-        XCTAssertEqual(devices, [USBADBDevice(serial: "TABLET_A", model: "Test_Tablet")])
+        XCTAssertEqual(devices, [
+            USBADBDevice(serial: "TABLET_A", model: "Test_Tablet"),
+            USBADBDevice(serial: "OTHER", model: nil, state: "unauthorized")
+        ])
         XCTAssertEqual(
             USBADBSelection.serial(from: devices, current: nil, preferred: nil),
             "TABLET_A"
@@ -23,7 +26,7 @@ final class USBADBDeviceTests: XCTestCase {
     func testMultiplePhysicalDevicesRequireAChoiceAndReuseItWhilePresent() {
         let output = mixedDevices + "\nTABLET_B device usb:2-4 model:Second_Tablet transport_id:30\n"
         let devices = USBADBDevice.parse(output)
-        XCTAssertEqual(devices.count, 2)
+        XCTAssertEqual(devices.count, 3)
         XCTAssertNil(USBADBSelection.serial(from: devices, current: nil, preferred: nil))
         XCTAssertEqual(
             USBADBSelection.serial(from: devices, current: nil, preferred: "TABLET_B"),
@@ -34,10 +37,33 @@ final class USBADBDeviceTests: XCTestCase {
             "TABLET_A"
         )
         XCTAssertEqual(
-            USBADBSelection.serial(from: [devices[1]], current: "TABLET_A", preferred: nil),
+            USBADBSelection.serial(from: [devices[2]], current: "TABLET_A", preferred: nil),
             "TABLET_B"
         )
         XCTAssertNil(USBADBSelection.serial(from: [], current: "TABLET_B", preferred: "TABLET_B"))
+    }
+
+    func testLibusbOutputKeepsUSBDevicesAndExcludesNetworkTransports() {
+        let output = """
+        * daemon started successfully *
+        List of devices attached
+        USB123 device product:tablet model:Test_Tablet transport_id:1
+        emulator-5554 device model:Emulator transport_id:2
+        192.0.2.12:5555 device model:WiFi transport_id:3
+        [2001:db8::1]:5555 device model:WiFi transport_id:4
+        tablet.local:5555 device model:WiFi transport_id:5
+        adb-USB123-example._adb-tls-connect._tcp device model:WiFi transport_id:6
+        """
+        XCTAssertEqual(USBADBDevice.parse(output), [USBADBDevice(serial: "USB123", model: "Test_Tablet")])
+    }
+
+    func testUnavailableDevicesRetainActionableStates() {
+        let devices = USBADBDevice.parse("A unauthorized transport_id:1\nB offline usb:2-3 transport_id:2")
+        XCTAssertEqual(devices.map(\.state), ["unauthorized", "offline"])
+        XCTAssertTrue(devices.allSatisfy { !$0.isReady })
+        XCTAssertEqual(devices[0].connectionHint, "Allow USB debugging on Android device (A).")
+        XCTAssertEqual(devices[1].connectionHint, "Android device (B) is offline. Reconnect its USB cable.")
+        XCTAssertEqual(USBADBSelection.serial(from: devices, current: "B", preferred: nil), "B")
     }
 
     func testADBCommandsTargetOnlyTheChosenSerial() throws {

@@ -4,6 +4,16 @@ import SystemConfiguration
 struct USBADBDevice: Equatable, Identifiable {
     let serial: String
     let model: String?
+    var state: String = "device"
+
+    var isReady: Bool { state == "device" }
+    var connectionHint: String? {
+        switch state {
+        case "unauthorized": return "Allow USB debugging on \(displayName)."
+        case "offline": return "\(displayName) is offline. Reconnect its USB cable."
+        default: return nil
+        }
+    }
 
     var id: String { serial }
     var displayName: String {
@@ -11,20 +21,26 @@ struct USBADBDevice: Equatable, Identifiable {
         return "\(name) (\(serial))"
     }
 
-    /// Only transports marked `usb:` by ADB are physical USB devices. This
-    /// excludes both emulators and devices paired over ADB Wi-Fi.
+    // libusb omits `usb:`. Exclude ADB's emulator, socket and mDNS serial
+    // formats instead of requiring the native USB backend's optional marker.
     static func parse(_ output: String) -> [USBADBDevice] {
         output.split(whereSeparator: \.isNewline).compactMap { line in
             let fields = line.split(whereSeparator: \.isWhitespace).map(String.init)
-            guard fields.count >= 3, fields[1] == "device",
-                  fields.dropFirst(2).contains(where: { $0.hasPrefix("usb:") }) else {
+            guard fields.count >= 2, ["device", "unauthorized", "offline"].contains(fields[1]),
+                  !fields[0].hasPrefix("emulator-"), !fields[0].contains(":"),
+                  !fields[0].contains("._tcp") else {
                 return nil
             }
             let model = fields.dropFirst(2).first(where: { $0.hasPrefix("model:") })
                 .map { String($0.dropFirst("model:".count)) }
-            return USBADBDevice(serial: fields[0], model: model)
+            return USBADBDevice(serial: fields[0], model: model, state: fields[1])
         }
     }
+}
+
+struct USBADBTunnel: Equatable {
+    let serial: String
+    let port: Int
 }
 
 enum USBADBSelection {
@@ -37,7 +53,8 @@ enum USBADBSelection {
         guard devices.count > 1 else { return nil }
         if let current, devices.contains(where: { $0.serial == current }) { return current }
         if let preferred, devices.contains(where: { $0.serial == preferred }) { return preferred }
-        return nil
+        let ready = devices.filter(\.isReady)
+        return ready.count == 1 ? ready[0].serial : nil
     }
 }
 
@@ -85,6 +102,14 @@ enum StatusDetector {
 
     static func configureADBReverse(port: Int, serial: String, adbPath: String? = nil) -> ADBCommandResult {
         runADB(["-s", serial, "reverse", "tcp:\(port)", "tcp:\(port)"], adbPath: adbPath)
+    }
+
+    static func removeADBReverse(port: Int, serial: String, adbPath: String? = nil) -> ADBCommandResult {
+        // Do not remove a mapping that another tool has changed to a different port.
+        let status = adbReverseStatus(port: port, serial: serial, adbPath: adbPath)
+        if let error = status.error { return ADBCommandResult(exitCode: -1, output: error) }
+        guard status.configured else { return ADBCommandResult(exitCode: 0, output: "") }
+        return runADB(["-s", serial, "reverse", "--remove", "tcp:\(port)"], adbPath: adbPath)
     }
 
     private static func runADB(_ arguments: [String], adbPath: String? = nil) -> ADBCommandResult {
