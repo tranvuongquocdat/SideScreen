@@ -785,13 +785,28 @@ struct SettingsView: View {
                                             .textSelection(.enabled)
                                     }
                                     StatusRow(title: "ADB reverse",
-                                              status: settings.adbReverseConfigured ? "OK" : "Pending",
-                                              color: settings.adbReverseConfigured ? .green : .orange,
-                                              hint: "Whether `adb reverse tcp:\(settings.port) tcp:\(settings.port)` is currently configured. The Mac app sets this up automatically when you click Start. Goes green within ~2 seconds after the tablet is plugged in and authorized.")
+                                              status: settings.adbError != nil ? "Error" : (settings.adbReverseConfigured ? "OK" : "Pending"),
+                                              color: settings.adbError != nil ? .red : (settings.adbReverseConfigured ? .green : .orange),
+                                              hint: "Whether `adb reverse tcp:\(settings.port) tcp:\(settings.port)` is configured on the selected USB tablet. The Mac app sets this up automatically when you click Start.")
                                     StatusRow(title: "USB device",
-                                              status: settings.usbDeviceConnected ? "Detected" : "Not detected",
-                                              color: settings.usbDeviceConnected ? .green : .red,
-                                              hint: "An Android device authorized for ADB and visible to your Mac. Plug in via USB-C and tap Allow on the device's USB debugging prompt.")
+                                              status: settings.selectedUSBDeviceName ?? (settings.usbDevices.count > 1 ? "Choose a device" : "Not detected"),
+                                              color: settings.selectedUSBDeviceName != nil ? .green : (settings.usbDevices.count > 1 ? .orange : .red),
+                                              hint: "Only authorized physical USB devices are listed; ADB emulators and Wi-Fi devices are ignored. Plug in via USB-C and allow USB debugging on the tablet.")
+                                    if let error = settings.adbError, settings.adbInstalled {
+                                        Text(error)
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.red)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .textSelection(.enabled)
+                                    }
+                                    if settings.usbDevices.count > 1 {
+                                        Button(settings.selectedUSBDeviceName == nil ? "Choose USB tablet…" : "Change USB tablet…") {
+                                            settings.onShowUSBDevicePicker?()
+                                        }
+                                        .buttonStyle(.link)
+                                        .font(.system(size: 11))
+                                        .frame(maxWidth: .infinity, alignment: .trailing)
+                                    }
                                 } else {
                                     StatusRow(title: "WiFi",
                                               status: settings.wifiConnected ? "Connected" : "Disconnected",
@@ -1012,6 +1027,17 @@ struct SettingsView: View {
             }
         }
         .frame(width: 480, height: 780)
+        .confirmationDialog("Choose USB tablet", isPresented: $settings.showUSBDevicePicker, titleVisibility: .visible) {
+            ForEach(settings.usbDevices) { device in
+                Button(device.displayName) { settings.onSelectUSBDevice?(device.serial) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Choose the device to use as a display.")
+        }
+        .onChange(of: settings.showUSBDevicePicker) { visible in
+            if !visible { settings.onDismissUSBDevicePicker?() }
+        }
     }
 
     /// Restart the app by launching a new instance and terminating current one
@@ -1269,7 +1295,13 @@ class DisplaySettings: ObservableObject {
     @Published var displaysHaveSeparateSpaces = true
     @Published var adbInstalled = false
     @Published var adbReverseConfigured = false
-    @Published var usbDeviceConnected = false
+    @Published var usbDevices: [USBADBDevice] = []
+    @Published var selectedUSBSerial: String?
+    @Published var showUSBDevicePicker = false
+    @Published var adbError: String?
+    var selectedUSBDeviceName: String? {
+        usbDevices.first(where: { $0.serial == selectedUSBSerial })?.displayName
+    }
     @Published var wifiConnected = false
     @Published var listeningAddress: String?
     @Published var isRunning = false
@@ -1278,6 +1310,9 @@ class DisplaySettings: ObservableObject {
     @Published var captureMethod: String = "Initializing..."
 
     var onToggleServer: (() -> Void)?
+    var onShowUSBDevicePicker: (() -> Void)?
+    var onSelectUSBDevice: ((String) -> Void)?
+    var onDismissUSBDevicePicker: (() -> Void)?
 
     init() {
         self.resolution = defaults.string(forKey: keyPrefix + "resolution") ?? "1920x1200"
@@ -1364,7 +1399,8 @@ class DisplaySettings: ObservableObject {
     func resetToDefaults() {
         let keys = ["resolution", "refreshRate", "hiDPI", "bitrate", "quality",
                     "gamingBoost", "port", "rotation", "flipHorizontal", "flipVertical", "showAllResolutions",
-                    "customWidth", "customHeight", "touchEnabled", "autoStartStreamingOnLaunch", "startupMode"]
+                    "customWidth", "customHeight", "touchEnabled", "autoStartStreamingOnLaunch", "startupMode",
+                    "preferredUSBSerial"]
         for key in keys {
             defaults.removeObject(forKey: keyPrefix + key)
         }
