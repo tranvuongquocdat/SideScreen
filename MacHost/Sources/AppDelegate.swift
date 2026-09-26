@@ -180,29 +180,45 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         let serial = updateUSBDeviceSelection(result.devices, promptIfNeeded: configure || settings.isRunning)
-        let target = serial.map { USBADBTunnel(serial: $0, port: Int(settings.port)) }
+        let port = Int(settings.port)
+        let target = serial.map { USBADBTunnel(serial: $0, port: port) }
 
-        if let previous = configuredUSBTunnel, previous != target {
+        // Reverse mappings survive app restarts. Check other tablets even when
+        // this process has not configured a tunnel yet, or the picker is open.
+        var previousTunnels = result.devices.filter { $0.isReady && $0.serial != serial }
+            .map { USBADBTunnel(serial: $0.serial, port: port) }
+        if let previous = configuredUSBTunnel, previous != target, !previousTunnels.contains(previous) {
+            previousTunnels.insert(previous, at: 0)
+        }
+        for previous in previousTunnels {
+            guard settings.connectionMode == .usb, settings.selectedUSBSerial == serial,
+                  Int(settings.port) == port else { return }
             let previousServer = streamingServer
+            var shouldDisconnect = previous == configuredUSBTunnel
             // A lost ADB transport closes its reverse listeners. For a device
             // still online, remove only SideScreen's mapping before switching.
             if result.devices.contains(where: { $0.serial == previous.serial && $0.isReady }) {
                 let removal = await Task.detached {
                     StatusDetector.removeADBReverse(port: previous.port, serial: previous.serial, adbPath: adbPath)
                 }.value
-                guard removal.succeeded else {
+                if let error = removal.error {
+                    guard settings.connectionMode == .usb, settings.selectedUSBSerial == serial,
+                          Int(settings.port) == port else { return }
                     settings.adbReverseConfigured = false
-                    settings.adbError = "ADB disconnect previous tablet: \(removal.errorMessage)"
+                    settings.adbError = "ADB disconnect previous tablet: \(error)"
                     return
                 }
+                shouldDisconnect = shouldDisconnect || removal.removed
             }
-            await previousServer?.disconnectClient()
-            if streamingServer === previousServer { settings.clientConnected = false }
-            configuredUSBTunnel = nil
+            if shouldDisconnect {
+                await previousServer?.disconnectClient()
+                if streamingServer === previousServer { settings.clientConnected = false }
+            }
+            if configuredUSBTunnel == previous { configuredUSBTunnel = nil }
         }
 
         guard settings.connectionMode == .usb, settings.selectedUSBSerial == serial,
-              target?.port == Int(settings.port) else { return }
+              Int(settings.port) == port else { return }
         guard let target, settings.selectedUSBDevice?.isReady == true else {
             settings.adbReverseConfigured = false
             settings.adbError = nil

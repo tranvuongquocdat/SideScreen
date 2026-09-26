@@ -104,12 +104,13 @@ enum StatusDetector {
         runADB(["-s", serial, "reverse", "tcp:\(port)", "tcp:\(port)"], adbPath: adbPath)
     }
 
-    static func removeADBReverse(port: Int, serial: String, adbPath: String? = nil) -> ADBCommandResult {
+    static func removeADBReverse(port: Int, serial: String, adbPath: String? = nil) -> (removed: Bool, error: String?) {
         // Do not remove a mapping that another tool has changed to a different port.
         let status = adbReverseStatus(port: port, serial: serial, adbPath: adbPath)
-        if let error = status.error { return ADBCommandResult(exitCode: -1, output: error) }
-        guard status.configured else { return ADBCommandResult(exitCode: 0, output: "") }
-        return runADB(["-s", serial, "reverse", "--remove", "tcp:\(port)"], adbPath: adbPath)
+        if let error = status.error { return (false, error) }
+        guard status.configured else { return (false, nil) }
+        let result = runADB(["-s", serial, "reverse", "--remove", "tcp:\(port)"], adbPath: adbPath)
+        return (result.succeeded, result.succeeded ? nil : result.errorMessage)
     }
 
     private static func runADB(_ arguments: [String], adbPath: String? = nil) -> ADBCommandResult {

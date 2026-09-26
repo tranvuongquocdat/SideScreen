@@ -68,6 +68,77 @@ final class USBConnectionTests: XCTestCase {
     }
 
     @MainActor
+    func testInitialSelectionRetiresInheritedTunnelAndPreservesUnrelatedMapping() async throws {
+        let directory = try fixture()
+        try "A device\nB device\nC device\n".write(
+            to: directory.appendingPathComponent("devices"), atomically: true, encoding: .utf8)
+        try "A tcp:54321 tcp:54321\n".write(to: directory.appendingPathComponent("A"), atomically: true, encoding: .utf8)
+        try "C tcp:54321 tcp:12345\n".write(to: directory.appendingPathComponent("C"), atomically: true, encoding: .utf8)
+        let app = delegate(in: directory)
+        app.settings.selectedUSBSerial = "B"
+        let path = directory.appendingPathComponent("adb").path
+        await app.refreshUSBStatus(adbPath: path)
+
+        XCTAssertEqual(try String(contentsOf: directory.appendingPathComponent("A")), "")
+        XCTAssertEqual(try String(contentsOf: directory.appendingPathComponent("B")), "B tcp:54321 tcp:54321\n")
+        XCTAssertEqual(try String(contentsOf: directory.appendingPathComponent("C")), "C tcp:54321 tcp:12345\n")
+        XCTAssertTrue(app.settings.adbReverseConfigured)
+        let events = try String(contentsOf: directory.appendingPathComponent("events"))
+        let removal = try XCTUnwrap(events.range(of: "-s A reverse --remove tcp:54321"))
+        let disconnect = try XCTUnwrap(events.range(of: "disconnect client"))
+        let setup = try XCTUnwrap(events.range(of: "-s B reverse tcp:54321 tcp:54321"))
+        XCTAssertLessThan(removal.lowerBound, disconnect.lowerBound)
+        XCTAssertLessThan(disconnect.lowerBound, setup.lowerBound)
+
+        try "".write(to: directory.appendingPathComponent("events"), atomically: true, encoding: .utf8)
+        await app.refreshUSBStatus(adbPath: path)
+        XCTAssertFalse(try String(contentsOf: directory.appendingPathComponent("events")).contains("disconnect client"))
+        XCTAssertTrue(app.settings.adbReverseConfigured)
+    }
+
+    @MainActor
+    func testPendingSelectionRetiresAllInheritedTunnelsWithoutConfiguringOne() async throws {
+        let directory = try fixture()
+        for serial in ["A", "B"] {
+            try "\(serial) tcp:54321 tcp:54321\n".write(
+                to: directory.appendingPathComponent(serial), atomically: true, encoding: .utf8)
+        }
+        let app = delegate(in: directory)
+        app.settings.selectedUSBSerial = nil
+        app.settings.isRunning = false
+        await app.refreshUSBStatus(adbPath: directory.appendingPathComponent("adb").path)
+
+        XCTAssertNil(app.settings.selectedUSBSerial)
+        XCTAssertFalse(app.settings.adbReverseConfigured)
+        for serial in ["A", "B"] {
+            XCTAssertEqual(try String(contentsOf: directory.appendingPathComponent(serial)), "")
+        }
+        let events = try String(contentsOf: directory.appendingPathComponent("events"))
+        XCTAssertTrue(events.contains("disconnect client"))
+        XCTAssertFalse(events.contains("reverse tcp:"))
+    }
+
+    @MainActor
+    func testInheritedTunnelRemovalFailureBlocksSetupAndRecovers() async throws {
+        let directory = try fixture()
+        try "A tcp:54321 tcp:54321\n".write(to: directory.appendingPathComponent("A"), atomically: true, encoding: .utf8)
+        try Data().write(to: directory.appendingPathComponent("fail-remove"))
+        let app = delegate(in: directory)
+        app.settings.selectedUSBSerial = "B"
+        let path = directory.appendingPathComponent("adb").path
+        await app.refreshUSBStatus(adbPath: path)
+
+        XCTAssertEqual(app.settings.adbError, "ADB disconnect previous tablet: error: removal failed")
+        XCTAssertFalse(app.settings.adbReverseConfigured)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("B").path))
+        try FileManager.default.removeItem(at: directory.appendingPathComponent("fail-remove"))
+        await app.refreshUSBStatus(adbPath: path)
+        XCTAssertEqual(try String(contentsOf: directory.appendingPathComponent("A")), "")
+        XCTAssertTrue(app.settings.adbReverseConfigured)
+        XCTAssertNil(app.settings.adbError)
+    }
+
+    @MainActor
     func testSwitchRemovesOnlyPreviousTunnelAndDisconnectsBeforeConfiguringNext() async throws {
         let directory = try fixture()
         let app = delegate(in: directory)
@@ -189,7 +260,8 @@ final class USBConnectionTests: XCTestCase {
         let directory = try fixture()
         try "A tcp:54321 tcp:12345\n".write(to: directory.appendingPathComponent("A"), atomically: true, encoding: .utf8)
         let result = StatusDetector.removeADBReverse(port: 54321, serial: "A", adbPath: directory.appendingPathComponent("adb").path)
-        XCTAssertTrue(result.succeeded)
+        XCTAssertNil(result.error)
+        XCTAssertFalse(result.removed)
         XCTAssertEqual(try String(contentsOf: directory.appendingPathComponent("A")), "A tcp:54321 tcp:12345\n")
     }
 }
