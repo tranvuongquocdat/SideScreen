@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **USB device selection.** Ignore emulators and Wi-Fi devices, select a sole available USB device automatically (including with libusb), ask when several are available, retire leftover tunnels after restarts or device changes, and show ADB errors and device states in Status.
+
 ### Known issue — "Screen & System Audio: Required" after updating (#77, #8, #5)
 The Mac app is ad-hoc signed, so every release has a new code hash. macOS ties the Screen Recording grant to that hash: after an update the toggle in System Settings still shows SideScreen as on, but the app sees the permission as missing, the Status row stays red and Start is disabled. Removing and re-adding the entry in System Settings often does not clear it. Fix, in Terminal:
 

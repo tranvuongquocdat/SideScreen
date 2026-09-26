@@ -163,6 +163,42 @@ final class StreamingServerStartupTests: XCTestCase {
         XCTFail("Port \(port) was not released in time: \(String(describing: lastError))")
     }
 
+    func testDisconnectClientClosesOldStreamAndAcceptsNextClient() async throws {
+        let server = StreamingServer(port: 0)
+        defer { server.stop() }
+        try await server.start()
+        let port = try XCTUnwrap(server.boundPort)
+        let first = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!, using: .tcp)
+        defer { first.cancel() }
+        let connected = expectation(description: "First client streams")
+        server.onClientConnected = { connected.fulfill() }
+        first.start(queue: DispatchQueue(label: "USBConnectionTests.first"))
+        await fulfillment(of: [connected], timeout: 3)
+
+        let closed = expectation(description: "Previous client closes")
+        receiveUntilClosed(first, expectation: closed)
+        await server.disconnectClient()
+        await fulfillment(of: [closed], timeout: 3)
+        XCTAssertEqual(server.boundPort, port)
+
+        let next = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!, using: .tcp)
+        defer { next.cancel() }
+        let reconnected = expectation(description: "Next client streams")
+        server.onClientConnected = { reconnected.fulfill() }
+        next.start(queue: DispatchQueue(label: "USBConnectionTests.next"))
+        await fulfillment(of: [reconnected], timeout: 3)
+    }
+
+    private func receiveUntilClosed(_ connection: NWConnection, expectation: XCTestExpectation) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 1024) { [weak self] _, _, complete, error in
+            if complete || error != nil {
+                expectation.fulfill()
+            } else {
+                self?.receiveUntilClosed(connection, expectation: expectation)
+            }
+        }
+    }
+
     private func isAddressInUse(_ error: Error) -> Bool {
         guard let startError = error as? StreamingServerStartError,
               case .listenerFailed(_, let underlying) = startError,

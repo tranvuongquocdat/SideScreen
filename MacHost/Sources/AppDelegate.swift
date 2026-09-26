@@ -60,6 +60,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var cancellables = Set<AnyCancellable>()
     private var permissionCheckTimer: Timer?
     private var statusRefreshTimer: Timer?
+    private let preferredUSBSerialKey = "SideScreen_preferredUSBSerial"
+    private var dismissedUSBPickerForSerials: Set<String>?
+    private var isCheckingUSBStatus = false
+    private var configuredUSBTunnel: USBADBTunnel?
     /// Reentrancy latch for startServer() — a second Start (double-clicked menu
     /// item, auto-start racing a manual click) must not build a second virtual
     /// display / server. Main-actor confined.
@@ -158,32 +162,136 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             pairedDeviceStore.upsert(name: name, lastConnected: Date())
         }
 
+        Task { await refreshUSBStatus() }
+    }
+
+    @MainActor
+    func refreshUSBStatus(configure: Bool = false, adbPath: String? = nil) async {
+        guard settings.connectionMode == .usb, !isCheckingUSBStatus else { return }
+        isCheckingUSBStatus = true
+        defer { isCheckingUSBStatus = false }
+
+        let result = await Task.detached { StatusDetector.usbDevices(adbPath: adbPath) }.value
+        guard settings.connectionMode == .usb else { return }
+        if let error = result.error {
+            settings.usbDevices = []
+            settings.adbReverseConfigured = false
+            settings.adbError = "ADB devices: \(error)"
+            return
+        }
+        let serial = updateUSBDeviceSelection(result.devices, promptIfNeeded: configure || settings.isRunning)
         let port = Int(settings.port)
-        Task.detached { [weak self] in
-            let devices = StatusDetector.usbDevices()
-            let reverseOK = StatusDetector.adbReverseConfigured(port: port)
-            await MainActor.run { [weak self] in
-                guard let self = self else { return }
-                
-                let isConnected = !devices.isEmpty
+        let target = serial.map { USBADBTunnel(serial: $0, port: port) }
 
-                self.settings.usbDeviceConnected = isConnected
-                self.settings.adbReverseConfigured = reverseOK
-
-                // Self-healing USB bridge (level-triggered, not edge-triggered):
-                // whenever we are in USB mode with the server running and a
-                // device present but adb reverse missing, (re)establish it.
-                // Covers replug, adb-server restart, etc. The server lifecycle
-                // is NOT tied to device events — it stays up and the tablet
-                // reconnects via its own connect button.
-                if self.settings.connectionMode == .usb
-                    && isConnected
-                    && self.settings.isRunning
-                    && !reverseOK {
-                    debugLog("🔌 USB bridge missing while running — (re)establishing adb reverse")
-                    Task { await self.setupADBReverse() }
+        // Reverse mappings survive app restarts. Check other tablets even when
+        // this process has not configured a tunnel yet, or the picker is open.
+        var previousTunnels = result.devices.filter { $0.isReady && $0.serial != serial }
+            .map { USBADBTunnel(serial: $0.serial, port: port) }
+        if let previous = configuredUSBTunnel, previous != target, !previousTunnels.contains(previous) {
+            previousTunnels.insert(previous, at: 0)
+        }
+        for previous in previousTunnels {
+            guard settings.connectionMode == .usb, settings.selectedUSBSerial == serial,
+                  Int(settings.port) == port else { return }
+            let previousServer = streamingServer
+            var shouldDisconnect = previous == configuredUSBTunnel
+            // A lost ADB transport closes its reverse listeners. For a device
+            // still online, remove only SideScreen's mapping before switching.
+            if result.devices.contains(where: { $0.serial == previous.serial && $0.isReady }) {
+                let removal = await Task.detached {
+                    StatusDetector.removeADBReverse(port: previous.port, serial: previous.serial, adbPath: adbPath)
+                }.value
+                if let error = removal.error {
+                    guard settings.connectionMode == .usb, settings.selectedUSBSerial == serial,
+                          Int(settings.port) == port else { return }
+                    settings.adbReverseConfigured = false
+                    settings.adbError = "ADB disconnect previous tablet: \(error)"
+                    return
                 }
+                shouldDisconnect = shouldDisconnect || removal.removed
             }
+            if shouldDisconnect {
+                await previousServer?.disconnectClient()
+                if streamingServer === previousServer { settings.clientConnected = false }
+            }
+            if configuredUSBTunnel == previous { configuredUSBTunnel = nil }
+        }
+
+        guard settings.connectionMode == .usb, settings.selectedUSBSerial == serial,
+              Int(settings.port) == port else { return }
+        guard let target, settings.selectedUSBDevice?.isReady == true else {
+            settings.adbReverseConfigured = false
+            settings.adbError = nil
+            return
+        }
+
+        let status = await Task.detached {
+            StatusDetector.adbReverseStatus(port: target.port, serial: target.serial, adbPath: adbPath)
+        }.value
+        if status.configured { configuredUSBTunnel = target }
+        guard settings.connectionMode == .usb, settings.selectedUSBSerial == target.serial,
+              Int(settings.port) == target.port else { return }
+        settings.adbReverseConfigured = status.configured
+        settings.adbError = status.error.map { "ADB reverse check: \($0)" }
+        if !status.configured && status.error == nil && (configure || settings.isRunning) {
+            let setup = await Task.detached {
+                StatusDetector.configureADBReverse(port: target.port, serial: target.serial, adbPath: adbPath)
+            }.value
+            // Remember successful work even if the selection changed while ADB
+            // ran, so the next refresh can retire that tunnel.
+            if setup.succeeded { configuredUSBTunnel = target }
+            guard settings.connectionMode == .usb, settings.selectedUSBSerial == target.serial,
+                  Int(settings.port) == target.port else { return }
+            settings.adbReverseConfigured = setup.succeeded
+            settings.adbError = setup.succeeded ? nil : "ADB reverse: \(setup.errorMessage)"
+        }
+        // The regular status refresh retries failures and restores lost tunnels.
+    }
+
+    @MainActor
+    @discardableResult
+    private func updateUSBDeviceSelection(_ devices: [USBADBDevice], promptIfNeeded: Bool) -> String? {
+        if settings.usbDevices != devices { settings.usbDevices = devices }
+        let preferred = UserDefaults.standard.string(forKey: preferredUSBSerialKey)
+        let serial = USBADBSelection.serial(from: devices, current: settings.selectedUSBSerial, preferred: preferred)
+        if serial != settings.selectedUSBSerial {
+            settings.selectedUSBSerial = serial
+            settings.adbReverseConfigured = false
+            settings.adbError = nil
+        }
+        if serial == nil {
+            settings.adbReverseConfigured = false
+            settings.adbError = nil
+            if promptIfNeeded && devices.filter(\.isReady).count > 1 &&
+                dismissedUSBPickerForSerials != Set(devices.map(\.serial)) {
+                showUSBDevicePicker()
+            }
+        }
+        return serial
+    }
+
+    @MainActor
+    func showUSBDevicePicker() {
+        guard settings.usbDevices.count > 1, !settings.showUSBDevicePicker else { return }
+        showSettings()
+        settings.showUSBDevicePicker = true
+    }
+
+    @MainActor
+    private func selectUSBDevice(_ serial: String) async {
+        guard settings.usbDevices.contains(where: { $0.serial == serial && $0.isReady }) else { return }
+        settings.selectedUSBSerial = serial
+        settings.adbReverseConfigured = false
+        settings.adbError = nil
+        dismissedUSBPickerForSerials = nil
+        UserDefaults.standard.set(serial, forKey: preferredUSBSerialKey)
+        await refreshUSBStatus()
+    }
+
+    @MainActor
+    private func dismissUSBDevicePicker() {
+        if settings.selectedUSBSerial == nil {
+            dismissedUSBPickerForSerials = Set(settings.usbDevices.map(\.serial))
         }
     }
 
@@ -360,6 +468,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func setupSettingsWindow() {
         settingsWindow = SettingsWindowController(settings: settings)
 
+        settings.onShowUSBDevicePicker = { [weak self] in
+            Task { @MainActor [weak self] in self?.showUSBDevicePicker() }
+        }
+        settings.onSelectUSBDevice = { [weak self] serial in
+            Task { await self?.selectUSBDevice(serial) }
+        }
+        settings.onDismissUSBDevicePicker = { [weak self] in
+            Task { @MainActor [weak self] in self?.dismissUSBDevicePicker() }
+        }
+
         settings.onToggleServer = { [weak self] in
             guard let self else { return }
             if self.settings.isRunning {
@@ -432,96 +550,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Setup ADB reverse port forwarding for USB connection
+    /// Setup ADB reverse only on the selected physical USB device.
+    @MainActor
     func setupADBReverse() async {
-        let port = settings.port
-        print("🔌 Setting up ADB reverse for port \(port)...")
-        debugLog("🔌 setupADBReverse() invoked for port \(port)...")
-
-        await Task.detached(priority: .utility) {
-            // Try common adb paths
-            let adbPaths = [
-                "/usr/local/bin/adb",
-                "/opt/homebrew/bin/adb",
-                "~/Library/Android/sdk/platform-tools/adb",
-                "/Users/\(NSUserName())/Library/Android/sdk/platform-tools/adb"
-            ]
-
-            var adbPath: String?
-            for path in adbPaths {
-                let expandedPath = NSString(string: path).expandingTildeInPath
-                if FileManager.default.fileExists(atPath: expandedPath) {
-                    adbPath = expandedPath
-                    break
-                }
-            }
-
-            // Also try 'which adb' to find it in PATH
-            if adbPath == nil {
-                let whichProcess = Process()
-                whichProcess.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-                whichProcess.arguments = ["adb"]
-                let whichPipe = Pipe()
-                whichProcess.standardOutput = whichPipe
-                whichProcess.standardError = FileHandle.nullDevice
-
-                do {
-                    try whichProcess.run()
-                    whichProcess.waitUntilExit()
-                    let data = whichPipe.fileHandleForReading.readDataToEndOfFile()
-                    if let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       !path.isEmpty {
-                        adbPath = path
-                    }
-                } catch {
-                    // Ignore
-                }
-            }
-
-            guard let finalAdbPath = adbPath else {
-                print("⚠️  ADB not found - USB connection may not work")
-                print("💡 Install Android SDK or run manually: adb reverse tcp:\(port) tcp:\(port)")
-                return
-            }
-
-            print("📱 Found ADB at: \(finalAdbPath)")
-
-            // Retry adb reverse up to 3 times — handles first-install authorization delay
-            for attempt in 1...3 {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: finalAdbPath)
-                process.arguments = ["reverse", "tcp:\(port)", "tcp:\(port)"]
-
-                let pipe = Pipe()
-                process.standardOutput = pipe
-                process.standardError = pipe
-
-                do {
-                    try process.run()
-                    process.waitUntilExit()
-
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    let output = String(data: data, encoding: .utf8) ?? ""
-
-                    if process.terminationStatus == 0 {
-                        print("✅ ADB reverse setup successful: tcp:\(port) -> tcp:\(port)")
-                        return
-                    } else {
-                        print("⚠️  ADB reverse attempt \(attempt)/3 failed: \(output.trimmingCharacters(in: .whitespacesAndNewlines))")
-                        if attempt < 3 {
-                            try? await Task.sleep(nanoseconds: 1_000_000_000)
-                        }
-                    }
-                } catch {
-                    print("⚠️  Failed to run ADB (attempt \(attempt)/3): \(error.localizedDescription)")
-                    if attempt < 3 {
-                        try? await Task.sleep(nanoseconds: 1_000_000_000)
-                    }
-                }
-            }
-
-            print("💡 Make sure Android device is connected via USB with debugging enabled")
-        }.value
+        await refreshUSBStatus(configure: true)
     }
 
     @MainActor
