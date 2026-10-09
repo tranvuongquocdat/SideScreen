@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Android: release builds are now signed with a dedicated upload key (from CI secrets) instead of the debug key. Previously every CI build used a fresh debug key, so updating the APK required uninstalling the old one first. The first release after this change will also need a one-time uninstall.
+- Android: `targetSdk`/`compileSdk` raised to 36 (Android 16), AGP 8.9.1, Gradle 8.13.
+- CI: release workflow also builds an `.aab` bundle for Google Play (kept as a workflow artifact, not attached to the GitHub release).
+
+### Added
+- `PRIVACY_POLICY.md` and a release guide plus listing assets under `resources/play-store/` for the Google Play submission.
+
 ### Known issue — "Screen & System Audio: Required" after updating (#77, #8, #5)
 The Mac app is ad-hoc signed, so every release has a new code hash. macOS ties the Screen Recording grant to that hash: after an update the toggle in System Settings still shows SideScreen as on, but the app sees the permission as missing, the Status row stays red and Start is disabled. Removing and re-adding the entry in System Settings often does not clear it. Fix, in Terminal:
 

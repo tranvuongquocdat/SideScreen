@@ -1,0 +1,24 @@
+Side Screen turns your Android tablet (or phone) into a second display for your Mac.
+
+Plug in a USB-C cable or connect over Wi-Fi, and your tablet becomes an extra monitor: drag windows onto it, keep reference material or chat open on the side, and use touch or a stylus to control the Mac directly from the tablet.
+
+HOW IT WORKS
+• Install the free, open-source Side Screen host on your Mac (macOS 13 or later, Apple Silicon and Intel) from github.com/tranvuongquocdat/SideScreen
+• Open this app on your tablet
+• USB-C: connect the cable and the display appears automatically
+• Wi-Fi: scan the QR code shown on the Mac once; the tablet reconnects by itself afterwards
+
+FEATURES
+• Hardware-accelerated H.264/HEVC video decoding for smooth, low-latency mirroring
+• Native touch and stylus input back to macOS, including hover and pressure where supported
+• Portrait or landscape, any tablet size
+• Resolution and frame-rate controls, HiDPI support
+• Automatic reconnection in wireless mode
+• No account, no ads, no analytics, no internet connection required — everything stays on your local network
+
+REQUIREMENTS
+• A Mac running macOS 13 Ventura or newer with the Side Screen host app installed
+• Android 8.0 or newer
+• For USB mode: a USB-C data cable. For wireless mode: both devices on the same Wi-Fi network
+
+Side Screen is open source under the MIT license. Report issues or contribute at github.com/tranvuongquocdat/SideScreen

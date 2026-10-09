@@ -16,6 +16,7 @@ AndroidClient/.idea/
 *.dmg
 *.iml
 *.keystore
+*.jks
 
 # macOS build (main + test apps)
 **/.build/
