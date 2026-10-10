@@ -45,6 +45,8 @@ import java.net.Socket
 
 private fun mainDiag(msg: String) = DiagLog.log("MA", msg)
 
+private const val MAC_APP_URL = "https://sidescreen.dev"
+
 class MainActivity : AppCompatActivity() {
     private lateinit var wirelessController: WirelessTabController
     private val pairedHostStorage by lazy { PairedHostStorage(this) }
@@ -85,6 +87,14 @@ class MainActivity : AppCompatActivity() {
     private val checklistHandler = Handler(Looper.getMainLooper())
     private var checklistRunnable: Runnable? = null
     private var isConnected = false // Track connection state to prevent checklist conflicts
+
+    // Demo mode: plays a bundled clip so the app can be tried without a Mac
+    private var demoPlayer: DemoPlayer? = null
+    private var demoActive = false
+    private var demoTouchHintShown = false
+
+    /** True while video is on screen — a real session or the demo. Drives the streaming chrome. */
+    private val isStreamingUi get() = isConnected || demoActive
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -370,11 +380,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.surfaceView.setOnTouchListener { view, event ->
-            handleTouch(view, event)
+            if (demoActive) showDemoTouchHint(event) else handleTouch(view, event)
             true
         }
         binding.textureView.setOnTouchListener { view, event ->
-            handleTouch(view, event)
+            if (demoActive) showDemoTouchHint(event) else handleTouch(view, event)
             true
         }
     }
@@ -417,8 +427,112 @@ class MainActivity : AppCompatActivity() {
             binding.showAdvanced.text = if (advancedVisible) "Hide Advanced Settings" else "Advanced Settings"
         }
 
+        binding.demoButton.setOnClickListener { startDemo() }
+        binding.getMacAppLink.setOnClickListener {
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(MAC_APP_URL)))
+            } catch (_: Exception) {
+                showError("Open $MAC_APP_URL in a browser to download the Mac app.")
+            }
+        }
+
         // Initial status
         updateStatus("Ready to connect")
+    }
+
+    // ==================== Demo Mode ====================
+
+    private fun startDemo() {
+        if (demoActive || isConnected) return
+        val player =
+            try {
+                DemoPlayer(applicationContext) { videoDecoder }
+            } catch (e: Exception) {
+                mainDiag("Demo load failed: ${e.message}")
+                showError("Could not start the demo: ${e.message}")
+                return
+            }
+        mainDiag("Demo started")
+        demoActive = true
+        demoTouchHintShown = false
+        // A stale client from an earlier session must not receive demo buffers
+        streamClient = null
+        videoDecoder?.release()
+        videoDecoder = null
+
+        displayWidth = DemoPlayer.WIDTH
+        displayHeight = DemoPlayer.HEIGHT
+        desktopWidth = 0
+        desktopHeight = 0
+        displayRotation = 0
+        displayFlipHorizontal = false
+        displayFlipVertical = false
+
+        binding.settingsPanel.visibility = View.GONE
+        applySettingsButtonVisibility()
+        restoreSettingsButtonPosition()
+        enableFullscreenMode()
+        applyRotation(0, false, false)
+        // The clip is a real 16:10 extended display: letterbox it instead of stretching
+        // UI text on phones (a real session sizes the Mac display to the tablet).
+        setSurfaceAspect("${DemoPlayer.WIDTH}:${DemoPlayer.HEIGHT}")
+        updateResolutionOverlay()
+        binding.resolutionText.append(" (demo)")
+        binding.latencyText.text = "—"
+        updateOverlayVisibility(prefs.showStatsOverlay)
+        initializeDecoderForCurrentSurface()
+
+        player.onStats = { fps, mbps ->
+            runOnUiThread {
+                binding.fpsText.text = String.format("%.1f", fps)
+                binding.bitrateText.text = String.format("%.1f Mbps", mbps)
+            }
+        }
+        demoPlayer = player
+        player.start()
+        android.widget.Toast
+            .makeText(this, "Demo mode — open Settings (⚙) or press Back to exit", android.widget.Toast.LENGTH_LONG)
+            .show()
+    }
+
+    private fun stopDemo() {
+        if (!demoActive) return
+        mainDiag("Demo stopped")
+        demoPlayer?.stop()
+        demoPlayer = null
+        demoActive = false
+        videoDecoder?.release()
+        videoDecoder = null
+        displayWidth = 0
+        displayHeight = 0
+
+        binding.settingsButton.visibility = View.GONE
+        binding.statusBar.visibility = View.GONE
+        binding.settingsPanel.visibility = View.VISIBLE
+        setSurfaceAspect(null)
+        // Recreate the surface so the last demo frame doesn't linger behind the panel
+        binding.surfaceView.visibility = View.GONE
+        binding.surfaceView.post { binding.surfaceView.visibility = View.VISIBLE }
+        disableFullscreenMode()
+        resetOrientationToSensor()
+    }
+
+    private fun setSurfaceAspect(ratio: String?) {
+        val params = binding.surfaceView.layoutParams as ConstraintLayout.LayoutParams
+        params.dimensionRatio = ratio
+        binding.surfaceView.layoutParams = params
+    }
+
+    /** Touch has nothing to control in demo mode — say what it would do instead. */
+    private fun showDemoTouchHint(event: MotionEvent) {
+        if (event.actionMasked != MotionEvent.ACTION_UP || demoTouchHintShown) return
+        demoTouchHintShown = true
+        android.widget.Toast
+            .makeText(
+                this,
+                "Demo mode — when connected, touching here clicks, drags and scrolls on your Mac.",
+                android.widget.Toast.LENGTH_LONG,
+            ).show()
     }
 
     private fun showError(message: String) {
@@ -516,7 +630,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateOverlayVisibility(show: Boolean) {
-        if (streamClient != null && show) {
+        if ((streamClient != null || demoActive) && show) {
             binding.statusBar.visibility = View.VISIBLE
             // Restore position when showing
             val x = prefs.overlayX
@@ -551,7 +665,8 @@ class MainActivity : AppCompatActivity() {
 
         // Only show Disconnect when actually streaming. Otherwise the button is
         // a no-op and confuses users into clicking it twice.
-        disconnectButton.visibility = if (isConnected) View.VISIBLE else View.GONE
+        disconnectButton.visibility = if (isStreamingUi) View.VISIBLE else View.GONE
+        if (demoActive) (disconnectButton as TextView).text = "Exit demo"
 
         // Position buttons (8 directions)
         val cornerTopLeft = view.findViewById<MaterialButton>(R.id.cornerTopLeft)
@@ -604,7 +719,7 @@ class MainActivity : AppCompatActivity() {
 
         hideSettingsSwitch.setOnCheckedChangeListener { _, isChecked ->
             prefs.hideSettingsButton = isChecked
-            if (isConnected) {
+            if (isStreamingUi) {
                 applySettingsButtonVisibility()
             }
             if (isChecked) {
@@ -694,7 +809,7 @@ class MainActivity : AppCompatActivity() {
 
         disconnectButton.setOnClickListener {
             dialog.dismiss()
-            disconnect()
+            if (demoActive) stopDemo() else disconnect()
         }
 
         closeButton.setOnClickListener {
@@ -728,10 +843,12 @@ class MainActivity : AppCompatActivity() {
             this,
             object : androidx.activity.OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
-                    if (isConnected && prefs.hideSettingsButton &&
+                    if (isStreamingUi && prefs.hideSettingsButton &&
                         binding.settingsButton.visibility != View.VISIBLE
                     ) {
                         revealSettingsButtonTemporarily()
+                    } else if (demoActive) {
+                        stopDemo()
                     } else {
                         isEnabled = false
                         onBackPressedDispatcher.onBackPressed()
@@ -751,7 +868,7 @@ class MainActivity : AppCompatActivity() {
     private val revealHandler = Handler(Looper.getMainLooper())
     private val hideSettingsButtonRunnable =
         Runnable {
-            if (isConnected && prefs.hideSettingsButton) {
+            if (isStreamingUi && prefs.hideSettingsButton) {
                 binding.settingsButton.visibility = View.GONE
             }
         }
@@ -957,7 +1074,7 @@ class MainActivity : AppCompatActivity() {
         // AVC-only device: an HEVC decoder can never decode the H.264 stream
         // the Mac will send — defer until codecSelected arrives, then
         // onStreamCodecSelected initializes with the correct mime.
-        if (!CodecCapabilities.hasHevcDecoder && streamClient?.codecNegotiated != true) {
+        if (!demoActive && !CodecCapabilities.hasHevcDecoder && streamClient?.codecNegotiated != true) {
             mainDiag("initializeDecoder deferred — AVC-only device awaiting codec negotiation")
             return
         }
@@ -991,7 +1108,7 @@ class MainActivity : AppCompatActivity() {
                     windowManager.defaultDisplay
                 }
             val mime =
-                if (streamClient?.streamCodecIsHevc == false) {
+                if (demoActive || streamClient?.streamCodecIsHevc == false) {
                     MediaFormat.MIMETYPE_VIDEO_AVC
                 } else {
                     MediaFormat.MIMETYPE_VIDEO_HEVC
@@ -1275,6 +1392,7 @@ class MainActivity : AppCompatActivity() {
         deviceName: String,
         macName: String,
     ) {
+        stopDemo() // a real connection (incl. wireless auto-reconnect) takes over the decoder
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 log("Connecting wirelessly to $host:$port...")
@@ -1302,6 +1420,7 @@ class MainActivity : AppCompatActivity() {
         host: String,
         port: Int,
     ) {
+        stopDemo()
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 log("Connecting to $host:$port...")
@@ -1486,6 +1605,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun cleanup() {
         try {
+            stopDemo()
             disconnect()
             videoDecoder?.release()
             videoDecoder = null

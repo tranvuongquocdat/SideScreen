@@ -37,6 +37,12 @@ android {
     }
 
     buildTypes {
+        // Separate package so a debug build installs next to the Play Store build
+        // (different signing keys would otherwise force an uninstall).
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             isMinifyEnabled = false
             signingConfig = if (hasReleaseKey) {

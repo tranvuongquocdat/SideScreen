@@ -212,7 +212,28 @@
                 android:textColor="#999999"
                 android:textSize="14sp"
                 android:gravity="center"
-                android:layout_marginBottom="20dp" />
+                android:layout_marginBottom="6dp" />
+
+            <!-- Companion requirement: without this, the app looks broken to anyone without a Mac -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Requires a Mac running the SideScreen app"
+                android:textColor="#777777"
+                android:textSize="13sp"
+                android:gravity="center" />
+
+            <TextView
+                android:id="@+id/getMacAppLink"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="Get the Mac app →"
+                android:textColor="#007AFF"
+                android:textSize="13sp"
+                android:padding="8dp"
+                android:background="?attr/selectableItemBackground"
+                android:layout_marginBottom="12dp" />
 
             <!-- Mode toggle: USB / Wireless -->
             <com.google.android.material.button.MaterialButtonToggleGroup
@@ -782,6 +803,17 @@
 
             </LinearLayout>
             <!-- ============= /WIRELESS MODE CONTENT ============= -->
+
+            <!-- Demo mode entry, shared by both connection modes -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/demoButton"
+                style="?attr/borderlessButtonStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="No Mac? Try the demo"
+                android:textColor="#8ab4ff"
+                android:textSize="14sp" />
 
             <!-- Hidden disconnect button reference (needed by code) -->
             <com.google.android.material.button.MaterialButton
