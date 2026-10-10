@@ -49,6 +49,7 @@ private const val MAC_APP_URL = "https://sidescreen.dev"
 
 class MainActivity : AppCompatActivity() {
     private lateinit var wirelessController: WirelessTabController
+    private lateinit var appUpdater: AppUpdater
     private val pairedHostStorage by lazy { PairedHostStorage(this) }
     private val cameraPerm by lazy { CameraPermissionManager(this) }
     private lateinit var binding: ActivityMainBinding
@@ -116,6 +117,7 @@ class MainActivity : AppCompatActivity() {
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        appUpdater = AppUpdater(this) { binding.root }
 
         // Apply fullscreen mode immediately
         enableFullscreenMode()
@@ -1759,8 +1761,15 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Only nudge about updates while idle — never over a live stream or the demo.
+        if (!isStreamingUi) appUpdater.checkForUpdate()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        appUpdater.release()
         stopChecklistUpdates()
         cleanup()
     }
