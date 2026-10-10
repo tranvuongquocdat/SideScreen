@@ -428,6 +428,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.demoButton.setOnClickListener { startDemo() }
+        binding.watchVideoButton.setOnClickListener { showHowItWorksVideo() }
         binding.getMacAppLink.setOnClickListener {
             try {
                 startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(MAC_APP_URL)))
@@ -521,6 +522,21 @@ class MainActivity : AppCompatActivity() {
         val params = binding.surfaceView.layoutParams as ConstraintLayout.LayoutParams
         params.dimensionRatio = ratio
         binding.surfaceView.layoutParams = params
+    }
+
+    /** Plays the bundled recording of a real Mac + phone session, looping, full screen. */
+    private fun showHowItWorksVideo() {
+        val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        dialog.setContentView(R.layout.dialog_how_it_works)
+        val video = dialog.findViewById<android.widget.VideoView>(R.id.howItWorksVideo)
+        video.setVideoURI(android.net.Uri.parse("android.resource://$packageName/${R.raw.how_it_works}"))
+        video.setOnPreparedListener { player ->
+            player.isLooping = true
+            video.start()
+        }
+        dialog.findViewById<View>(R.id.closeVideoButton).setOnClickListener { dialog.dismiss() }
+        dialog.setOnDismissListener { video.stopPlayback() }
+        dialog.show()
     }
 
     /** Touch has nothing to control in demo mode — say what it would do instead. */

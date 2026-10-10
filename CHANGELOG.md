@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI: release workflow also builds an `.aab` bundle for Google Play (kept as a workflow artifact, not attached to the GitHub release).
 
 ### Added
-- Android: demo mode — "No Mac? Try the demo" on the main screen plays a recording of a real SideScreen extended display through the normal decoder, with the settings button and stats overlay, so the app can be tried without a Mac. The main screen now also states the Mac requirement and links to the Mac app.
+- Android: demo mode — "No Mac? Try the demo" on the main screen plays a recording of a real SideScreen extended display through the normal decoder, with the settings button and stats overlay, so the app can be tried without a Mac, plus "Watch demo video", a bundled recording of a real Mac + phone session. The main screen now also states the Mac requirement and links to the Mac app.
 - `PRIVACY_POLICY.md` and a release guide plus listing assets under `resources/play-store/` for the Google Play submission.
 
 ### Known issue — "Screen & System Audio: Required" after updating (#77, #8, #5)

@@ -804,13 +804,23 @@
             </LinearLayout>
             <!-- ============= /WIRELESS MODE CONTENT ============= -->
 
+            <!-- Bundled recording of a real Mac + phone session, for people without a Mac -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/watchVideoButton"
+                style="?attr/borderlessButtonStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Watch demo video"
+                android:textColor="#8ab4ff"
+                android:textSize="14sp" />
+
             <!-- Demo mode entry, shared by both connection modes -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/demoButton"
                 style="?attr/borderlessButtonStyle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
                 android:text="No Mac? Try the demo"
                 android:textColor="#8ab4ff"
                 android:textSize="14sp" />
