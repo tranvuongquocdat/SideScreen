@@ -9,13 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Android: starting the demo while a connection attempt was still in progress left that attempt running in the background; it is now cancelled first.
+
 ### Changed
 - Android: release builds are now signed with a dedicated upload key (from CI secrets) instead of the debug key. Previously every CI build used a fresh debug key, so updating the APK required uninstalling the old one first. The first release after this change will also need a one-time uninstall.
 - Android: `targetSdk`/`compileSdk` raised to 36 (Android 16), AGP 8.9.1, Gradle 8.13.
 - CI: release workflow also builds an `.aab` bundle for Google Play (kept as a workflow artifact, not attached to the GitHub release).
 
 ### Added
-- Android: demo mode — "No Mac? Try the demo" on the main screen plays a recording of a real SideScreen extended display through the normal decoder, with the settings button and stats overlay, so the app can be tried without a Mac, plus "Watch demo video", a bundled recording of a real Mac + phone session. The main screen now also states the Mac requirement and links to the Mac app.
 - `PRIVACY_POLICY.md` and a release guide plus listing assets under `resources/play-store/` for the Google Play submission.
 
 ### Known issue — "Screen & System Audio: Required" after updating (#77, #8, #5)
@@ -32,6 +34,17 @@ Then open SideScreen and grant Screen & System Audio Recording again when macOS 
 - Audio streaming
 - Multi-touch gestures
 - Stylus/pen support
+
+---
+
+<a id="0.11.5"></a>
+## [0.11.5] - 2026-10-10 — Google Play closed testing only
+
+### Added
+- Android: demo mode — "No Mac? Try the demo" on the main screen plays a recording of a real SideScreen extended display through the normal decoder, with the settings button and stats overlay, so the app can be tried without a Mac, plus "Watch demo video", a bundled recording of a real Mac + phone session. The main screen now also states the Mac requirement and links to the Mac app.
+
+### Installation
+Google Play closed-testing build only (versionCode 1105); there is no GitHub release or DMG for 0.11.5. The next GitHub release is 0.11.6.
 
 ---
 

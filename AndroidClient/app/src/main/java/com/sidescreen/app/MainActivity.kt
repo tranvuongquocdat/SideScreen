@@ -456,7 +456,10 @@ class MainActivity : AppCompatActivity() {
         mainDiag("Demo started")
         demoActive = true
         demoTouchHintShown = false
-        // A stale client from an earlier session must not receive demo buffers
+        // Cancel any in-flight connection attempt (USB connect or wireless
+        // auto-reconnect) so its callbacks can't feed real frames into the demo
+        // decoder or flip the UI to "connected" mid-demo.
+        streamClient?.disconnect()
         streamClient = null
         videoDecoder?.release()
         videoDecoder = null
