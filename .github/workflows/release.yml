@@ -118,11 +118,15 @@ jobs:
 
       # Upload keystore is stored base64-encoded in the ANDROID_KEYSTORE_BASE64 secret.
       # When the secret is missing (e.g. forks) the build falls back to the debug key.
+      # (`secrets` can't be used in a step-level `if:` — it makes the whole file invalid.)
       - name: Decode release keystore
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "No upload keystore secret — release build falls back to the debug key"
+            exit 0
+          fi
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload-keystore.jks"
           echo "SIDESCREEN_KEYSTORE_PATH=$RUNNER_TEMP/upload-keystore.jks" >> $GITHUB_ENV
 
