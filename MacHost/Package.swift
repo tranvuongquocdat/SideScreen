@@ -1,5 +1,13 @@
 // swift-tools-version: 5.9
+import Foundation
 import PackageDescription
+
+// Swift Build can invoke the compiler from outside the package directory.
+// Resolve custom compiler paths relative to this manifest instead of its working directory.
+let sourcesPath = URL(fileURLWithPath: #filePath)
+    .deletingLastPathComponent()
+    .appendingPathComponent("Sources")
+    .path
 
 let package = Package(
     name: "SideScreen",
@@ -20,20 +28,20 @@ let package = Package(
             dependencies: [],
             path: "Sources",
             cSettings: [
-                .unsafeFlags(["-I", "Sources"])
+                .unsafeFlags(["-I", sourcesPath])
             ],
             swiftSettings: [
-                .unsafeFlags(["-Xcc", "-fmodule-map-file=Sources/module.modulemap"])
+                .unsafeFlags(["-Xcc", "-fmodule-map-file=\(sourcesPath)/module.modulemap"])
             ]),
         .testTarget(
             name: "SideScreenTests",
             dependencies: ["SideScreen"],
             path: "Tests/SideScreenTests",
             cSettings: [
-                .unsafeFlags(["-I", "Sources"])
+                .unsafeFlags(["-I", sourcesPath])
             ],
             swiftSettings: [
-                .unsafeFlags(["-Xcc", "-fmodule-map-file=Sources/module.modulemap"])
+                .unsafeFlags(["-Xcc", "-fmodule-map-file=\(sourcesPath)/module.modulemap"])
             ]
         )
     ]

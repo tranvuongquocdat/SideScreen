@@ -10,21 +10,21 @@ echo "🚀 Installing Side Screen..."
 echo ""
 
 # Set JAVA_HOME for Android Studio's bundled JDK
-export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+export JAVA_HOME="${JAVA_HOME:-/Applications/Android Studio.app/Contents/jbr/Contents/Home}"
 
 # Check Java
 if [ ! -d "$JAVA_HOME" ]; then
-    echo "❌ Java not found at: $JAVA_HOME"
-    echo "   Please install Android Studio or set JAVA_HOME manually"
-    exit 1
+  echo "❌ Java not found at: $JAVA_HOME"
+  echo "   Please install Android Studio or set JAVA_HOME manually"
+  exit 1
 fi
 
 # Check ADB connection first
 echo "📱 Checking ADB connection..."
 if ! adb devices | grep -q "device$"; then
-    echo "❌ No Android device found via ADB"
-    echo "   Please connect your device via USB and enable USB debugging"
-    exit 1
+  echo "❌ No Android device found via ADB"
+  echo "   Please connect your device via USB and enable USB debugging"
+  exit 1
 fi
 echo "  ✓ Android device connected"
 echo ""
@@ -98,17 +98,17 @@ echo ""
 
 # Setup ADB reverse (with retry)
 echo "🔧 Setting up USB port forwarding..."
-adb reverse --remove tcp:8888 2>/dev/null || true
+adb reverse --remove tcp:8888 2> /dev/null || true
 sleep 0.5
 adb reverse tcp:8888 tcp:8888
 
 # Verify ADB reverse is active
 echo "🔍 Verifying port forwarding..."
 if adb reverse --list | grep -q "tcp:8888"; then
-    echo "  ✓ Port 8888 forwarded successfully"
+  echo "  ✓ Port 8888 forwarded successfully"
 else
-    echo "  ⚠️  Port forwarding setup but verification failed"
-    echo "  Run './scripts/setup-usb.sh' if connection issues occur"
+  echo "  ⚠️  Port forwarding setup but verification failed"
+  echo "  Run './scripts/setup-usb.sh' if connection issues occur"
 fi
 echo ""
 
