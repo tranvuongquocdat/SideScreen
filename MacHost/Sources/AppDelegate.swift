@@ -169,7 +169,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let port = Int(settings.port)
         Task.detached { [weak self] in
             let devices = StatusDetector.usbDevices()
-            let reverseOK = StatusDetector.adbReverseConfigured(port: port)
+            // Every attached device needs its own reverse (see setupADBReverse).
+            let reverseOK = !devices.isEmpty
+                && devices.allSatisfy { StatusDetector.adbReverseConfigured(port: port, serial: $0) }
             await MainActor.run { [weak self] in
                 guard let self = self else { return }
                 
@@ -459,89 +461,69 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         debugLog("🔌 setupADBReverse() invoked for port \(port)...")
 
         await Task.detached(priority: .utility) {
-            // Try common adb paths
-            let adbPaths = [
-                "/usr/local/bin/adb",
-                "/opt/homebrew/bin/adb",
-                "~/Library/Android/sdk/platform-tools/adb",
-                "/Users/\(NSUserName())/Library/Android/sdk/platform-tools/adb"
-            ]
-
-            var adbPath: String?
-            for path in adbPaths {
-                let expandedPath = NSString(string: path).expandingTildeInPath
-                if FileManager.default.fileExists(atPath: expandedPath) {
-                    adbPath = expandedPath
-                    break
-                }
-            }
-
-            // Also try 'which adb' to find it in PATH
-            if adbPath == nil {
-                let whichProcess = Process()
-                whichProcess.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-                whichProcess.arguments = ["adb"]
-                let whichPipe = Pipe()
-                whichProcess.standardOutput = whichPipe
-                whichProcess.standardError = FileHandle.nullDevice
-
-                do {
-                    try whichProcess.run()
-                    whichProcess.waitUntilExit()
-                    let data = whichPipe.fileHandleForReading.readDataToEndOfFile()
-                    if let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       !path.isEmpty {
-                        adbPath = path
-                    }
-                } catch {
-                    // Ignore
-                }
-            }
-
-            guard let finalAdbPath = adbPath else {
+            guard let adbPath = StatusDetector.adbExecutablePath() else {
                 print("⚠️  ADB not found - USB connection may not work")
                 print("💡 Install Android SDK or run manually: adb reverse tcp:\(port) tcp:\(port)")
                 return
             }
+            print("📱 Found ADB at: \(adbPath)")
 
-            print("📱 Found ADB at: \(finalAdbPath)")
+            // One reverse per attached device: a bare `adb reverse` fails with
+            // "more than one device" as soon as a second tablet is plugged in.
+            // Devices still waiting for USB-debugging authorization are not
+            // listed yet; refreshStatusIndicators re-runs this once they are.
+            let serials = StatusDetector.usbDevices()
+            guard !serials.isEmpty else {
+                print("💡 No authorized Android device found — plug in via USB and allow debugging")
+                return
+            }
+            for serial in serials {
+                if StatusDetector.adbReverseConfigured(port: Int(port), serial: serial) {
+                    debugLog("ADB reverse already configured for \(serial)")
+                    continue
+                }
+                await Self.reverseWithRetry(adbPath: adbPath, serial: serial, port: port)
+            }
+        }.value
+    }
 
-            // Retry adb reverse up to 3 times — handles first-install authorization delay
-            for attempt in 1...3 {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: finalAdbPath)
-                process.arguments = ["reverse", "tcp:\(port)", "tcp:\(port)"]
+    /// `adb -s <serial> reverse tcp:P tcp:P`, retried up to 3 times — handles
+    /// the first-install authorization delay.
+    private static func reverseWithRetry(adbPath: String, serial: String, port: UInt16) async {
+        for attempt in 1...3 {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: adbPath)
+            process.arguments = ["-s", serial, "reverse", "tcp:\(port)", "tcp:\(port)"]
 
-                let pipe = Pipe()
-                process.standardOutput = pipe
-                process.standardError = pipe
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = pipe
 
-                do {
-                    try process.run()
-                    process.waitUntilExit()
+            do {
+                try process.run()
+                process.waitUntilExit()
 
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    let output = String(data: data, encoding: .utf8) ?? ""
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let output = String(data: data, encoding: .utf8) ?? ""
 
-                    if process.terminationStatus == 0 {
-                        print("✅ ADB reverse setup successful: tcp:\(port) -> tcp:\(port)")
-                        return
-                    } else {
-                        print("⚠️  ADB reverse attempt \(attempt)/3 failed: \(output.trimmingCharacters(in: .whitespacesAndNewlines))")
-                        if attempt < 3 {
-                            try? await Task.sleep(nanoseconds: 1_000_000_000)
-                        }
-                    }
-                } catch {
-                    print("⚠️  Failed to run ADB (attempt \(attempt)/3): \(error.localizedDescription)")
+                if process.terminationStatus == 0 {
+                    print("✅ ADB reverse setup successful for \(serial): tcp:\(port) -> tcp:\(port)")
+                    return
+                } else {
+                    print("⚠️  ADB reverse attempt \(attempt)/3 failed for \(serial): \(output.trimmingCharacters(in: .whitespacesAndNewlines))")
                     if attempt < 3 {
                         try? await Task.sleep(nanoseconds: 1_000_000_000)
                     }
                 }
+            } catch {
+                print("⚠️  Failed to run ADB (attempt \(attempt)/3): \(error.localizedDescription)")
+                if attempt < 3 {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                }
             }
+        }
 
-            print("💡 Make sure Android device is connected via USB with debugging enabled")
-        }.value
+        print("💡 Make sure Android device \(serial) is connected via USB with debugging enabled")
     }
 
     @MainActor

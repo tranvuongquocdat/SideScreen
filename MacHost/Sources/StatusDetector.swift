@@ -38,11 +38,13 @@ enum StatusDetector {
     }
 
     /// Heuristic: parse `adb reverse --list` for `tcp:<port> tcp:<port>`.
-    static func adbReverseConfigured(port: Int) -> Bool {
+    /// `serial` targets one device; without it adb refuses as soon as two
+    /// devices are attached ("more than one device").
+    static func adbReverseConfigured(port: Int, serial: String? = nil) -> Bool {
         guard let adbPath = adbExecutablePath() else { return false }
         let task = Process()
         task.executableURL = URL(fileURLWithPath: adbPath)
-        task.arguments = ["reverse", "--list"]
+        task.arguments = (serial.map { ["-s", $0] } ?? []) + ["reverse", "--list"]
         let pipe = Pipe()
         task.standardOutput = pipe
         task.standardError = Pipe()
@@ -60,7 +62,7 @@ enum StatusDetector {
     private static var cachedAdbPath: String?
     private static var lastAdbCacheCheck: Date = .distantPast
 
-    private static func adbExecutablePath() -> String? {
+    static func adbExecutablePath() -> String? {
         // Re-resolve every 5 s so install/uninstall is reflected.
         if let cached = cachedAdbPath, Date().timeIntervalSince(lastAdbCacheCheck) < 5.0 {
             return cached
