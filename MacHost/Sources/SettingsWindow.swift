@@ -1309,6 +1309,48 @@ class DisplaySettings: ObservableObject {
         defaults.set(value, forKey: keyPrefix + key)
     }
 
+    /// The tablet-specific slice of the settings, plus the display position
+    /// VirtualDisplayManager last saved (same `SideScreen_` keys).
+    var profileSettings: ProfileSettings {
+        let hasPosition = defaults.bool(forKey: keyPrefix + "hasPosition")
+        return ProfileSettings(
+            resolution: resolution,
+            refreshRate: refreshRate,
+            hiDPI: hiDPI,
+            rotation: rotation,
+            flipHorizontal: flipHorizontal,
+            flipVertical: flipVertical,
+            bitrate: bitrate,
+            quality: quality,
+            gamingBoost: gamingBoost,
+            touchEnabled: touchEnabled,
+            positionX: hasPosition ? defaults.integer(forKey: keyPrefix + "positionX") : nil,
+            positionY: hasPosition ? defaults.integer(forKey: keyPrefix + "positionY") : nil
+        )
+    }
+
+    /// Make `profile` the current settings. Only changed values are assigned,
+    /// so observers fire just for what actually differs.
+    func apply(_ profile: ProfileSettings) {
+        if resolution != profile.resolution { resolution = profile.resolution }
+        if refreshRate != profile.refreshRate { refreshRate = profile.refreshRate }
+        if hiDPI != profile.hiDPI { hiDPI = profile.hiDPI }
+        if rotation != profile.rotation { rotation = profile.rotation }
+        if flipHorizontal != profile.flipHorizontal { flipHorizontal = profile.flipHorizontal }
+        if flipVertical != profile.flipVertical { flipVertical = profile.flipVertical }
+        if bitrate != profile.bitrate { bitrate = profile.bitrate }
+        if quality != profile.quality { quality = profile.quality }
+        if gamingBoost != profile.gamingBoost { gamingBoost = profile.gamingBoost }
+        if touchEnabled != profile.touchEnabled { touchEnabled = profile.touchEnabled }
+        if let x = profile.positionX, let y = profile.positionY {
+            save("positionX", x)
+            save("positionY", y)
+            save("hasPosition", true)
+        } else {
+            defaults.removeObject(forKey: keyPrefix + "hasPosition")
+        }
+    }
+
     struct ResolutionGroup: Identifiable {
         let id = UUID()
         let name: String

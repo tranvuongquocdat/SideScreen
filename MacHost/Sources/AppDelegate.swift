@@ -53,6 +53,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var settingsWindow: SettingsWindowController?
     var statusItem: NSStatusItem?
     let pairedDeviceStore = PairedDeviceStore()
+    let deviceProfileStore = DeviceProfileStore()
+    /// Profile key of the tablet currently streaming (nil when none, or when
+    /// it is an older USB app that does not identify itself).
+    private var activeProfileKey: String?
+    /// True while prepareProfile copies a profile into `settings` and rebuilds
+    /// the display: the observers that would restart the server or push a
+    /// display config early stand down, the switch does that work itself.
+    private var isSwitchingProfile = false
     /// Name of the wireless device currently streaming (nil when no wireless client is active).
     /// Used to roll its `lastConnected` timestamp forward every status refresh tick so the UI
     /// shows "just now" while connected and freezes at the disconnect moment afterward.
@@ -243,7 +251,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Publishers.CombineLatest3(settings.$rotation, settings.$flipHorizontal, settings.$flipVertical)
             .dropFirst()
             .sink { [weak self] rotation, flipHorizontal, flipVertical in
-                guard let self = self, self.settings.isRunning else { return }
+                // A profile switch sends the config itself, once the codec is known.
+                guard let self = self, self.settings.isRunning, !self.isSwitchingProfile else { return }
                 print("🔄 Display transform changed: \(rotation)°, h=\(flipHorizontal), v=\(flipVertical)")
                 self.streamingServer?.updateDisplayTransform(rotation: rotation, flipHorizontal: flipHorizontal, flipVertical: flipVertical)
             }
@@ -277,7 +286,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .dropFirst()
             .removeDuplicates()
             .sink { [weak self] resolution in
-                self?.restartRunningServer(reason: "Resolution changed to \(resolution)")
+                guard let self = self, !self.isSwitchingProfile else { return }
+                self.restartRunningServer(reason: "Resolution changed to \(resolution)")
             }
             .store(in: &cancellables)
 
@@ -298,6 +308,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     guard effective != self.lastAppliedRefreshRate else { return }
                     self.restartRunningServer(reason: "Refresh rate changed to \(effective) Hz")
                 }
+            }
+            .store(in: &cancellables)
+
+        // Every settings change lands in the profile it belongs to (see
+        // syncCurrentProfile). objectWillChange fires before the new value is
+        // stored; the debounce reads it after.
+        settings.objectWillChange
+            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.syncCurrentProfile()
             }
             .store(in: &cancellables)
     }
@@ -569,22 +589,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         do {
             // Create virtual display and run ADB setup in parallel
-            virtualDisplayManager = VirtualDisplayManager()
-            let size = settings.resolutionSize
-            try virtualDisplayManager?.createDisplay(
-                width: size.width,
-                height: size.height,
-                refreshRate: settings.refreshRate,
-                hiDPI: settings.hiDPI,
-                name: "SideScreen"
-            )
-
-            // Disable mirror mode (may fail if already in extend mode)
-            do {
-                try virtualDisplayManager?.disableMirrorMode()
-            } catch {
-                // Not critical - continue anyway
-            }
+            let manager = VirtualDisplayManager()
+            virtualDisplayManager = manager
+            try createVirtualDisplay(on: manager)
 
             await MainActor.run {
                 settings.displayCreated = true
@@ -601,34 +608,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 group.addTask { try? await Task.sleep(nanoseconds: 500_000_000) }
             }
 
-            virtualDisplayManager?.restoreDisplayPosition()
-
-            // Verify display is registered in the system
-            if let vdm = virtualDisplayManager {
-                let registered = vdm.verifyDisplayRegistered()
-                if !registered {
-                    debugLog("WARNING: Virtual display not found in online display list — capture may fail")
-                }
-            }
-
-            // Setup capture
-            guard let displayID = virtualDisplayManager?.displayID else {
-                throw NSError(
-                    domain: "SideScreen.Startup",
-                    code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: "The virtual display was created without a display ID."]
-                )
-            }
-            screenCapture = try await ScreenCapture()
-            screenCapture?.onCaptureMethodChanged = { [weak self] method in
-                guard let self = self else { return }
-                debugLog("Capture method: \(method)")
-                Task { @MainActor in
-                    self.settings.captureMethod = method
-                }
-            }
-            lastAppliedRefreshRate = settings.effectiveRefreshRate
-            try await screenCapture?.setupForVirtualDisplay(displayID, refreshRate: settings.effectiveRefreshRate)
+            manager.restoreDisplayPosition()
+            screenCapture = try await makeCapture(for: manager)
 
             // Setup server
             streamingServer = StreamingServer(port: settings.port)
@@ -645,13 +626,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                 }
             }
-            // displayConfig carries the ENCODED size, always. The client sizes and
-            // selects its decoder from it, so a friendlier number here makes it
-            // check capabilities against a resolution it will never receive. The
-            // logical desktop travels separately, for display only.
-            let initialEncode = ScreenCapture.physicalSize(for: displayID)
-            streamingServer?.setDesktopSize(width: size.width, height: size.height)
-            streamingServer?.setDisplaySize(width: initialEncode.width, height: initialEncode.height, rotation: settings.rotation, flipHorizontal: settings.flipHorizontal, flipVertical: settings.flipVertical)
+            configureDisplayGeometry(on: streamingServer, for: manager)
+            streamingServer?.onPrepareForClient = { [weak self] key, name in
+                guard let self = self, let key = key else { return true }
+                Task { @MainActor in await self.prepareProfile(key: key, name: name) }
+                return false
+            }
             streamingServer?.onClientConnected = { [weak self] in
                 guard let self = self else { return }
                 self.screenCapture?.requestKeyframeOrReplayCachedFrame(force: true)
@@ -673,7 +653,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 // Whatever the codec negotiation settled on, this is what the
                 // stream's SPS will carry, so it is what the client must size
                 // its decoder for.
-                self.streamingServer?.setDesktopSize(width: size.width, height: size.height)
+                let desktop = self.settings.resolutionSize
+                self.streamingServer?.setDesktopSize(width: desktop.width, height: desktop.height)
                 self.streamingServer?.setDisplaySize(width: enc.width, height: enc.height, rotation: self.settings.rotation, flipHorizontal: self.settings.flipHorizontal, flipVertical: self.settings.flipVertical)
             }
             streamingServer?.onKeyframeRequested = { [weak self] force in
@@ -684,6 +665,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self = self else { return }
                 Task { @MainActor in
                     self.settings.clientConnected = false
+                    self.closeActiveProfile()
                     // Final lastConnected snapshot at the disconnect moment, then
                     // freeze (currentWirelessDevice = nil stops the rolling update
                     // in refreshStatusIndicators).
@@ -715,13 +697,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 )
             }
             try await server.start()
-            screenCapture?.startStreaming(
-                to: server,
-                bitrateMbps: settings.effectiveBitrate,
-                quality: settings.effectiveQuality,
-                gamingBoost: settings.gamingBoost,
-                frameRate: settings.effectiveRefreshRate
-            )
+            startStreaming(to: server)
 
             await MainActor.run {
                 settings.isRunning = true
@@ -740,6 +716,163 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 alert.runModal()
             }
         }
+    }
+
+    /// Create the virtual display from the current settings, in extend mode.
+    private func createVirtualDisplay(on manager: VirtualDisplayManager) throws {
+        let size = settings.resolutionSize
+        try manager.createDisplay(
+            width: size.width,
+            height: size.height,
+            refreshRate: settings.refreshRate,
+            hiDPI: settings.hiDPI,
+            name: "SideScreen"
+        )
+
+        // Disable mirror mode (may fail if already in extend mode)
+        do {
+            try manager.disableMirrorMode()
+        } catch {
+            // Not critical - continue anyway
+        }
+    }
+
+    /// Capture for `manager`'s display, already positioned.
+    private func makeCapture(for manager: VirtualDisplayManager) async throws -> ScreenCapture {
+        // Verify display is registered in the system
+        if !manager.verifyDisplayRegistered() {
+            debugLog("WARNING: Virtual display not found in online display list — capture may fail")
+        }
+
+        guard let displayID = manager.displayID else {
+            throw NSError(
+                domain: "SideScreen.Startup",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "The virtual display was created without a display ID."]
+            )
+        }
+        let capture = try await ScreenCapture()
+        capture.onCaptureMethodChanged = { [weak self] method in
+            guard let self = self else { return }
+            debugLog("Capture method: \(method)")
+            Task { @MainActor in
+                self.settings.captureMethod = method
+            }
+        }
+        lastAppliedRefreshRate = settings.effectiveRefreshRate
+        try await capture.setupForVirtualDisplay(displayID, refreshRate: settings.effectiveRefreshRate)
+        return capture
+    }
+
+    private func configureDisplayGeometry(on server: StreamingServer?, for manager: VirtualDisplayManager) {
+        guard let displayID = manager.displayID else { return }
+        // displayConfig carries the ENCODED size, always. The client sizes and
+        // selects its decoder from it, so a friendlier number here makes it
+        // check capabilities against a resolution it will never receive. The
+        // logical desktop travels separately, for display only.
+        let size = settings.resolutionSize
+        let initialEncode = ScreenCapture.physicalSize(for: displayID)
+        server?.setDesktopSize(width: size.width, height: size.height)
+        server?.setDisplaySize(width: initialEncode.width, height: initialEncode.height, rotation: settings.rotation, flipHorizontal: settings.flipHorizontal, flipVertical: settings.flipVertical)
+    }
+
+    private func startStreaming(to server: StreamingServer) {
+        screenCapture?.startStreaming(
+            to: server,
+            bitrateMbps: settings.effectiveBitrate,
+            quality: settings.effectiveQuality,
+            gamingBoost: settings.gamingBoost,
+            frameRate: settings.effectiveRefreshRate
+        )
+    }
+
+    // MARK: - Per-tablet profiles
+
+    /// A tablet identified itself and its stream is held until this returns
+    /// it to the server. Its profile is applied first: nothing to do when it
+    /// matches what is running, the display just moves when only the position
+    /// differs, and the display and capture are rebuilt — with the client
+    /// still connected — when anything that shapes them differs. A tablet
+    /// without a profile starts from the current settings, i.e. the last
+    /// profile used.
+    @MainActor
+    private func prepareProfile(key: String, name: String) async {
+        guard let server = streamingServer else { return }
+        defer { server.resumeProtocolStartup() }
+
+        // Flush whatever the current settings belong to (the last tablet, or
+        // one that never disconnected cleanly) before they are replaced.
+        virtualDisplayManager?.saveDisplayPosition()
+        syncCurrentProfile()
+
+        let current = settings.profileSettings
+        let stored = deviceProfileStore.profile(id: key)
+        let displayName = name.isEmpty ? (stored?.name ?? "Tablet") : name
+        activeProfileKey = key
+        deviceProfileStore.save(DeviceProfile(id: key, name: displayName, lastConnected: Date(), settings: stored?.settings ?? current))
+
+        guard let target = stored?.settings, target != current else {
+            debugLog("Profile \(displayName): \(stored == nil ? "new tablet, starting from the last profile" : "matches, nothing to apply")")
+            return
+        }
+
+        isSwitchingProfile = true
+        defer { isSwitchingProfile = false }
+        settings.apply(target)
+
+        if target.displayShape != current.displayShape {
+            debugLog("Profile \(displayName): rebuilding display for \(target.resolution) @ \(target.refreshRate)Hz")
+            lastAppliedRefreshRate = settings.effectiveRefreshRate
+            do {
+                try await rebuildDisplay(for: server)
+            } catch {
+                debugLog("❌ Profile switch failed: \(error) — stopping server")
+                stopServer()
+            }
+        } else {
+            debugLog("Profile \(displayName): applied live")
+            if target.positionX != current.positionX || target.positionY != current.positionY {
+                virtualDisplayManager?.restoreDisplayPosition()
+            }
+        }
+    }
+
+    /// Swap the virtual display and capture for ones built from the current
+    /// settings while `server` and its client stay up.
+    @MainActor
+    private func rebuildDisplay(for server: StreamingServer) async throws {
+        guard let manager = virtualDisplayManager else { return }
+        screenCapture?.stopStreaming()
+        screenCapture = nil
+
+        try createVirtualDisplay(on: manager)
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        manager.restoreDisplayPosition()
+        let capture = try await makeCapture(for: manager)
+        guard streamingServer === server else { return }
+        screenCapture = capture
+        configureDisplayGeometry(on: server, for: manager)
+        startStreaming(to: server)
+    }
+
+    /// The streaming tablet went away: keep where its display ended up and
+    /// what it was set to, then stop tracking it.
+    private func closeActiveProfile() {
+        guard activeProfileKey != nil else { return }
+        // Mid-switch the display is a fresh one not yet moved into place.
+        if !isSwitchingProfile {
+            virtualDisplayManager?.saveDisplayPosition()
+        }
+        syncCurrentProfile()
+        activeProfileKey = nil
+    }
+
+    /// Copy the current settings into the profile they belong to: the
+    /// streaming tablet, or — while none is — the one used last, so a change
+    /// made between sessions is not undone when that tablet comes back.
+    private func syncCurrentProfile() {
+        guard let key = activeProfileKey ?? deviceProfileStore.mostRecent()?.id else { return }
+        deviceProfileStore.updateSettings(settings.profileSettings, for: key)
     }
 
     /// Code pairing (issue #35): issue a fresh one-time code for this wireless
@@ -800,6 +933,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func stopServer() {
         tearDownServerResources(saveDisplayPosition: true)
+        syncCurrentProfile()
+        activeProfileKey = nil
 
         print("⏹️ Server stopped")
     }

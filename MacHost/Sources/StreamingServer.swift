@@ -34,6 +34,16 @@ private enum WireMessage {
     /// encoding, every byte high-bit set). Sent after type 11, which older
     /// hosts still read; hosts that know this type prefer it (issue #78).
     static let clientDecoderLimitTable: UInt8 = 14
+    // 15–17 are reserved.
+    /// Client→server, variable payload (DeviceIdentityCodec, every byte
+    /// high-bit set): the tablet's stable per-install UUID and name. Sent
+    /// BEFORE type 8, so the host knows which profile to apply before the
+    /// display config goes out.
+    static let clientIdentity: UInt8 = 18
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
 private extension NWEndpoint {
@@ -173,6 +183,14 @@ class StreamingServer {
     var expectedAuthToken: Data?
     var onWirelessClientPaired: ((String) -> Void)?
 
+    /// Asked once per connection, on the network queue, right before the
+    /// display config would go out: `key` is the tablet's profile key (type 18
+    /// UUID, or `name:<handshake name>` for wireless apps that predate it;
+    /// nil for older USB apps). Return true to start streaming now. Return
+    /// false to hold the startup while the owner rebuilds the display for
+    /// this tablet's profile, then call `resumeProtocolStartup()`.
+    var onPrepareForClient: ((_ key: String?, _ name: String) -> Bool)?
+
     // Code pairing (issue #35): when non-nil, a pre-auth "SSPC" request
     // carrying this one-time code is answered with the real auth token, and
     // the client reconnects through the normal SSWA handshake. Only honored
@@ -234,6 +252,14 @@ class StreamingServer {
     private(set) var clientDecodeLimitTable: [Int: (width: Int, height: Int)]?
     /// Set when the client opts in via type 12. Gates desktopGeometry sends.
     private var clientSupportsDesktopGeometry = false
+    /// Type 18 identity of the connected client, if it sent one.
+    private var clientIdentity: DeviceIdentity?
+    /// Name from the wireless auth handshake (nil over USB).
+    private var handshakeDeviceName: String?
+    /// onPrepareForClient already ran for this connection.
+    private var startupPrepared = false
+    /// Startup is waiting for the owner's resumeProtocolStartup().
+    private var startupHeld = false
     /// Logical desktop size, reported alongside the encoded size for display.
     private var desktopWidth = 0
     private var desktopHeight = 0
@@ -343,6 +369,10 @@ class StreamingServer {
         clientDecodeLimits = nil
         clientDecodeLimitTable = nil
         clientSupportsDesktopGeometry = false
+        clientIdentity = nil
+        handshakeDeviceName = nil
+        startupPrepared = false
+        startupHeld = false
         waitingForSyncFrame = true
         inputBuffer.removeAll(keepingCapacity: true)
         connection = newConnection
@@ -395,7 +425,18 @@ class StreamingServer {
     }
 
     private func finishProtocolStartup(on conn: NWConnection) {
-        guard connection === conn, !isStopped, !connectionReady else { return }
+        guard connection === conn, !isStopped, !connectionReady, !startupHeld else { return }
+
+        if !startupPrepared, let prepare = onPrepareForClient {
+            startupPrepared = true
+            let key = clientIdentity?.id ?? DeviceProfileStore.fallbackKey(deviceName: handshakeDeviceName)
+            let name = clientIdentity?.name.nilIfEmpty ?? handshakeDeviceName ?? ""
+            if !prepare(key, name) {
+                startupHeld = true
+                debugLog("Startup held — applying this tablet's profile first")
+                return
+            }
+        }
 
         let codec: StreamCodec = clientIsAvcOnly ? .h264 : .hevc
         if clientIsAvcOnly {
@@ -449,6 +490,7 @@ class StreamingServer {
                     if WirelessAuth.validate(parsed.token, expected: expectedToken) {
                         debugLog("Wireless auth OK — device: \(parsed.deviceName)")
                         self.sendAuthResponse(conn, status: .ok, thenClose: false)
+                        self.handshakeDeviceName = parsed.deviceName
                         self.onWirelessClientPaired?(parsed.deviceName)
                         self.beginExistingProtocol(on: conn)
                     } else {
@@ -819,10 +861,50 @@ class StreamingServer {
                     if connectionReady { sendDesktopGeometry() }
                 }
 
+            case WireMessage.clientIdentity:
+                // Type + DeviceIdentityCodec payload (32-byte UUID, count
+                // byte, 2×count name bytes; all high-bit). Sent BEFORE type 8
+                // so the identity is known when the profile is chosen.
+                guard inputBuffer.count >= 1 + DeviceIdentityCodec.headerLength else { return }
+                let countByte = inputByte(at: DeviceIdentityCodec.encodedUUIDLength + 1)
+                guard let payloadLength = DeviceIdentityCodec.payloadLength(countByte: countByte) else {
+                    debugLog("Malformed identity count byte — ignoring")
+                    consumeInputBytes(1)
+                    continue
+                }
+                guard inputBuffer.count >= 1 + payloadLength else { return }
+
+                let payload = Data(inputBuffer.dropFirst().prefix(payloadLength))
+                consumeInputBytes(1 + payloadLength)
+                guard let parsed = DeviceIdentityCodec.decode(payload) else {
+                    debugLog("Malformed identity payload — ignoring")
+                    continue
+                }
+                if clientIdentity == nil {
+                    clientIdentity = parsed
+                    debugLog("Client identity: \(parsed.id) (\(parsed.name.isEmpty ? "unnamed" : parsed.name))")
+                    if startupPrepared {
+                        // Landed after the legacy grace already started the
+                        // stream: this session keeps its settings, the
+                        // tablet's profile applies on its next connection.
+                        debugLog("Identity arrived after startup — profile applies on next connect")
+                    }
+                }
+
             default:
                 debugLog("Unknown client input type: \(msgType)")
                 consumeInputBytes(1)
             }
+        }
+    }
+
+    /// Finish a startup that onPrepareForClient held. Safe to call from any
+    /// thread, and a no-op if that client has gone in the meantime.
+    func resumeProtocolStartup() {
+        networkQueue.async { [weak self] in
+            guard let self = self, self.startupHeld, let conn = self.connection else { return }
+            self.startupHeld = false
+            self.finishProtocolStartup(on: conn)
         }
     }
 

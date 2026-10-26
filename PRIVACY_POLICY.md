@@ -14,6 +14,7 @@ Side Screen ("the app") turns an Android tablet or phone into a second display f
 - **Touch and stylus input.** Taps, gestures and stylus events on the tablet are sent back to your Mac so you can control it. They are not stored.
 - **Pairing information (wireless mode).** When you pair with a Mac over Wi-Fi, the app stores the Mac's local network address and a pairing key on the device so it can reconnect automatically. This data stays on your device and can be removed by forgetting the host in the app or uninstalling the app.
 - **Preferences.** Settings such as resolution, orientation and connection mode are stored locally on the device.
+- **Device identifier (sent to your Mac only).** The app generates a random identifier the first time it runs and sends it, with the device's name, to the Side Screen Mac host when connecting, so the Mac can bring back that tablet's own settings. It is not derived from any hardware serial, never leaves your USB cable or local network, and is reset by clearing the app's data or reinstalling.
 
 ## Permissions
 

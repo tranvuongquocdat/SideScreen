@@ -44,4 +44,17 @@ class PreferencesManager(
     var connectionMode: ConnectionMode
         get() = ConnectionMode.fromName(prefs.getString("connection_mode", null))
         set(value) = prefs.edit().putString("connection_mode", value.name).apply()
+
+    /**
+     * Stable identity sent to the Mac (wire type 18) so the host can bring back this tablet's
+     * settings every time. Random, generated once; survives reconnects and
+     * reboots, resets only with a reinstall or clearing app data.
+     */
+    val deviceId: String
+        get() {
+            prefs.getString("device_id", null)?.let { return it }
+            val fresh = java.util.UUID.randomUUID().toString()
+            prefs.edit().putString("device_id", fresh).apply()
+            return fresh
+        }
 }

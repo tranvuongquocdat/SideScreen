@@ -1358,7 +1358,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                val deviceName = WirelessTabController.defaultDeviceName()
+                val deviceName = WirelessTabController.defaultDeviceName(this@MainActivity)
                 pairingJob =
                     lifecycleScope.launch(Dispatchers.IO) {
                         try {

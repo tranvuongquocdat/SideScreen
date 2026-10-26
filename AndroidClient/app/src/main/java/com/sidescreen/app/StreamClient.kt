@@ -134,6 +134,7 @@ class StreamClient(
                 advertiseAvcOnlyIfNeeded() // MUST precede type 8: type 8 can trigger the server's early protocol finish
                 advertiseDecoderLimits() // Also before type 8, for the same reason
                 advertiseDesktopGeometrySupport() // Likewise
+                advertiseIdentity() // Likewise: the Mac picks this tablet's profile when type 8 lands
                 advertiseFrameMetadataSupport()
                 isConnected = true
                 lastKeyframeReceivedNs = 0L
@@ -359,6 +360,7 @@ class StreamClient(
                 advertiseAvcOnlyIfNeeded() // MUST precede type 8: type 8 can trigger the server's early protocol finish
                 advertiseDecoderLimits() // Also before type 8, for the same reason
                 advertiseDesktopGeometrySupport() // Likewise
+                advertiseIdentity() // Likewise: the Mac picks this tablet's profile when type 8 lands
                 advertiseFrameMetadataSupport()
                 isConnected = true
                 diagLog("Wireless connected to $host:$port")
@@ -395,6 +397,22 @@ class StreamClient(
             out.writeByte(MESSAGE_CLIENT_SUPPORTS_FRAME_METADATA)
             out.flush()
             diagLog("Advertised frame metadata support")
+        }
+    }
+
+    /**
+     * Type 18: who this tablet is, so the Mac can apply this tablet's own settings profile.
+     * Before type 8, like every other capability message. Macs that predate the type skip it.
+     */
+    private fun advertiseIdentity() {
+        val id = PreferencesManager(context).deviceId
+        val name = WirelessTabController.defaultDeviceName(context)
+        val payload = DeviceIdentityWire.encode(id, name) ?: return
+        outputStream?.let { out ->
+            out.writeByte(MESSAGE_CLIENT_IDENTITY)
+            out.write(payload)
+            out.flush()
+            diagLog("Advertised identity $id ($name)")
         }
     }
 
@@ -771,6 +789,7 @@ class StreamClient(
         private const val MESSAGE_CLIENT_SUPPORTS_DESKTOP_GEOMETRY = 12
         private const val MESSAGE_DESKTOP_GEOMETRY = 13
         private const val MESSAGE_CLIENT_DECODER_LIMIT_TABLE = 14
+        private const val MESSAGE_CLIENT_IDENTITY = 18 // 15–17 reserved
         private const val FRAME_FLAG_KEYFRAME = 1
         private const val KEYFRAME_REQUEST_FLAG_FORCE = 1
 
