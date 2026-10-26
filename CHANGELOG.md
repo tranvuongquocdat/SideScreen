@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `PRIVACY_POLICY.md` and a release guide plus listing assets under `resources/play-store/` for the Google Play submission.
 
 ### Changed
+- Android: CameraX 1.3.1 → 1.4.2 and ML Kit barcode scanning 17.2.0 → 17.3.0, whose native libraries are built for 16 KB memory pages (Google Play now requires this for apps targeting Android 15+; the old versions blocked the production release).
 - Android: release builds are now shrunk and obfuscated with R8 (Play's DEX-optimization requirement; also cuts the install size). Crash traces stay readable via the mapping embedded in the bundle.
 - Android: release builds are now signed with a dedicated upload key (from CI secrets) instead of the debug key. Previously every CI build used a fresh debug key, so updating the APK required uninstalling the old one first. The first release after this change will also need a one-time uninstall.
 - Android: `targetSdk`/`compileSdk` raised to 36 (Android 16), AGP 8.9.1, Gradle 8.13.
