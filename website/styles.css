@@ -680,6 +680,7 @@ a:hover {
 
 .download-card {
     display: block;
+    min-width: 0;
     padding: 40px;
     background: var(--color-bg-alt);
     border-radius: var(--border-radius-lg);
@@ -729,6 +730,7 @@ a:hover {
 
 .download-code {
     display: block;
+    overflow-wrap: anywhere;
     padding: 12px;
     background: var(--color-bg);
     color: var(--color-text);
