@@ -728,6 +728,12 @@ a:hover {
     background: var(--color-bg);
 }
 
+.download-icon-logo img {
+    width: 56px;
+    height: 56px;
+    border-radius: 12px;
+}
+
 .download-code {
     display: block;
     overflow-wrap: anywhere;
