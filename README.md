@@ -118,10 +118,8 @@ Run a Mac with no display of its own — a Mac Studio or Mini on the go, or a la
 
 ## Installation
 
-Download the latest release from [**GitHub Releases**](https://github.com/tranvuongquocdat/SideScreen/releases):
-
-- **macOS**: Download `.dmg`, open it, drag Side Screen to Applications
-- **Android**: Download `.apk`, install on your tablet (enable "Unknown sources" if needed). Port forwarding is handled automatically by the Mac app.
+- **Android**: [Get it on Google Play](https://play.google.com/store/apps/details?id=com.sidescreen.app) — updates install automatically. An `.apk` for sideloading is also attached to each [GitHub release](https://github.com/tranvuongquocdat/SideScreen/releases) (enable "Unknown sources" if needed).
+- **macOS**: Download the `.dmg` from [**GitHub Releases**](https://github.com/tranvuongquocdat/SideScreen/releases), open it, drag Side Screen to Applications. Port forwarding over USB is handled automatically by the Mac app.
 
 > **⚠️ macOS Gatekeeper**
 > If macOS says the app is "damaged", open Terminal and run:
