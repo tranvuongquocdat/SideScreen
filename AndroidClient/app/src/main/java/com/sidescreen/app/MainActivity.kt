@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.SurfaceTexture
@@ -88,6 +89,7 @@ class MainActivity : AppCompatActivity() {
     private val checklistHandler = Handler(Looper.getMainLooper())
     private var checklistRunnable: Runnable? = null
     private var isConnected = false // Track connection state to prevent checklist conflicts
+    private var activeSettingsDialog: Dialog? = null
 
     // Demo mode: plays a bundled clip so the app can be tried without a Mac
     private var demoPlayer: DemoPlayer? = null
@@ -134,6 +136,16 @@ class MainActivity : AppCompatActivity() {
         startChecklistUpdates()
         setupModeToggle()
         setupWirelessController()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val dialog = activeSettingsDialog
+        refreshOpenSettingsDialog(
+            isShowing = dialog?.isShowing == true,
+            dismiss = { dialog?.dismiss() },
+            reopen = { binding.root.post { showSettingsDialog() } },
+        )
     }
 
     private fun setupModeToggle() {
@@ -670,6 +682,12 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("InflateParams", "SetTextI18n")
     private fun showSettingsDialog() {
         val dialog = Dialog(this)
+        activeSettingsDialog = dialog
+        dialog.setOnDismissListener {
+            if (activeSettingsDialog === dialog) {
+                activeSettingsDialog = null
+            }
+        }
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
         dialog.setContentView(R.layout.dialog_settings)
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
