@@ -33,7 +33,7 @@ Then open SideScreen and grant Screen & System Audio Recording again when macOS 
 ---
 
 <a id="1.0.1"></a>
-## [1.0.1] - RELEASE_DATE — first public release on Google Play
+## [1.0.1] - 2026-10-27 — first public release on Google Play
 
 The Android app is now on Google Play: https://play.google.com/store/apps/details?id=com.sidescreen.app. Everything below is Android-only; the Mac app is unchanged (0.11.3 remains the current Mac build). 1.0.0 (versionCode 10000) was uploaded first and rejected by Play for the 16 KB page-size requirement, so it never shipped.
 
