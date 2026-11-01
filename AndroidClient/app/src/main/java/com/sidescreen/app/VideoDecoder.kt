@@ -207,8 +207,20 @@ class VideoDecoder(
 
         codec.setVideoScalingMode(MediaCodec.VIDEO_SCALING_MODE_SCALE_TO_FIT)
         needsKeyframe = true
+        try {
+            codec.start()
+        } catch (e: Exception) {
+            // Seen on a Redmi Pad (Android 15) after a mid-session resolution change:
+            // configure succeeded but start threw. Clean up and let the caller recover.
+            diagLog("Decoder start failed: ${e.message}")
+            Log.e(TAG, "Decoder start failed", e)
+            codec.release()
+            decoderThread?.quitSafely()
+            decoderThread = null
+            decoderHandler = null
+            throw e
+        }
         isRunning = true
-        codec.start()
         decoder = codec
         diagLog(
             "Decoder started: ${currentWidth}x$currentHeight @ ${displayRefreshRate}Hz, " +

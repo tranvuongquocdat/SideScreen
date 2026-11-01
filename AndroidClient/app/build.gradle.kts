@@ -89,5 +89,8 @@ dependencies {
     // Flexible in-app updates for Play-installed builds (0.11.6)
     implementation("com.google.android.play:app-update-ktx:2.1.0")
 
+    // In-app review prompt after a few good sessions (1.0.2)
+    implementation("com.google.android.play:review-ktx:2.0.2")
+
     testImplementation("junit:junit:4.13.2")
 }
