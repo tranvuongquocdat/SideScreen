@@ -825,6 +825,18 @@
                 android:textColor="#8ab4ff"
                 android:textSize="14sp" />
 
+            <!-- Somewhere to report problems that isn't a Play review -->
+            <TextView
+                android:id="@+id/reportProblemLink"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="Report a problem"
+                android:textColor="#777777"
+                android:textSize="13sp"
+                android:padding="8dp"
+                android:background="?attr/selectableItemBackground" />
+
             <!-- Hidden disconnect button reference (needed by code) -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/disconnectButton"

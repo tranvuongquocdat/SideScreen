@@ -46,10 +46,12 @@ import java.net.Socket
 private fun mainDiag(msg: String) = DiagLog.log("MA", msg)
 
 private const val MAC_APP_URL = "https://sidescreen.dev"
+private const val REPORT_PROBLEM_URL = "https://github.com/tranvuongquocdat/SideScreen/issues/new/choose"
 
 class MainActivity : AppCompatActivity() {
     private lateinit var wirelessController: WirelessTabController
     private lateinit var appUpdater: AppUpdater
+    private lateinit var reviewPrompter: ReviewPrompter
     private val pairedHostStorage by lazy { PairedHostStorage(this) }
     private val cameraPerm by lazy { CameraPermissionManager(this) }
     private lateinit var binding: ActivityMainBinding
@@ -118,6 +120,7 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         appUpdater = AppUpdater(this)
+        reviewPrompter = ReviewPrompter(this) { !isStreamingUi }
 
         // Apply fullscreen mode immediately
         enableFullscreenMode()
@@ -436,6 +439,13 @@ class MainActivity : AppCompatActivity() {
                 startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(MAC_APP_URL)))
             } catch (_: Exception) {
                 showError("Open $MAC_APP_URL in a browser to download the Mac app.")
+            }
+        }
+        binding.reportProblemLink.setOnClickListener {
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(REPORT_PROBLEM_URL)))
+            } catch (_: Exception) {
+                showError("Open $REPORT_PROBLEM_URL in a browser to report a problem.")
             }
         }
 
@@ -1108,8 +1118,14 @@ class MainActivity : AppCompatActivity() {
             }
 
         if (videoDecoder != null && decoderUsingTextureView == useTextureView) {
-            videoDecoder?.updateResolution(displayWidth, displayHeight)
-            return
+            try {
+                videoDecoder?.updateResolution(displayWidth, displayHeight)
+                return
+            } catch (e: Exception) {
+                // Restarting the codec in place failed (crash on 1.0.1): build a fresh
+                // decoder below instead, which reports failure in the UI rather than crashing.
+                mainDiag("Decoder resize FAILED: ${e.message} — recreating")
+            }
         }
 
         videoDecoder?.release()
@@ -1178,6 +1194,16 @@ class MainActivity : AppCompatActivity() {
             log("❌ Failed to initialize decoder: ${e.message}")
             runOnUiThread {
                 updateStatus("Video decoder failed: ${e.message}")
+                // The status text sits in the settings panel, hidden while streaming —
+                // without this the user would just see a black screen.
+                if (isStreamingUi) {
+                    android.widget.Toast
+                        .makeText(
+                            this,
+                            "Video decoder failed — disconnect and reconnect to retry.",
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
+                }
             }
         }
     }
@@ -1208,6 +1234,7 @@ class MainActivity : AppCompatActivity() {
         streamClient?.onConnectionStatus = { connected ->
             runOnUiThread {
                 isConnected = connected
+                reviewPrompter.onConnectionChanged(connected)
                 if (connected) {
                     updateStatus("Connected - Streaming active")
                 } else {
@@ -1476,6 +1503,7 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread {
                         // Update connection state flag
                         isConnected = connected
+                        reviewPrompter.onConnectionChanged(connected)
 
                         if (connected) {
                             updateStatus("Connected - Streaming active")

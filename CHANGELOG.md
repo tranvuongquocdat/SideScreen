@@ -17,6 +17,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+<a id="1.0.2"></a>
+## [1.0.2] - 2026-11-01 — Android stability update
+
+### Fixed
+- **Crash when the Mac changed resolution mid-session.** On some tablets (seen on a Redmi Pad, Android 15) the app closed when the display settings changed while connected. It now recovers, or tells you to reconnect if the decoder can't restart.
+
+Nothing changed on the Mac side; 1.0.1 and 1.0.2 of the Mac app behave the same.
+
+### Installation
+- **Android**: [Get it on Google Play](https://play.google.com/store/apps/details?id=com.sidescreen.app). The update installs on its own.
+- **Android without Google Play** (Huawei and other devices without Google services): download `SideScreen-1.0.2-android.apk` below and open it to install. If the Play version is already installed, uninstall it first.
+- **macOS**: download `SideScreen-1.0.2-mac-universal.dmg` below, open it, drag Side Screen to Applications. If macOS says the app is "damaged":
+  ```bash
+  sudo xattr -cr /Applications/SideScreen.app
+  ```
+- **Homebrew**: `brew install --cask tranvuongquocdat/sidescreen/sidescreen`
+
+---
+
 <a id="1.0.1"></a>
 ## [1.0.1] - 2026-10-27 — Side Screen is on Google Play
 
@@ -32,6 +51,7 @@ Update both apps to get everything above; each works with the older version of t
 
 ### Installation
 - **Android**: [Get it on Google Play](https://play.google.com/store/apps/details?id=com.sidescreen.app).
+- **Android without Google Play** (Huawei and other devices without Google services): download `SideScreen-1.0.1-android.apk` below and open it to install. This copy doesn't update itself, so grab the new APK from here when a release comes out. If the Play version is already installed, uninstall it first.
 - **macOS**: download `SideScreen-1.0.1-mac-universal.dmg` below, open it, drag Side Screen to Applications. If macOS says the app is "damaged":
   ```bash
   sudo xattr -cr /Applications/SideScreen.app
