@@ -607,6 +607,7 @@ a:hover {
 .special-feature-media img,
 .special-feature-media video {
     width: 100%;
+    height: auto;
     display: block;
 }
 
