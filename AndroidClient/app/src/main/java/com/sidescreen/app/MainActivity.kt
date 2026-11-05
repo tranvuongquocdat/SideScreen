@@ -568,12 +568,24 @@ class MainActivity : AppCompatActivity() {
 
     private fun showError(message: String) {
         runOnUiThread {
-            android.app.AlertDialog
-                .Builder(this)
-                .setTitle("Connection Error")
-                .setMessage(message)
-                .setPositiveButton("OK", null)
-                .show()
+            // connect() fails on a background thread, often seconds after the user rotated
+            // the tablet or left the app. By then this Activity is destroyed and Dialog.show()
+            // throws BadTokenException (top crash on 1.0.2). The status line already says
+            // "Connection failed", so just drop the dialog.
+            if (isFinishing || isDestroyed) {
+                mainDiag("showError skipped — activity gone: $message")
+                return@runOnUiThread
+            }
+            try {
+                android.app.AlertDialog
+                    .Builder(this)
+                    .setTitle("Connection Error")
+                    .setMessage(message)
+                    .setPositiveButton("OK", null)
+                    .show()
+            } catch (e: android.view.WindowManager.BadTokenException) {
+                mainDiag("showError failed — no window token: ${e.message}")
+            }
         }
     }
 
