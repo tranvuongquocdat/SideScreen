@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Native resolution on panels whose sides aren't multiples of 16.** A 2880×1800 tablet was streamed at 2864×1792 and upscaled back, and a 2340×1080 phone at 2336×1072, so text was slightly soft. The stream now uses the exact panel size whenever the decoder can sustain it. Both the Android and the Mac app need updating for HiDPI captures.
+
 ### Planned
 - mDNS auto-discovery for wireless mode
 - Audio streaming

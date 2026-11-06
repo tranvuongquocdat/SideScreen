@@ -22,14 +22,26 @@ enum CodecLimits {
     /// preserving aspect ratio, flooring each dimension to a multiple of 16
     /// (codec macroblock alignment). Sizes already within the limit pass
     /// through unchanged.
+    ///
+    /// A source with the box's aspect ratio (a HiDPI capture of a panel-sized
+    /// box, e.g. 5760x3600 into 2880x1800) fills the box exactly and gets the
+    /// box itself. The box is a size the client checked against its decoder,
+    /// so flooring it to 16 (2880x1800 -> 2880x1792) would only discard rows
+    /// and force a rescale on panels whose sides are not multiples of 16.
     static func clamp(width: Int, height: Int, maxWidth: Int, maxHeight: Int) -> (width: Int, height: Int) {
         guard width > maxWidth || height > maxHeight else {
             return (width, height)
         }
         let scale = min(Double(maxWidth) / Double(width),
                         Double(maxHeight) / Double(height))
-        let w = max(16, Int((Double(width) * scale).rounded()) & ~15)
-        let h = max(16, Int((Double(height) * scale).rounded()) & ~15)
+        let scaledWidth = Int((Double(width) * scale).rounded())
+        let scaledHeight = Int((Double(height) * scale).rounded())
+        if scaledWidth == maxWidth && scaledHeight == maxHeight {
+            // Even sides: 4:2:0 chroma subsampling needs them.
+            return (max(16, maxWidth & ~1), max(16, maxHeight & ~1))
+        }
+        let w = max(16, scaledWidth & ~15)
+        let h = max(16, scaledHeight & ~15)
         return (w, h)
     }
 
