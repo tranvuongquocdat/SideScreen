@@ -33,4 +33,14 @@ if ! echo "$OUTPUT" | grep -q "status: Accepted"; then
   exit 1
 fi
 
-xcrun stapler staple "$TARGET"
+# The ticket can take a moment to reach Apple's CDN; stapler then fails with a
+# CloudKit network error (exit 68). Retry a few times before giving up.
+for attempt in 1 2 3 4 5 6; do
+  if xcrun stapler staple "$TARGET"; then
+    exit 0
+  fi
+  echo "stapler attempt $attempt failed — retrying in 15s"
+  sleep 15
+done
+echo "::error::Could not staple $(basename "$TARGET")"
+exit 1
