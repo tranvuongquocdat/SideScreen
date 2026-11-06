@@ -99,12 +99,22 @@ class VideoEncoder {
 
     @discardableResult
     private func setAverageBitRate(on session: VTCompressionSession) -> OSStatus {
+        let bitrateBps = Self.averageBitRateBps(bitrateMbps: bitrateMbps, gamingBoost: gamingBoost)
+        return VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: bitrateBps as CFNumber)
+    }
+
+    /// Bits per second for kVTCompressionPropertyKey_AverageBitRate.
+    ///
+    /// VideoToolbox reads this as a signed 32-bit value: above Int32.max
+    /// (about 2147 Mbps) it rejects the value (-12900) up to 4294 Mbps, and
+    /// wraps it beyond that (5000 Mbps is stored as 705 Mbps). The slider
+    /// goes to 5000, so cap at the largest value it accepts.
+    static func averageBitRateBps(bitrateMbps: Int, gamingBoost: Bool) -> Int {
         // Dynamic bitrate - remove strict rate limiting for smoother streaming
         // All-intra needs higher bitrate for text sharpness
         // USB-C supports 5Gbps, so 80-100Mbps is fine
         let effectiveBitrate = gamingBoost ? bitrateMbps : max(bitrateMbps, 60)
-        let bitrateBps = effectiveBitrate * 1_000_000
-        return VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: bitrateBps as CFNumber)
+        return min(effectiveBitrate * 1_000_000, Int(Int32.max))
     }
 
     private func setupCompressionSession() {

@@ -74,6 +74,21 @@ final class VideoEncoderSettingsTests: XCTestCase {
         }
         XCTAssertLessThan(Date().timeIntervalSince(start), 0.5)
     }
+
+    // MARK: - Average bitrate value
+
+    func testBitrateIsCappedAtWhatVideoToolboxAccepts() {
+        // 5000 Mbps (slider maximum) used to wrap to 705 Mbps; 2148-4294 were rejected.
+        XCTAssertEqual(VideoEncoder.averageBitRateBps(bitrateMbps: 5000, gamingBoost: false), Int(Int32.max))
+        XCTAssertEqual(VideoEncoder.averageBitRateBps(bitrateMbps: 3000, gamingBoost: false), Int(Int32.max))
+        XCTAssertEqual(VideoEncoder.averageBitRateBps(bitrateMbps: 2147, gamingBoost: false), 2_147_000_000)
+    }
+
+    func testBitrateBelowTheCapIsUnchanged() {
+        XCTAssertEqual(VideoEncoder.averageBitRateBps(bitrateMbps: 1540, gamingBoost: false), 1_540_000_000)
+        XCTAssertEqual(VideoEncoder.averageBitRateBps(bitrateMbps: 20, gamingBoost: false), 60_000_000)
+        XCTAssertEqual(VideoEncoder.averageBitRateBps(bitrateMbps: 50, gamingBoost: true), 50_000_000)
+    }
 }
 
 private final class OutputCounter: @unchecked Sendable {
