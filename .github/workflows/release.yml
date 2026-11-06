@@ -36,6 +36,9 @@ jobs:
           mkdir -p "$APP_DIR/Contents/MacOS"
           mkdir -p "$APP_DIR/Contents/Resources"
           cp "${{ steps.build.outputs.binary }}" "$APP_DIR/Contents/MacOS/"
+          # Sparkle (auto-update) ships as a framework next to the binary
+          mkdir -p "$APP_DIR/Contents/Frameworks"
+          cp -R "$(dirname "${{ steps.build.outputs.binary }}")/Sparkle.framework" "$APP_DIR/Contents/Frameworks/"
 
           # Copy icon if exists
           if [ -f "MacHost/Resources/AppIcon.icns" ]; then
@@ -67,6 +70,12 @@ jobs:
               <string>13.0</string>
               <key>LSUIElement</key>
               <false/>
+              <key>SUFeedURL</key>
+              <string>https://github.com/tranvuongquocdat/SideScreen/releases/latest/download/appcast.xml</string>
+              <key>SUPublicEDKey</key>
+              <string>7bJdS/tTNvOEUEobUTrH7IxJsg/FBZcmSHyzY4ZU97I=</string>
+              <key>SUEnableAutomaticChecks</key>
+              <true/>
               <key>NSHighResolutionCapable</key>
               <true/>
               <key>NSSupportsAutomaticGraphicsSwitching</key>
@@ -116,14 +125,7 @@ jobs:
         env:
           IDENTITY: ${{ steps.cert.outputs.identity }}
         run: |
-          if [ -n "$IDENTITY" ]; then
-            codesign --force --options runtime --timestamp \
-              --entitlements MacHost/SideScreen.entitlements \
-              --sign "$IDENTITY" SideScreen.app
-            codesign --verify --strict --verbose=2 SideScreen.app
-          else
-            codesign --force --deep --sign - SideScreen.app
-          fi
+          scripts/sign_app.sh SideScreen.app "${IDENTITY:--}"
 
       - name: Notarize app
         if: steps.cert.outputs.identity != ''
@@ -158,11 +160,36 @@ jobs:
           spctl -a -t open --context context:primary-signature -vv "$DMG"
           rm -f "$APPSTORE_API_KEY_P8"
 
+      # Sparkle feed: appcast.xml is attached to the GitHub Release and read via
+      # releases/latest/download/appcast.xml (SUFeedURL). Signed with the EdDSA
+      # key whose public half is SUPublicEDKey in Info.plist.
+      - name: Generate Sparkle appcast
+        if: steps.cert.outputs.identity != ''
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          [ -n "$SPARKLE_PRIVATE_KEY" ] || { echo "::error::SPARKLE_PRIVATE_KEY secret missing"; exit 1; }
+          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle.key"
+          mkdir -p appcast-in
+          cp "SideScreen-${VERSION}-mac-universal.dmg" appcast-in/
+          scripts/changelog_html.py "$VERSION" < CHANGELOG.md > "appcast-in/SideScreen-${VERSION}-mac-universal.html"
+          MacHost/.build/artifacts/sparkle/Sparkle/bin/generate_appcast \
+            --ed-key-file "$RUNNER_TEMP/sparkle.key" \
+            --embed-release-notes \
+            --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}/" \
+            --link "https://github.com/${GITHUB_REPOSITORY}/releases" \
+            -o appcast.xml appcast-in
+          rm -rf "$RUNNER_TEMP/sparkle.key" appcast-in
+          cat appcast.xml
+
       - name: Upload DMG
         uses: actions/upload-artifact@v4
         with:
           name: macos-dmg
-          path: "*.dmg"
+          path: |
+            *.dmg
+            appcast.xml
 
   build-android:
     runs-on: ubuntu-latest
@@ -273,6 +300,7 @@ jobs:
           # else installs from Google Play. The AAB stays a workflow artifact for Play Console.
           files: |
             artifacts/macos-dmg/*.dmg
+            artifacts/macos-dmg/appcast.xml
             artifacts/android-apk/*.apk
           draft: false
           prerelease: false

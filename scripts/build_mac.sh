@@ -41,6 +41,10 @@ mkdir -p "$APP_DIR/Contents/Resources"
 # Copy universal binary
 cp .build/release-universal/SideScreen "$APP_DIR/Contents/MacOS/"
 
+# Sparkle (auto-update) ships as a framework next to the binary
+mkdir -p "$APP_DIR/Contents/Frameworks"
+cp -R "$BIN_DIR/Sparkle.framework" "$APP_DIR/Contents/Frameworks/"
+
 # No LaunchAgent plist needed for SMAppService.mainApp
 
 # Copy app icon if exists
@@ -75,6 +79,12 @@ cat > "$APP_DIR/Contents/Info.plist" << EOF
     <string>13.0</string>
     <key>LSUIElement</key>
     <false/>
+    <key>SUFeedURL</key>
+    <string>https://github.com/tranvuongquocdat/SideScreen/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>7bJdS/tTNvOEUEobUTrH7IxJsg/FBZcmSHyzY4ZU97I=</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSSupportsAutomaticGraphicsSwitching</key>
@@ -95,15 +105,13 @@ EOF
 # otherwise ad-hoc — Gatekeeper then needs `xattr -cr` after install.
 if [ -n "${SIDESCREEN_SIGN_IDENTITY:-}" ]; then
     echo "Signing as $SIDESCREEN_SIGN_IDENTITY..."
-    codesign --force --options runtime --timestamp \
-      --entitlements "$ROOT_DIR/MacHost/SideScreen.entitlements" \
-      --sign "$SIDESCREEN_SIGN_IDENTITY" "$APP_DIR"
+    "$ROOT_DIR/scripts/sign_app.sh" "$APP_DIR" "$SIDESCREEN_SIGN_IDENTITY"
     if [ -n "${APPSTORE_API_KEY_P8:-}" ]; then
         "$ROOT_DIR/scripts/notarize.sh" "$APP_DIR"
     fi
 else
     echo "Ad-hoc signing (set SIDESCREEN_SIGN_IDENTITY for Developer ID)..."
-    codesign --force --deep --sign - --entitlements "$ROOT_DIR/MacHost/SideScreen.entitlements" "$APP_DIR"
+    "$ROOT_DIR/scripts/sign_app.sh" "$APP_DIR" -
 fi
 echo "  ✓ App signed"
 

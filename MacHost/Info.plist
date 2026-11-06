@@ -14,6 +14,12 @@
     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
+    <key>SUFeedURL</key>
+    <string>https://github.com/tranvuongquocdat/SideScreen/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>7bJdS/tTNvOEUEobUTrH7IxJsg/FBZcmSHyzY4ZU97I=</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>
