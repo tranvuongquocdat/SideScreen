@@ -1098,11 +1098,15 @@ struct AboutPopover: View {
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 16) {
+            HStack(spacing: 0) {
                 Link("Website", destination: AppInfo.website)
+                    .frame(maxWidth: .infinity)
                 Link("GitHub", destination: AppInfo.github)
+                    .frame(maxWidth: .infinity)
                 Link("What's New", destination: AppInfo.changelog)
+                    .frame(maxWidth: .infinity)
                 Link("Report a Problem", destination: AppInfo.reportProblem)
+                    .frame(maxWidth: .infinity)
             }
             .font(.system(size: 12))
 
