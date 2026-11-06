@@ -187,8 +187,8 @@
 
             <!-- Logo -->
             <ImageView
-                android:layout_width="88dp"
-                android:layout_height="88dp"
+                android:layout_width="92dp"
+                android:layout_height="92dp"
                 android:layout_gravity="center"
                 android:layout_marginBottom="24dp"
                 android:src="@drawable/logo"
