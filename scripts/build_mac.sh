@@ -20,19 +20,14 @@ sleep 0.5
 echo "Cleaning old build..."
 rm -rf .build
 
-# Build fresh (Universal Binary: arm64 + x86_64)
-echo "Building macOS Host (arm64)..."
-swift build -c release --arch arm64
-
-echo "Building macOS Host (x86_64)..."
-swift build -c release --arch x86_64
-
-echo "Creating Universal Binary..."
+# Build fresh (Universal Binary: arm64 + x86_64). One invocation with both
+# --arch flags: separate builds overwrite each other on the Swift 6 .build layout.
+echo "Building macOS Host (universal)..."
+swift build -c release --arch arm64 --arch x86_64
+BIN_DIR=$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)
 mkdir -p ".build/release-universal"
-lipo -create \
-  .build/arm64-apple-macosx/release/SideScreen \
-  .build/x86_64-apple-macosx/release/SideScreen \
-  -output .build/release-universal/SideScreen
+cp "$BIN_DIR/SideScreen" .build/release-universal/SideScreen
+lipo -archs .build/release-universal/SideScreen
 
 # Create .app bundle
 APP_NAME="SideScreen"
@@ -96,9 +91,20 @@ cat > "$APP_DIR/Contents/Info.plist" << EOF
 </plist>
 EOF
 
-# Ad-hoc code sign to prevent Gatekeeper "damaged" error
-echo "Code signing (ad-hoc)..."
-codesign --force --deep --sign - --entitlements "$ROOT_DIR/MacHost/SideScreen.entitlements" "$APP_DIR"
+# Developer ID signing when SIDESCREEN_SIGN_IDENTITY is set (same flags as CI),
+# otherwise ad-hoc — Gatekeeper then needs `xattr -cr` after install.
+if [ -n "${SIDESCREEN_SIGN_IDENTITY:-}" ]; then
+    echo "Signing as $SIDESCREEN_SIGN_IDENTITY..."
+    codesign --force --options runtime --timestamp \
+      --entitlements "$ROOT_DIR/MacHost/SideScreen.entitlements" \
+      --sign "$SIDESCREEN_SIGN_IDENTITY" "$APP_DIR"
+    if [ -n "${APPSTORE_API_KEY_P8:-}" ]; then
+        "$ROOT_DIR/scripts/notarize.sh" "$APP_DIR"
+    fi
+else
+    echo "Ad-hoc signing (set SIDESCREEN_SIGN_IDENTITY for Developer ID)..."
+    codesign --force --deep --sign - --entitlements "$ROOT_DIR/MacHost/SideScreen.entitlements" "$APP_DIR"
+fi
 echo "  ✓ App signed"
 
 echo ""
@@ -115,5 +121,9 @@ cp -R "$APP_DIR" "$DMG_DIR/"
 ln -s /Applications "$DMG_DIR/Applications"
 DMG_PATH="$ROOT_DIR/SideScreen-${VERSION}-mac-universal.dmg"
 hdiutil create -volname "Side Screen" -srcfolder "$DMG_DIR" -ov -format UDZO "$DMG_PATH"
+if [ -n "${SIDESCREEN_SIGN_IDENTITY:-}" ]; then
+    codesign --sign "$SIDESCREEN_SIGN_IDENTITY" --timestamp "$DMG_PATH"
+    [ -n "${APPSTORE_API_KEY_P8:-}" ] && "$ROOT_DIR/scripts/notarize.sh" "$DMG_PATH"
+fi
 rm -rf "$DMG_DIR"
 echo "DMG: $DMG_PATH"

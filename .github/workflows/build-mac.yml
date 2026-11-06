@@ -8,20 +8,15 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
       - name: Build (Universal Binary)
         run: |
           cd MacHost
-          swift build -c release --arch arm64
-          swift build -c release --arch x86_64
-          mkdir -p .build/release-universal
-          lipo -create \
-            .build/arm64-apple-macosx/release/SideScreen \
-            .build/x86_64-apple-macosx/release/SideScreen \
-            -output .build/release-universal/SideScreen
+          swift build -c release --arch arm64 --arch x86_64
+          lipo -archs "$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/SideScreen"
 
       - name: Lint
         run: |
