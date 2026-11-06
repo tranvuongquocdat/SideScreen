@@ -99,21 +99,12 @@ struct SettingsView: View {
             VStack(spacing: 0) {
                 // Header with frosted glass
                 HStack(spacing: 14) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(LinearGradient(
-                                colors: [Color.accentColor, Color.accentColor.opacity(0.7)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ))
-                            .frame(width: 48, height: 48)
-                            .shadow(color: Color.accentColor.opacity(0.3), radius: 8, y: 4)
-
-                        Image(systemName: "rectangle.on.rectangle")
-                            .font(.system(size: 22, weight: .medium))
-                            .foregroundColor(.white)
-                    }
-                    .scaleEffect(headerHovered ? 1.05 : 1)
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 56, height: 56)
+                        .shadow(color: Color.black.opacity(0.25), radius: 8, y: 4)
+                        .scaleEffect(headerHovered ? 1.05 : 1)
                     .animation(.spring(response: 0.3), value: headerHovered)
                     .onHover { headerHovered = $0 }
 
