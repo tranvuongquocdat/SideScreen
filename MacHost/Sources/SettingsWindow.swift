@@ -1098,15 +1098,15 @@ struct AboutPopover: View {
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            // Justified: first link flush left, last flush right, equal gaps between.
             HStack(spacing: 0) {
                 Link("Website", destination: AppInfo.website)
-                    .frame(maxWidth: .infinity)
+                Spacer()
                 Link("GitHub", destination: AppInfo.github)
-                    .frame(maxWidth: .infinity)
+                Spacer()
                 Link("What's New", destination: AppInfo.changelog)
-                    .frame(maxWidth: .infinity)
+                Spacer()
                 Link("Report a Problem", destination: AppInfo.reportProblem)
-                    .frame(maxWidth: .infinity)
             }
             .font(.system(size: 12))
 
