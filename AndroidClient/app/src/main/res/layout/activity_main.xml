@@ -185,13 +185,15 @@
             android:orientation="vertical"
             android:padding="40dp">
 
-            <!-- Icon -->
-            <View
-                android:layout_width="80dp"
-                android:layout_height="80dp"
+            <!-- Logo -->
+            <ImageView
+                android:layout_width="92dp"
+                android:layout_height="92dp"
                 android:layout_gravity="center"
-                android:background="@drawable/connection_icon_bg"
-                android:layout_marginBottom="24dp" />
+                android:layout_marginBottom="24dp"
+                android:src="@drawable/logo"
+                android:contentDescription="@null"
+                android:importantForAccessibility="no" />
 
             <!-- Header -->
             <TextView
