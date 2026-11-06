@@ -76,6 +76,7 @@ struct SettingsView: View {
     @State private var showPermissionAlert = false
     @State private var showResetConfirmation = false
     @State private var showAbout = false
+    @State private var showAboutFromLogo = false
     @State private var headerHovered = false
     // Plain strings for the custom resolution fields: TextField(value:format:)
     // only commits on Return/focus-loss, so clicking Apply read stale values,
@@ -99,14 +100,23 @@ struct SettingsView: View {
             VStack(spacing: 0) {
                 // Header with frosted glass
                 HStack(spacing: 14) {
-                    Image(nsImage: NSApp.applicationIconImage)
-                        .resizable()
-                        .interpolation(.high)
-                        .frame(width: 56, height: 56)
-                        .shadow(color: Color.black.opacity(0.25), radius: 8, y: 4)
-                        .scaleEffect(headerHovered ? 1.05 : 1)
+                    // Logo: clicking it opens About, same as the ⓘ button.
+                    Button(action: { showAboutFromLogo.toggle() }) {
+                        Image(nsImage: NSApp.applicationIconImage)
+                            .resizable()
+                            .interpolation(.high)
+                            .frame(width: 56, height: 56)
+                            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                            .shadow(color: Color.black.opacity(0.25), radius: 8, y: 4)
+                            .scaleEffect(headerHovered ? 1.05 : 1)
+                    }
+                    .buttonStyle(.plain)
+                    .help("About Side Screen")
                     .animation(.spring(response: 0.3), value: headerHovered)
                     .onHover { headerHovered = $0 }
+                    .popover(isPresented: $showAboutFromLogo, arrowEdge: .bottom) {
+                        AboutPopover(updater: updater)
+                    }
 
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
