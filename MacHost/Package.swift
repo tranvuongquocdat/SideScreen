@@ -22,16 +22,26 @@ let package = Package(
             name: "SideScreen",
             targets: ["SideScreen"])
     ],
+    dependencies: [
+        // Auto-update. The framework is copied into Contents/Frameworks by the
+        // build scripts; the rpath below is what makes the binary find it there.
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.10.1")
+    ],
     targets: [
         .executableTarget(
             name: "SideScreen",
-            dependencies: [],
+            dependencies: [
+                .product(name: "Sparkle", package: "Sparkle")
+            ],
             path: "Sources",
             cSettings: [
                 .unsafeFlags(["-I", sourcesPath])
             ],
             swiftSettings: [
                 .unsafeFlags(["-Xcc", "-fmodule-map-file=\(sourcesPath)/module.modulemap"])
+            ],
+            linkerSettings: [
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])
             ]),
         .testTarget(
             name: "SideScreenTests",

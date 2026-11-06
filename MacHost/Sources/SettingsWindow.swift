@@ -72,8 +72,11 @@ struct VisualEffectBlur: NSViewRepresentable {
 
 struct SettingsView: View {
     @ObservedObject var settings: DisplaySettings
+    @ObservedObject var updater = AppUpdater.shared
     @State private var showPermissionAlert = false
     @State private var showResetConfirmation = false
+    @State private var showAbout = false
+    @State private var showAboutFromLogo = false
     @State private var headerHovered = false
     // Plain strings for the custom resolution fields: TextField(value:format:)
     // only commits on Return/focus-loss, so clicking Apply read stale values,
@@ -97,33 +100,57 @@ struct SettingsView: View {
             VStack(spacing: 0) {
                 // Header with frosted glass
                 HStack(spacing: 14) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(LinearGradient(
-                                colors: [Color.accentColor, Color.accentColor.opacity(0.7)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ))
-                            .frame(width: 48, height: 48)
-                            .shadow(color: Color.accentColor.opacity(0.3), radius: 8, y: 4)
-
-                        Image(systemName: "rectangle.on.rectangle")
-                            .font(.system(size: 22, weight: .medium))
-                            .foregroundColor(.white)
+                    // Logo: clicking it opens About, same as the ⓘ button.
+                    Button(action: { showAboutFromLogo.toggle() }) {
+                        Image(nsImage: NSApp.applicationIconImage)
+                            .resizable()
+                            .interpolation(.high)
+                            .frame(width: 56, height: 56)
+                            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                            .shadow(color: Color.black.opacity(0.25), radius: 8, y: 4)
+                            .scaleEffect(headerHovered ? 1.05 : 1)
                     }
-                    .scaleEffect(headerHovered ? 1.05 : 1)
+                    .buttonStyle(.plain)
+                    .help("About Side Screen")
                     .animation(.spring(response: 0.3), value: headerHovered)
                     .onHover { headerHovered = $0 }
+                    .popover(isPresented: $showAboutFromLogo, arrowEdge: .bottom) {
+                        AboutPopover(updater: updater)
+                    }
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Side Screen")
-                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text("Side Screen")
+                                .font(.system(size: 20, weight: .bold, design: .rounded))
+                            Text("v\(AppInfo.version)")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2)
+                                .background { Capsule().fill(.ultraThinMaterial) }
+                        }
                         Text("Turn your tablet into a second display")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.secondary)
                     }
 
                     Spacer()
+
+                    Button(action: { showAbout.toggle() }) {
+                        Image(systemName: "info")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.secondary)
+                            .frame(width: 28, height: 28)
+                            .background {
+                                Circle().fill(.ultraThinMaterial)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .help("About Side Screen")
+                    .accessibilityLabel("About Side Screen")
+                    .popover(isPresented: $showAbout, arrowEdge: .bottom) {
+                        AboutPopover(updater: updater)
+                    }
 
                     Button(action: { showResetConfirmation = true }) {
                         Image(systemName: "arrow.counterclockwise")
@@ -914,6 +941,7 @@ struct SettingsView: View {
                                 }
                             }
                         }
+
                     }
                     .padding(20)
                 }
@@ -1038,6 +1066,71 @@ struct SettingsView: View {
 }
 
 // MARK: - Supporting Views
+
+/// Header ⓘ popover: version, what the app is, links, support, credits.
+struct AboutPopover: View {
+    @ObservedObject var updater: AppUpdater
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .frame(width: 44, height: 44)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Side Screen")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text("Version \(AppInfo.version)")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Button("Check for Updates…") {
+                    AppUpdater.shared.checkForUpdates(nil)
+                }
+                .disabled(!updater.canCheckForUpdates)
+                .help(updater.canCheckForUpdates
+                      ? "Look for a newer version now. Side Screen also checks once a day."
+                      : "Update checks are only available in the released build.")
+            }
+
+            Text("Turns an Android tablet or phone into a second display for your Mac — over USB or Wi‑Fi, with touch control. Free and open source.")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            // Justified: first link flush left, last flush right, equal gaps between.
+            HStack(spacing: 0) {
+                Link("Website", destination: AppInfo.website)
+                Spacer()
+                Link("GitHub", destination: AppInfo.github)
+                Spacer()
+                Link("What's New", destination: AppInfo.changelog)
+                Spacer()
+                Link("Report a Problem", destination: AppInfo.reportProblem)
+            }
+            .font(.system(size: 12))
+
+            Divider()
+
+            Text("If you find Side Screen useful, [support the developer](https://sidescreen.dev/donate.html) — it keeps me motivated to build more useful things.")
+                .font(.system(size: 12))
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 4) {
+                Spacer()
+                Text("Developed by Tran Vuong Quoc Dat with")
+                Image(systemName: "heart.fill")
+                    .foregroundColor(.red)
+                Spacer()
+            }
+            .font(.system(size: 11))
+            .foregroundColor(.secondary)
+        }
+        .padding(16)
+        .frame(width: 400)
+    }
+}
 
 struct StatusRow: View {
     let title: String
