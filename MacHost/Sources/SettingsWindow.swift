@@ -1112,7 +1112,7 @@ struct AboutPopover: View {
 
             Divider()
 
-            Text("If you find Side Screen useful, [support the developer](https://sidescreen.dev/donate.html) — every coffee helps keep it free.")
+            Text("If you find Side Screen useful, [support the developer](https://sidescreen.dev/donate.html) — it keeps me motivated to build more useful things for you.")
                 .font(.system(size: 12))
                 .fixedSize(horizontal: false, vertical: true)
 
