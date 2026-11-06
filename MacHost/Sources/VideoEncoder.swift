@@ -4,9 +4,25 @@ import CoreMedia
 import os
 
 class VideoEncoder {
+    private struct Settings: Equatable {
+        var bitrateMbps: Int
+        var quality: String
+        var gamingBoost: Bool
+    }
+
     private struct EncoderState {
         var pendingForceKeyframe = false
+        /// Latest settings not yet applied. Non-nil means an apply pass is
+        /// already queued, so a burst of slider steps applies only the last one.
+        var pendingSettings: Settings?
     }
+
+    /// Serializes every use of `compressionSession`. Frames arrive on the
+    /// capture queues while settings changes arrive on the main thread.
+    /// Rebuilding the session on the main thread while a frame was mid-encode
+    /// handed VideoToolbox an invalidated session (-12903) and hung its XPC
+    /// service, freezing the app until it died.
+    private let sessionQueue = DispatchQueue(label: "VideoEncoder.session", qos: .userInteractive)
 
     private var compressionSession: VTCompressionSession?
     var onEncodedFrame: ((Data, UInt64, Bool) -> Void)?  // data, timestamp, isKeyframe
@@ -29,17 +45,66 @@ class VideoEncoder {
         setupCompressionSession()
     }
 
+    /// Apply new rate-control settings. Safe from any thread and returns at
+    /// once: the change runs on `sessionQueue`, between frames. While one is
+    /// queued, later calls only replace it, so dragging the bitrate slider
+    /// applies the latest value instead of every step.
     func updateSettings(bitrateMbps: Int, quality: String, gamingBoost: Bool) {
-        self.bitrateMbps = gamingBoost ? 50 : bitrateMbps
-        self.quality = gamingBoost ? "ultralow" : quality
-        self.gamingBoost = gamingBoost
+        let settings = Settings(
+            bitrateMbps: gamingBoost ? 50 : bitrateMbps,
+            quality: gamingBoost ? "ultralow" : quality,
+            gamingBoost: gamingBoost
+        )
+        let alreadyQueued = stateLock.withLock { state -> Bool in
+            let queued = state.pendingSettings != nil
+            state.pendingSettings = settings
+            return queued
+        }
+        guard !alreadyQueued else { return }
+        sessionQueue.async { [weak self] in
+            self?.applyPendingSettings()
+        }
+    }
+
+    /// Runs on `sessionQueue`. A bitrate-only change updates the live session,
+    /// so the stream continues without a gap or a forced keyframe. A quality
+    /// or Gaming Boost change rebuilds the session as before.
+    private func applyPendingSettings() {
+        guard let settings = stateLock.withLock({ state -> Settings? in
+            defer { state.pendingSettings = nil }
+            return state.pendingSettings
+        }) else { return }
+
+        let current = Settings(bitrateMbps: bitrateMbps, quality: quality, gamingBoost: gamingBoost)
+        guard settings != current else { return }
+
+        bitrateMbps = settings.bitrateMbps
+        quality = settings.quality
+        gamingBoost = settings.gamingBoost
+
+        let onlyBitrateChanged = settings.quality == current.quality && settings.gamingBoost == current.gamingBoost
+        if onlyBitrateChanged, let session = compressionSession, setAverageBitRate(on: session) == noErr {
+            debugLog("VideoToolbox bitrate updated live (\(bitrateMbps)Mbps)")
+            return
+        }
 
         // Drain pending frames before invalidation
         if let session = compressionSession {
             VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)
             VTCompressionSessionInvalidate(session)
+            compressionSession = nil
         }
         setupCompressionSession()
+    }
+
+    @discardableResult
+    private func setAverageBitRate(on session: VTCompressionSession) -> OSStatus {
+        // Dynamic bitrate - remove strict rate limiting for smoother streaming
+        // All-intra needs higher bitrate for text sharpness
+        // USB-C supports 5Gbps, so 80-100Mbps is fine
+        let effectiveBitrate = gamingBoost ? bitrateMbps : max(bitrateMbps, 60)
+        let bitrateBps = effectiveBitrate * 1_000_000
+        return VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: bitrateBps as CFNumber)
     }
 
     private func setupCompressionSession() {
@@ -76,12 +141,7 @@ class VideoEncoder {
             : kVTProfileLevel_H264_Main_AutoLevel
         VTSessionSetProperty(session, key: kVTCompressionPropertyKey_ProfileLevel, value: profile)
 
-        // Dynamic bitrate - remove strict rate limiting for smoother streaming
-        // All-intra needs higher bitrate for text sharpness
-        // USB-C supports 5Gbps, so 80-100Mbps is fine
-        let effectiveBitrate = gamingBoost ? bitrateMbps : max(bitrateMbps, 60)
-        let bitrateBps = effectiveBitrate * 1_000_000
-        VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: bitrateBps as CFNumber)
+        setAverageBitRate(on: session)
         // Removed DataRateLimits - was causing bursty traffic and buffer stalls
 
         // Frame rate settings
@@ -142,7 +202,22 @@ class VideoEncoder {
         stateLock.withLock { $0.pendingForceKeyframe = true }
     }
 
+    /// Whether a compression session exists (false when VideoToolbox refused
+    /// to create one, e.g. no hardware encoder).
+    var hasSession: Bool {
+        sessionQueue.sync { compressionSession != nil }
+    }
+
+    /// Callable from any capture queue: the frame is submitted on
+    /// `sessionQueue`, so it never meets a session that a settings change is
+    /// tearing down.
     func encode(pixelBuffer: CVPixelBuffer, presentationTimeStamp: CMTime) {
+        sessionQueue.sync {
+            encodeOnSessionQueue(pixelBuffer: pixelBuffer, presentationTimeStamp: presentationTimeStamp)
+        }
+    }
+
+    private func encodeOnSessionQueue(pixelBuffer: CVPixelBuffer, presentationTimeStamp: CMTime) {
         guard let session = compressionSession else { return }
 
         let duration = CMTime(value: 1, timescale: CMTimeScale(frameRate))
