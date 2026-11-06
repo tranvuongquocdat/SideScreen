@@ -17,6 +17,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+<a id="1.1.0"></a>
+## [1.1.0] - 2026-11-06 — Signed Mac app, automatic updates
+
+### Added
+- **The Mac app is now signed and notarized by Apple.** It opens straight after install, no more "damaged" warning and no `xattr` command.
+- **Automatic updates on the Mac.** Side Screen checks once a day and asks before downloading. "Check for Updates…" is in the app menu and in the About panel. This is the first version with the updater, so install 1.1.0 by hand once; later versions arrive on their own.
+- **About panel.** Click the logo or the ⓘ button in the settings header for the version, links, and a way to support the project.
+- **Android:** the app logo on the connect screen.
+
+### Fixed
+- **Mac: USB mode with more than one Android device plugged in.** The USB tunnel was never set up when two or more devices were connected, so nothing could connect ([#101](https://github.com/tranvuongquocdat/SideScreen/issues/101)). Each device now gets its own tunnel.
+- **Android: crash after a failed connection.** If you rotated the tablet or left the app while it was still trying to connect, the error dialog could crash it. This was the most common crash on 1.0.2.
+
+### Notes
+- Because the Mac app's signature changed, macOS will ask for the Screen Recording and Accessibility permissions again the first time you run 1.1.0. Grant them once and you're done.
+
+### Installation
+- **Android**: [Get it on Google Play](https://play.google.com/store/apps/details?id=com.sidescreen.app). The update installs on its own.
+- **Android without Google Play** (Huawei and other devices without Google services): download `SideScreen-1.1.0-android.apk` below and open it to install. If the Play version is already installed, uninstall it first.
+- **macOS**: download `SideScreen-1.1.0-mac-universal.dmg` below, open it, drag Side Screen to Applications. If you still have an old copy, replace it.
+- **Homebrew**: `brew install --cask tranvuongquocdat/sidescreen/sidescreen`
+
+---
+
 <a id="1.0.2"></a>
 ## [1.0.2] - 2026-11-01 — Android stability update
 

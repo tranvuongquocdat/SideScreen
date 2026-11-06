@@ -119,14 +119,7 @@ Run a Mac with no display of its own — a Mac Studio or Mini on the go, or a la
 ## Installation
 
 - **Android**: [Get it on Google Play](https://play.google.com/store/apps/details?id=com.sidescreen.app) — updates install automatically.
-- **macOS**: Download the `.dmg` from [**GitHub Releases**](https://github.com/tranvuongquocdat/SideScreen/releases), open it, drag Side Screen to Applications. Port forwarding over USB is handled automatically by the Mac app.
-
-> **⚠️ macOS Gatekeeper**
-> If macOS says the app is "damaged", open Terminal and run:
-> ```bash
-> sudo xattr -cr /Applications/SideScreen.app
-> ```
-> Then open the app again. This is needed because the app is not notarized with an Apple Developer certificate.
+- **macOS**: Download the `.dmg` from [**GitHub Releases**](https://github.com/tranvuongquocdat/SideScreen/releases), open it, drag Side Screen to Applications. The app is signed and notarized by Apple, and checks for updates on its own. Port forwarding over USB is handled automatically by the Mac app.
 
 > **⚠️ ADB Required**
 > The Mac app needs `adb` to communicate with your Android device. If the app doesn't show "Running" after launch, you likely need to install ADB:
@@ -203,11 +196,7 @@ First-time setup still needs a screen once to grant Screen Recording permission;
 <details>
 <summary><strong>"SideScreen is damaged" on macOS</strong></summary>
 
-This happens because the app is not notarized by Apple. Run this command to fix it:
-```bash
-sudo xattr -cr /Applications/SideScreen.app
-```
-Then open the app again.
+Versions before 1.1.0 were not notarized. Update to the latest release from [GitHub Releases](https://github.com/tranvuongquocdat/SideScreen/releases), which opens without any workaround. If you must keep an old version, run `sudo xattr -cr /Applications/SideScreen.app` once.
 </details>
 
 <details>
