@@ -703,9 +703,16 @@ a:hover {
     align-items: center;
     justify-content: center;
     background: var(--color-bg);
+    border: 1px solid var(--color-border);
     border-radius: var(--border-radius-md);
     margin: 0 auto 20px;
     color: var(--color-text);
+}
+
+/* Light mode: the tile was nearly invisible against the white card */
+:root:not([data-theme="dark"]) .download-icon {
+    background: #F2F2F7;
+    border-color: #D9D9DE;
 }
 
 .download-card h3 {
@@ -723,6 +730,35 @@ a:hover {
     color: white;
     border-radius: var(--border-radius-sm);
     font-weight: 500;
+}
+
+.download-card .download-version-text {
+    display: inline-block;
+    margin-bottom: 8px;
+    padding: 3px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: var(--color-bg);
+}
+
+.download-card .download-meta {
+    margin-bottom: 18px;
+    font-size: 14px;
+    color: var(--color-text-secondary);
+}
+
+.download-fineprint {
+    margin: 14px auto 0;
+    max-width: 260px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--color-text-secondary);
+}
+
+.download-card .download-fineprint {
+    margin-bottom: 0;
 }
 
 .download-card.alt {

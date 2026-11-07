@@ -268,15 +268,15 @@
             <p class="section-subtitle">Free and open source. Always.</p>
 
             <div class="download-options">
-                <a href="https://github.com/tranvuongquocdat/SideScreen/releases/latest" target="_blank" rel="noopener noreferrer" class="download-card download-btn">
+                <a href="https://github.com/tranvuongquocdat/SideScreen/releases/latest" class="download-card download-btn js-dmg-link">
                     <div class="download-icon">
-                        <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-                        </svg>
+                        <svg width="44" height="44" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>
                     </div>
                     <h3>Mac app</h3>
-                    <p class="download-version-text">DMG from GitHub Releases</p>
-                    <span class="download-action">Download</span>
+                    <p class="download-version-text">Latest release</p>
+                    <p class="download-meta">macOS 13+ · Apple Silicon &amp; Intel</p>
+                    <span class="download-action">Download for Mac</span>
+                    <p class="download-fineprint">Free. Notarized by Apple, and it keeps itself up to date.</p>
                 </a>
 
                 <a href="https://play.google.com/store/apps/details?id=com.sidescreen.app" target="_blank" rel="noopener noreferrer" class="download-card">
@@ -284,8 +284,10 @@
                         <img src="./assets/main_logo.webp" alt="Side Screen app icon" width="56" height="56">
                     </div>
                     <h3>Android app</h3>
-                    <p>Get it on Google Play</p>
+                    <p class="download-version-text">Get it on Google Play</p>
+                    <p class="download-meta">Android 8+ · Phones &amp; tablets</p>
                     <span class="download-action">Google Play</span>
+                    <p class="download-fineprint">Free for Android 8 and later. Updates install on their own.</p>
                 </a>
 
                 <div class="download-card alt">
@@ -302,8 +304,8 @@
             </div>
 
             <div class="download-note">
-                <p><strong>macOS:</strong> Open the DMG and drag Side Screen to Applications. The app is signed and notarized by Apple, opens without any workaround, and checks for updates on its own.</p>
-                <p style="margin-top: 0.5rem;">Or install with Homebrew:</p>
+                <p><strong>macOS:</strong> Open the DMG and drag Side Screen to Applications. Notarized by Apple, and it keeps itself up to date.</p>
+                <p style="margin-top: 0.5rem;">Prefer Homebrew?</p>
                 <div class="download-cmd"><code>brew install --cask tranvuongquocdat/sidescreen/sidescreen</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></div>
                 <p style="margin-top: 1rem;"><strong>⚠️ ADB Required:</strong> The Mac app needs <code>adb</code> to communicate with your Android device. If the app doesn't show "Running", install ADB first:</p>
                 <p style="margin-top: 0.5rem;">1. Install Homebrew (if you don't have it):</p>
@@ -313,7 +315,7 @@
             </div>
 
             <div class="download-requirements">
-                <span class="download-requirement">macOS 14.0+</span>
+                <span class="download-requirement">macOS 13.0+</span>
                 <span class="download-requirement">Apple Silicon & Intel</span>
                 <span class="download-requirement">Android 8.0+</span>
             </div>
@@ -422,7 +424,10 @@
             .then(r => r.json())
             .then(d => {
                 const el = document.querySelector('.download-version-text');
-                if (el && d.tag_name) el.textContent = 'DMG v' + d.tag_name + ' from GitHub Releases';
+                if (el && d.tag_name) el.textContent = 'v' + d.tag_name;
+                // Direct DMG download instead of the Releases page
+                const dmg = (d.assets || []).find(a => /-mac-universal\.dmg$/.test(a.name));
+                if (dmg) document.querySelectorAll('.js-dmg-link').forEach(a => { a.href = dmg.browser_download_url; });
             })
             .catch(() => {});
 
