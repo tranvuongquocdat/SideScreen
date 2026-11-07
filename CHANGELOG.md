@@ -9,16 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- **Native resolution on panels whose sides aren't multiples of 16.** A 2880×1800 tablet was streamed at 2864×1792 and upscaled back, and a 2340×1080 phone at 2336×1072, so text was slightly soft. The stream now uses the exact panel size whenever the decoder can sustain it. Both the Android and the Mac app need updating for HiDPI captures.
-- **Mac: changing the bitrate while streaming froze the app.** Each step of the slider rebuilt the video encoder on the main thread while frames were still being encoded, which hung macOS's encoder service and with it Side Screen. Bitrate changes now apply to the running encoder without a rebuild, slider bursts collapse into the latest value, and the window stays responsive.
-- **Mac: bitrates above 2147 Mbps were ignored or wrapped.** The encoder takes a 32-bit value, so 2148–4294 Mbps were rejected and the encoder kept its previous bitrate, and anything higher wrapped around (5000 Mbps became 705 Mbps). The bitrate is now capped at 2147 Mbps.
-
 ### Planned
 - mDNS auto-discovery for wireless mode
 - Audio streaming
 - Multi-touch gestures
 - Stylus/pen support
+
+---
+
+<a id="1.1.1"></a>
+## [1.1.1] - 2026-11-07 — Sharper picture, smoother bitrate changes
+
+### Fixed
+- **Pixel-exact streaming on more screens.** Panels whose width or height isn't a multiple of 16 (2880×1800 tablets, 2340×1080 phones) were streamed a few pixels smaller and scaled back up, so text looked slightly soft. The stream now matches the panel exactly when the decoder can handle it ([#110](https://github.com/tranvuongquocdat/SideScreen/issues/110)). Update both the Mac and Android apps to get this.
+- **Mac: no more freeze when changing the bitrate mid-stream.** Dragging the bitrate slider while connected could lock up the Mac app ([#111](https://github.com/tranvuongquocdat/SideScreen/issues/111)). Bitrate changes now apply to the running stream without interrupting it.
+- **Mac: bitrates above 2147 Mbps were silently ignored or applied wrong.** The slider is now capped at what the encoder accepts.
+- **Android: crash when dragging the status bar on phones.** On narrow screens in portrait, moving the status overlay could crash the app (seen on a Galaxy S22 Ultra in the 1.0.2 crash reports).
+
+Thanks to [@hectorviov](https://github.com/hectorviov) for the first three fixes and the detailed reports.
+
+### Installation
+- **Android**: [Get it on Google Play](https://play.google.com/store/apps/details?id=com.sidescreen.app). The update installs on its own.
+- **Android without Google Play** (Huawei and other devices without Google services): download `SideScreen-1.1.1-android.apk` below and open it to install. If the Play version is already installed, uninstall it first.
+- **macOS**: if you're on 1.1.0, Side Screen offers this update by itself. Otherwise download `SideScreen-1.1.1-mac-universal.dmg` below, open it, drag Side Screen to Applications.
+- **Homebrew**: `brew upgrade --cask sidescreen`
 
 ---
 
