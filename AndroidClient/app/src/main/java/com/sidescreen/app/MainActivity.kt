@@ -612,14 +612,11 @@ class MainActivity : AppCompatActivity() {
                         var newX = event.rawX + overlayDx
                         var newY = event.rawY + overlayDy
 
-                        // Get screen bounds
+                        // Constrain to the parent. The overlay can be wider than a
+                        // phone in portrait; OverlayBounds pins it instead of throwing.
                         val parent = view.parent as View
-                        val maxX = parent.width - view.width.toFloat()
-                        val maxY = parent.height - view.height.toFloat()
-
-                        // Constrain to screen bounds
-                        newX = newX.coerceIn(0f, maxX)
-                        newY = newY.coerceIn(0f, maxY)
+                        newX = OverlayBounds.clamp(newX, parent.width, view.width)
+                        newY = OverlayBounds.clamp(newY, parent.height, view.height)
 
                         view
                             .animate()
