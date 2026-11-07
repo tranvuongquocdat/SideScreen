@@ -6,12 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Side Screen - Turn Your Tablet into a Second Display for Mac</title>
     <meta name="description"
-        content="Transform your Android tablet into a second display for macOS — USB-C or wireless over WiFi. Under 30ms latency with async pipeline, hardware H.265 acceleration, HiDPI Retina support, Universal Binary for Apple Silicon & Intel, gaming ready. Free and open source.">
+        content="Transform your Android tablet into a second display for macOS — USB-C or wireless over WiFi. Under 15 ms latency with async pipeline, hardware H.265 acceleration, HiDPI Retina support, Universal Binary for Apple Silicon & Intel, gaming ready. Free and open source.">
     <meta name="keywords"
         content="second display mac, android tablet display, usb-c display, virtual display macos, dual monitor mac, tablet second screen, hidpi retina mac display, apple silicon intel universal binary">
     <meta property="og:title" content="Side Screen - Second Display for Mac">
     <meta property="og:description"
-        content="Transform your Android tablet into a second display for macOS. Under 30ms latency, hardware accelerated, gaming ready.">
+        content="Transform your Android tablet into a second display for macOS. Under 15 ms latency, hardware accelerated, gaming ready.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://sidescreen.dev">
     <meta property="og:image" content="https://sidescreen.dev/assets/og-image.jpg">
@@ -19,7 +19,7 @@
     <meta property="og:image:height" content="630">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Side Screen - Second Display for Mac">
-    <meta name="twitter:description" content="Transform your Android tablet into a second display for macOS. Under 30ms latency, hardware accelerated, gaming ready.">
+    <meta name="twitter:description" content="Transform your Android tablet into a second display for macOS. Under 15 ms latency, hardware accelerated, gaming ready.">
     <meta name="twitter:image" content="https://sidescreen.dev/assets/og-image.jpg">
     <meta name="theme-color" content="#007AFF">
     <link rel="canonical" href="https://sidescreen.dev">
@@ -118,7 +118,7 @@
                 <h1 class="hero-title">Your tablet, your second screen.</h1>
                 <p class="hero-subtitle">
                     Transform your Android tablet into a second display for your Mac — plug in over USB-C, or pair once with a QR scan and stream wirelessly over WiFi.
-                    Under 30ms latency on USB, hardware accelerated, gaming ready.
+                    Under 15 ms latency on USB, hardware accelerated, gaming ready.
                 </p>
 
                 <div class="hero-actions">
@@ -163,7 +163,7 @@
                 <!-- Feature 2: Performance — image left, text right -->
                 <div class="special-feature-item">
                     <div class="special-feature-content">
-                        <h3 class="special-feature-title">Under 30ms Latency</h3>
+                        <h3 class="special-feature-title">Under 15 ms Latency</h3>
                         <p class="special-feature-description">Async pipeline with hardware H.265 on both ends. Buttery smooth frames with Choreographer vsync alignment.</p>
                     </div>
                     <div class="special-feature-media">
@@ -302,8 +302,9 @@
             </div>
 
             <div class="download-note">
-                <p><strong>macOS Gatekeeper:</strong> Open DMG, drag to Applications. If macOS says "damaged":</p>
-                <div class="download-cmd"><code>sudo xattr -cr /Applications/SideScreen.app</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></div>
+                <p><strong>macOS:</strong> Open the DMG and drag Side Screen to Applications. The app is signed and notarized by Apple, opens without any workaround, and checks for updates on its own.</p>
+                <p style="margin-top: 0.5rem;">Or install with Homebrew:</p>
+                <div class="download-cmd"><code>brew install --cask tranvuongquocdat/sidescreen/sidescreen</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></div>
                 <p style="margin-top: 1rem;"><strong>⚠️ ADB Required:</strong> The Mac app needs <code>adb</code> to communicate with your Android device. If the app doesn't show "Running", install ADB first:</p>
                 <p style="margin-top: 0.5rem;">1. Install Homebrew (if you don't have it):</p>
                 <div class="download-cmd"><code>/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"</code><button class="copy-btn" onclick="copyCmd(this)">Copy</button></div>
@@ -345,12 +346,12 @@
 
                 <details class="faq-item">
                     <summary>macOS says "SideScreen is damaged"</summary>
-                    <p>This happens because the app isn't notarized by Apple. Open Terminal and run: <code>sudo xattr -cr /Applications/SideScreen.app</code>, then open the app again.</p>
+                    <p>Only versions before 1.1.0 did that — they weren't notarized. Download the latest release and it opens normally; from 1.1.0 on, the Mac app is signed, notarized and updates itself. If you must keep an old version, run <code>sudo xattr -cr /Applications/SideScreen.app</code> once.</p>
                 </details>
 
                 <details class="faq-item">
                     <summary>What's the latency like?</summary>
-                    <p>USB-C: under 30 ms end-to-end with the async pipeline (hardware H.265 encoding, Choreographer vsync, TCP_NODELAY). Wireless adds 10–50 ms depending on WiFi quality — not noticeable for text/web/video, but USB still wins for drawing precision and fast gaming.</p>
+                    <p>USB-C: under 15 ms end-to-end with the async pipeline (hardware H.265 encoding, Choreographer vsync, TCP_NODELAY). Wireless adds 10–50 ms depending on WiFi quality — not noticeable for text/web/video, but USB still wins for drawing precision and fast gaming.</p>
                 </details>
 
                 <details class="faq-item">
