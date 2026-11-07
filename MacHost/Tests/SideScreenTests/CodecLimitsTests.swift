@@ -188,4 +188,49 @@ final class CodecLimitsTests: XCTestCase {
         XCTAssertNil(CodecLimits.budget(limit: nil, table: nil, forFps: 60))
         XCTAssertNil(CodecLimits.budget(limit: nil, table: [:], forFps: 60))
     }
+
+    // MARK: - Panel sides that are not multiples of 16
+
+    func testHiDpiCaptureOfANativePanelKeepsTheExactPanelSize() {
+        // Xiaomi Pad 6: 2880x1800 panel, HiDPI capture at 5760x3600. Flooring
+        // to 16 gave 2880x1792 (and 2864x1792 once that became the limit).
+        let r = CodecLimits.clamp(width: 5760, height: 3600, maxWidth: 2880, maxHeight: 1800)
+        XCTAssertEqual(r.width, 2880)
+        XCTAssertEqual(r.height, 1800)
+    }
+
+    func testTenEightyPanelKeepsItsRows() {
+        // 2340x1080 phone (the LG V510N from #88), HiDPI capture.
+        let r = CodecLimits.clamp(width: 4680, height: 2160, maxWidth: 2340, maxHeight: 1080)
+        XCTAssertEqual(r.width, 2340)
+        XCTAssertEqual(r.height, 1080)
+    }
+
+    func testPortraitCaptureOfANativePanelKeepsTheExactPanelSize() {
+        let r = CodecLimits.clampToClientLimit(width: 3600, height: 5760, limit: (width: 2880, height: 1800))
+        XCTAssertEqual(r.width, 1800)
+        XCTAssertEqual(r.height, 2880)
+    }
+
+    func testExactFitIsKeptEven() {
+        let r = CodecLimits.clamp(width: 2002, height: 1202, maxWidth: 1001, maxHeight: 601)
+        XCTAssertEqual(r.width, 1000)
+        XCTAssertEqual(r.height, 600)
+    }
+
+    func testOlderClientsSixteenAlignedLimitStillFloors() {
+        // A client that predates the fix reports 2880x1792 for the same
+        // panel. The aspect no longer matches, so the 16-aligned fit applies.
+        let r = CodecLimits.clamp(width: 5760, height: 3600, maxWidth: 2880, maxHeight: 1792)
+        XCTAssertEqual(r.width, 2864)
+        XCTAssertEqual(r.height, 1792)
+    }
+
+    func testAspectMismatchStillFloorsToSixteen() {
+        let r = CodecLimits.clamp(width: 5760, height: 3600, maxWidth: 2340, maxHeight: 1080)
+        XCTAssertEqual(r.width % 16, 0)
+        XCTAssertEqual(r.height % 16, 0)
+        XCTAssertLessThanOrEqual(r.width, 2340)
+        XCTAssertLessThanOrEqual(r.height, 1080)
+    }
 }

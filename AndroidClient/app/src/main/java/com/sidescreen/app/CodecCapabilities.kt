@@ -173,8 +173,7 @@ object CodecCapabilities {
      *
      * The panel is the upper bound because anything above it is downscaled on arrival anyway, so
      * spending decode budget there buys nothing. [MediaCodecInfo.VideoCapabilities.areSizeAndRateSupported]
-     * is the check that consults `blocks-per-second`, which [nominalMaxDecodeSize] misses. Shrinks
-     * stepwise rather than solving directly because the budget counts aligned macroblocks.
+     * is the check that consults `blocks-per-second`, which [nominalMaxDecodeSize] misses.
      */
     fun maxStreamSize(
         mime: String,
@@ -185,27 +184,75 @@ object CodecCapabilities {
         if (panelWidth <= 0 || panelHeight <= 0) return null
         val caps = bestVideoCapabilities(mime) ?: return null
         val rate = fps.coerceAtLeast(1).toDouble()
+        return try {
+            fitStreamSize(
+                panelWidth = panelWidth,
+                panelHeight = panelHeight,
+                maxWidth = caps.supportedWidths.upper,
+                maxHeight = caps.supportedHeights.upper,
+                widthAlignment = caps.widthAlignment,
+                heightAlignment = caps.heightAlignment,
+            ) { w, h ->
+                try {
+                    caps.areSizeAndRateSupported(w, h, rate)
+                } catch (_: IllegalArgumentException) {
+                    false
+                }
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
 
-        var w = panelWidth.coerceAtMost(caps.supportedWidths.upper)
-        var h = panelHeight.coerceAtMost(caps.supportedHeights.upper)
+    /**
+     * Largest size for a panel of [panelWidth]x[panelHeight] that [supports] accepts, or null.
+     *
+     * The native panel size comes first, aligned only to what the decoder itself requires
+     * ([widthAlignment]/[heightAlignment], usually 2). [supports] already counts macroblocks
+     * rounded up, so a panel side that is not a multiple of 16 (1800, 1080) needs no padding
+     * here. Flooring it to 16 instead made a 2880x1800 panel report 2880x1792, and the Mac then
+     * encoded 2864x1792 and the client upscaled it back. When the native size is over budget,
+     * shrinks stepwise on 16-aligned sizes, because the budget counts aligned macroblocks.
+     */
+    internal fun fitStreamSize(
+        panelWidth: Int,
+        panelHeight: Int,
+        maxWidth: Int,
+        maxHeight: Int,
+        widthAlignment: Int,
+        heightAlignment: Int,
+        supports: (width: Int, height: Int) -> Boolean,
+    ): Pair<Int, Int>? {
+        if (panelWidth <= maxWidth && panelHeight <= maxHeight) {
+            val nativeW = alignDown(panelWidth, widthAlignment)
+            val nativeH = alignDown(panelHeight, heightAlignment)
+            if (nativeW >= MIN_STREAM_SIDE && nativeH >= MIN_STREAM_SIDE && supports(nativeW, nativeH)) {
+                return nativeW to nativeH
+            }
+        }
+
+        var w = panelWidth.coerceAtMost(maxWidth)
+        var h = panelHeight.coerceAtMost(maxHeight)
         val aspect = panelWidth.toDouble() / panelHeight.toDouble()
 
         repeat(40) {
-            val alignedW = (w / BLOCK_ALIGN) * BLOCK_ALIGN
-            val alignedH = (h / BLOCK_ALIGN) * BLOCK_ALIGN
-            if (alignedW < 256 || alignedH < 256) return null
-            val supported =
-                try {
-                    caps.areSizeAndRateSupported(alignedW, alignedH, rate)
-                } catch (_: IllegalArgumentException) {
-                    false
-                } catch (_: Exception) {
-                    return null
-                }
-            if (supported) return alignedW to alignedH
+            val alignedW = alignDown(w, BLOCK_ALIGN)
+            val alignedH = alignDown(h, BLOCK_ALIGN)
+            if (alignedW < MIN_STREAM_SIDE || alignedH < MIN_STREAM_SIDE) return null
+            if (supports(alignedW, alignedH)) return alignedW to alignedH
             w = (w * 0.95).toInt()
             h = (w / aspect).toInt()
         }
         return null
+    }
+
+    private const val MIN_STREAM_SIDE = 256
+
+    private fun alignDown(
+        value: Int,
+        alignment: Int,
+    ): Int {
+        val a = alignment.coerceAtLeast(1)
+        return (value / a) * a
     }
 }

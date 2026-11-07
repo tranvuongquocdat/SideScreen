@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Native resolution on panels whose sides aren't multiples of 16.** A 2880×1800 tablet was streamed at 2864×1792 and upscaled back, and a 2340×1080 phone at 2336×1072, so text was slightly soft. The stream now uses the exact panel size whenever the decoder can sustain it. Both the Android and the Mac app need updating for HiDPI captures.
+- **Mac: changing the bitrate while streaming froze the app.** Each step of the slider rebuilt the video encoder on the main thread while frames were still being encoded, which hung macOS's encoder service and with it Side Screen. Bitrate changes now apply to the running encoder without a rebuild, slider bursts collapse into the latest value, and the window stays responsive.
+- **Mac: bitrates above 2147 Mbps were ignored or wrapped.** The encoder takes a 32-bit value, so 2148–4294 Mbps were rejected and the encoder kept its previous bitrate, and anything higher wrapped around (5000 Mbps became 705 Mbps). The bitrate is now capped at 2147 Mbps.
+
 ### Planned
 - mDNS auto-discovery for wireless mode
 - Audio streaming
