@@ -178,27 +178,39 @@ class StreamClient(
     data class PairingSuccess(val token: ByteArray, val macName: String)
 
     /**
-     * Opens a TCP socket to host:port, bound to the active WiFi network. On some
-     * Android setups (especially LG/Android 12), an app's default outbound socket
-     * may take a route that silently drops LAN traffic; binding to the WIFI
-     * Network explicitly avoids that.
+     * Opens a TCP socket to host:port. When the Mac sits on a WiFi network's local
+     * subnet, the socket is bound to that network: on some Android setups
+     * (especially LG/Android 12), an app's default outbound socket may take a
+     * route that silently drops LAN traffic, and binding avoids that.
+     *
+     * Any other destination uses default routing. A bound socket only consults
+     * that network's routing table, so binding unconditionally broke two setups:
+     * - a Mac reached over Tailscale or another VPN (issue #121): the VPN route
+     *   is skipped and traffic leaves on WiFi.
+     * - a Mac joined to the tablet's own hotspot while the tablet is also on an
+     *   upstream WiFi: hotspot routes live in netd's local_network table, which
+     *   only unbound sockets consult, so traffic goes to the upstream router.
      */
     private fun openWirelessSocket(): Socket {
         try {
             val sock = Socket()
             sock.tcpNoDelay = true
+            val dest = java.net.InetAddress.getByName(host)
             val cm = context.getSystemService(ConnectivityManager::class.java)
             val wifiNetwork =
                 cm.allNetworks.firstOrNull { net ->
                     val caps = cm.getNetworkCapabilities(net)
                     caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true &&
-                        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                        cm.getLinkProperties(net)?.routes?.any { route ->
+                            !route.isDefaultRoute && route.matches(dest)
+                        } == true
                 }
             if (wifiNetwork != null) {
-                Log.i(TAG, "openWirelessSocket: binding socket to WiFi network $wifiNetwork")
+                Log.i(TAG, "openWirelessSocket: $host is on WiFi network $wifiNetwork's subnet, binding socket")
                 wifiNetwork.bindSocket(sock)
             } else {
-                Log.w(TAG, "openWirelessSocket: no WiFi network found, using default routing")
+                Log.i(TAG, "openWirelessSocket: $host is not on a WiFi subnet, using default routing")
             }
             sock.connect(java.net.InetSocketAddress(host, port), 5000)
             return sock
