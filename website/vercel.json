@@ -8,6 +8,20 @@
   ],
   "routes": [
     {
+      "src": "/pro/appcast.xml",
+      "status": 302,
+      "headers": {
+        "Location": "https://github.com/tranvuongquocdat/SideScreen/releases/latest/download/appcast-pro.xml"
+      }
+    },
+    {
+      "src": "/pro/download",
+      "status": 302,
+      "headers": {
+        "Location": "https://github.com/tranvuongquocdat/SideScreen/releases/latest/download/SideScreenPro.dmg"
+      }
+    },
+    {
       "src": "/assets/(.*)",
       "headers": {
         "Cache-Control": "public, max-age=31536000, immutable"

@@ -1475,3 +1475,375 @@ a:hover {
         padding: 4px 10px;
     }
 }
+
+/* ========================================
+   PRO — Free vs Pro table
+   ======================================== */
+:root {
+    --pro-grad: linear-gradient(135deg, #5856D6 0%, #007AFF 100%);
+    --pro-accent: #5856D6;
+    --pro-soft: rgba(88, 86, 214, 0.06);
+    --pro-ring: rgba(88, 86, 214, 0.35);
+    --pro-glow: rgba(88, 86, 214, 0.14);
+}
+
+[data-theme="dark"] {
+    --pro-accent: #8A88FF;
+    --pro-soft: rgba(120, 118, 255, 0.08);
+    --pro-ring: rgba(120, 118, 255, 0.45);
+    --pro-glow: rgba(120, 118, 255, 0.16);
+}
+
+.nav-pro {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.pro-badge {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    line-height: 1;
+    padding: 4px 7px;
+    border-radius: 6px;
+    color: #fff;
+    background: var(--pro-grad);
+}
+
+.pro {
+    background:
+        radial-gradient(ellipse 55% 45% at 50% 0%, var(--pro-glow), transparent 70%),
+        var(--color-bg);
+}
+
+.pro .section-title .pro-badge {
+    font-size: 0.9rem;
+    padding: 6px 10px;
+    vertical-align: middle;
+    margin-left: 6px;
+}
+
+.plan-table-wrap {
+    max-width: 1040px;
+    margin: 0 auto;
+}
+
+.plan-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    table-layout: fixed;
+}
+
+.plan-table th,
+.plan-table td {
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--color-border-light);
+    vertical-align: middle;
+}
+
+.plan-table .col-feat { width: 52%; text-align: left; }
+.plan-table .col-free,
+.plan-table .col-pro { width: 24%; text-align: center; }
+
+/* Pro column = one raised card running top to bottom */
+.plan-table .col-pro {
+    background: var(--pro-soft);
+    border-left: 1.5px solid var(--pro-ring);
+    border-right: 1.5px solid var(--pro-ring);
+}
+
+.plan-table thead .col-pro {
+    border-top: 1.5px solid var(--pro-ring);
+    border-radius: 20px 20px 0 0;
+}
+
+.plan-table tbody tr:last-child td { border-bottom: none; }
+
+.plan-table tbody tr:last-child .col-pro {
+    border-bottom: 1.5px solid var(--pro-ring);
+    border-radius: 0 0 20px 20px;
+}
+
+.plan-table thead th {
+    padding-top: 28px;
+    padding-bottom: 24px;
+    font-weight: 400;
+}
+
+.plan-name {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--color-text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.plan-price {
+    font-size: 2.1rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--color-text);
+    line-height: 1.1;
+    margin-top: 8px;
+}
+
+.plan-price small {
+    font-size: 0.9rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    color: var(--color-text-secondary);
+}
+
+.plan-note {
+    font-size: 0.82rem;
+    color: var(--color-text-secondary);
+    margin-top: 4px;
+}
+
+.plan-cta {
+    display: inline-flex;
+    justify-content: center;
+    margin-top: 16px;
+    padding: 9px 18px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    border-radius: 10px;
+    white-space: nowrap;
+}
+
+.plan-cta-free {
+    color: var(--color-text);
+    border: 1.5px solid var(--color-border);
+}
+
+.plan-cta-free:hover { border-color: var(--color-text-secondary); color: var(--color-text); }
+
+.plan-cta-pro {
+    color: #fff;
+    background: var(--pro-grad);
+}
+
+.plan-cta-pro:hover {
+    color: #fff;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px var(--pro-ring);
+}
+
+.soon {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    white-space: nowrap;
+    padding: 5px 10px;
+    border-radius: 999px;
+    border: 1px dashed var(--pro-ring);
+    color: var(--pro-accent);
+}
+
+.feat-name {
+    display: block;
+    font-weight: 500;
+    color: var(--color-text);
+}
+
+.feat-hint {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    margin-top: 3px;
+    line-height: 1.4;
+}
+
+.plan-group td {
+    padding-top: 26px;
+    padding-bottom: 10px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-secondary);
+}
+
+.plan-group .col-pro { color: var(--pro-accent); }
+
+.tick {
+    display: inline-grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: rgba(52, 199, 89, 0.14);
+    color: #34C759;
+}
+
+.col-pro .tick {
+    background: var(--pro-grad);
+    color: #fff;
+}
+
+.tick svg { width: 14px; height: 14px; }
+
+.none {
+    display: inline-block;
+    width: 14px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--color-border);
+    vertical-align: middle;
+}
+
+.val { font-weight: 600; color: var(--color-text-secondary); }
+
+.val-pro {
+    font-weight: 800;
+    font-size: 1.05rem;
+    background: var(--pro-grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.plan-foot {
+    text-align: center;
+    margin-top: 28px;
+    font-size: 0.9rem;
+    color: var(--color-text-secondary);
+}
+
+/* Not on sale yet: same shape as the buy button, but plainly not a link */
+.plan-cta-soon,
+.plan-cta-soon:hover {
+    opacity: 0.6;
+    cursor: default;
+    transform: none;
+    box-shadow: none;
+}
+
+/* What a buyer should know before paying: terms, refunds, who sells it.
+   Six short cards, as wide as the table above. */
+.plan-terms {
+    max-width: 1040px;
+    margin: 72px auto 0;
+    text-align: left;
+}
+.plan-terms h3 {
+    font-size: 1.35rem;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 24px;
+}
+.plan-terms ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+}
+.plan-terms li {
+    padding: 22px 24px;
+    font-size: 0.92rem;
+    line-height: 1.6;
+    color: var(--color-text-secondary);
+    background: var(--color-bg-alt);
+    border: 1px solid var(--color-border);
+    border-radius: 16px;
+}
+.plan-terms li strong {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 1rem;
+    color: var(--color-text);
+}
+.plan-terms a { color: var(--pro-accent); }
+.plan-terms-by {
+    margin-top: 24px;
+    text-align: center;
+    font-size: 0.88rem;
+    color: var(--color-text-secondary);
+}
+@media (max-width: 900px) {
+    .plan-terms ul { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 680px) {
+    .plan-terms { margin-top: 48px; }
+    .plan-terms ul { grid-template-columns: 1fr; gap: 12px; }
+    .plan-terms li { padding: 18px; }
+}
+
+@media (max-width: 680px) {
+    .plan-table th,
+    .plan-table td { padding: 14px 8px; }
+    .plan-table .col-feat { width: 46%; padding-left: 0; }
+    .plan-table .col-free,
+    .plan-table .col-pro { width: 27%; }
+    .plan-price { font-size: 1.45rem; }
+    .plan-price small { display: block; font-size: 0.75rem; }
+    .plan-note { font-size: 0.72rem; }
+    .plan-cta { padding: 7px 6px; font-size: 0.74rem; white-space: normal; max-width: 100%; }
+    .feat-name { font-size: 0.92rem; }
+    .feat-hint { font-size: 0.76rem; }
+    .soon { font-size: 0.66rem; padding: 4px 6px; white-space: normal; }
+    .plan-table thead .col-pro { border-radius: 14px 14px 0 0; }
+    .plan-table tbody tr:last-child .col-pro { border-radius: 0 0 14px 14px; }
+}
+
+/* Pro as its own page: clear the fixed header, fill the screen */
+.pro-page {
+    min-height: 100dvh;
+    padding-top: 140px;
+}
+
+.nav-link.active { color: var(--color-text); }
+
+/* Plan header: both columns start at the top so name, price and button line up */
+.plan-table thead th { vertical-align: top; }
+.plan-table .col-feat { width: 48%; }
+.plan-table .col-free { width: 22%; }
+.plan-table .col-pro { width: 30%; }
+.plan-price {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 10px;
+}
+/* Launch price: the regular price, struck through, before it */
+.plan-was {
+    font-size: 0.5em;
+    font-weight: 600;
+    letter-spacing: 0;
+    color: var(--color-text-secondary);
+    text-decoration-thickness: 1.5px;
+}
+.plan-deal {
+    margin-top: 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--pro-accent);
+}
+@media (max-width: 680px) {
+    .plan-table .col-feat { width: 42%; }
+    .plan-table .col-free { width: 25%; }
+    .plan-table .col-pro { width: 33%; }
+    .plan-price { gap: 5px; }
+    .plan-deal { font-size: 0.68rem; margin-top: 8px; }
+}
+
+/* Light theme: the Pro column is a white card with the purple outline, not a grey-violet tint */
+html:not([data-theme="dark"]) .plan-table .col-pro { background: #FFFFFF; }
+
+/* Under the buy button: where people who already paid get the app */
+.plan-have {
+    display: block;
+    margin-top: 10px;
+    font-size: 0.78rem;
+    color: var(--color-text-secondary);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.plan-have:hover { color: var(--color-text); }
