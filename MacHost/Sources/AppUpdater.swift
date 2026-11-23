@@ -45,6 +45,8 @@ enum AppInfo {
 
     static let website = URL(string: "https://sidescreen.dev")!
     static let donate = URL(string: "https://sidescreen.dev/donate.html")!
+    /// The SideScreen Pro page ("Upgrade to Pro" in About).
+    static let pro = URL(string: "https://sidescreen.dev/pro.html")!
     static let github = URL(string: "https://github.com/tranvuongquocdat/SideScreen")!
     static let changelog = URL(string: "https://github.com/tranvuongquocdat/SideScreen/blob/main/CHANGELOG.md")!
     static let reportProblem = URL(string: "https://github.com/tranvuongquocdat/SideScreen/issues/new/choose")!

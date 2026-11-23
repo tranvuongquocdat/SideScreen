@@ -70,13 +70,40 @@ struct VisualEffectBlur: NSViewRepresentable {
 
 // MARK: - Settings View
 
+/// The pages of the settings window, in sidebar order.
+enum SettingsPane: String, CaseIterable, Identifiable {
+    case overview, display, audio, connection, general, about
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .overview: return "Overview"
+        case .display: return "Display"
+        case .audio: return "Audio"
+        case .connection: return "Connection"
+        case .general: return "General"
+        case .about: return "About"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .overview: return "house"
+        case .display: return "display"
+        case .audio: return "speaker.wave.2"
+        case .connection: return "network"
+        case .general: return "gearshape"
+        case .about: return "info.circle"
+        }
+    }
+}
+
 struct SettingsView: View {
     @ObservedObject var settings: DisplaySettings
     @ObservedObject var updater = AppUpdater.shared
-    @State private var showPermissionAlert = false
+    @State private var pane: SettingsPane = .overview
     @State private var showResetConfirmation = false
-    @State private var showAbout = false
-    @State private var showAboutFromLogo = false
     @State private var headerHovered = false
     // Plain strings for the custom resolution fields: TextField(value:format:)
     // only commits on Return/focus-loss, so clicking Apply read stale values,
@@ -92,954 +119,1110 @@ struct SettingsView: View {
         return DisplaySettings.isValidCustomResolution(width: w, height: h)
     }
 
+    static let sidebarWidth: CGFloat = 236
+    /// The width of the old single-column window, so every box lays out
+    /// exactly as it always has.
+    static let contentWidth: CGFloat = 480
+    static let windowHeight: CGFloat = 768
+    /// The size the window opens at; also its narrowest. The content column
+    /// may grow to `maxContentWidth` when the window is dragged wider.
+    static var windowSize: NSSize { NSSize(width: sidebarWidth + 1 + contentWidth, height: windowHeight) }
+    static let maxContentWidth: CGFloat = 700
+    static let minWindowHeight: CGFloat = 520
+    static var minWindowSize: NSSize { NSSize(width: windowSize.width, height: minWindowHeight) }
+    static var maxWindowSize: NSSize { NSSize(width: sidebarWidth + 1 + maxContentWidth, height: 1100) }
+
     var body: some View {
         ZStack {
             VisualEffectBlur(material: .sidebar, blendingMode: .behindWindow)
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Header with frosted glass
-                HStack(spacing: 14) {
-                    // Logo: clicking it opens About, same as the ⓘ button.
-                    Button(action: { showAboutFromLogo.toggle() }) {
-                        Image(nsImage: NSApp.applicationIconImage)
-                            .resizable()
-                            .interpolation(.high)
-                            .frame(width: 56, height: 56)
-                            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-                            .shadow(color: Color.black.opacity(0.25), radius: 8, y: 4)
-                            .scaleEffect(headerHovered ? 1.05 : 1)
-                    }
-                    .buttonStyle(.plain)
-                    .help("About Side Screen")
-                    .animation(.spring(response: 0.3), value: headerHovered)
-                    .onHover { headerHovered = $0 }
-                    .popover(isPresented: $showAboutFromLogo, arrowEdge: .bottom) {
-                        AboutPopover(updater: updater)
-                    }
+                // Top band: who we are on the left, the page's name on the
+                // right. (The connection is chosen on the Display page.)
+                HStack(spacing: 0) {
+                    sidebarHeader
+                        .frame(width: Self.sidebarWidth)
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text("Side Screen")
-                                .font(.system(size: 20, weight: .bold, design: .rounded))
-                            Text("v\(AppInfo.version)")
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .foregroundColor(.secondary)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 2)
-                                .background { Capsule().fill(.ultraThinMaterial) }
-                        }
-                        Text("Turn your tablet into a second display")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.secondary)
-                    }
-
-                    Spacer()
-
-                    Button(action: { showAbout.toggle() }) {
-                        Image(systemName: "info")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.secondary)
-                            .frame(width: 28, height: 28)
-                            .background {
-                                Circle().fill(.ultraThinMaterial)
-                            }
-                    }
-                    .buttonStyle(.plain)
-                    .help("About Side Screen")
-                    .accessibilityLabel("About Side Screen")
-                    .popover(isPresented: $showAbout, arrowEdge: .bottom) {
-                        AboutPopover(updater: updater)
-                    }
-
-                    Button(action: { showResetConfirmation = true }) {
-                        Image(systemName: "arrow.counterclockwise")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                            .frame(width: 28, height: 28)
-                            .background {
-                                Circle().fill(.ultraThinMaterial)
-                            }
-                    }
-                    .buttonStyle(.plain)
-                    .help("Reset settings")
-                    .alert("Reset Settings", isPresented: $showResetConfirmation) {
-                        Button("Cancel", role: .cancel) { }
-                        Button("Reset", role: .destructive) {
-                            settings.resetToDefaults()
-                            if let window = NSApp.windows.first(where: { $0.title == "Side Screen" }) {
-                                window.center()
-                            }
-                        }
-                    } message: {
-                        Text("This will reset all settings to default values.")
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 18)
-                .background(.ultraThinMaterial)
-
-                Rectangle()
-                    .fill(Color.primary.opacity(0.06))
-                    .frame(height: 1)
-
-                // Connection mode picker — pinned, NOT scrollable.
-                HStack(spacing: 6) {
-                    ForEach(ConnectionMode.allCases, id: \.self) { mode in
-                        Button(action: { settings.connectionMode = mode }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: mode == .usb ? "cable.connector" : "wifi")
-                                Text(mode == .usb ? "USB" : "Wireless")
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                            .background(settings.connectionMode == mode ? Color.accentColor : Color.clear)
-                            .foregroundColor(settings.connectionMode == mode ? .white : .primary)
-                            .cornerRadius(6)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(4)
-                .background(.ultraThinMaterial)
-                .cornerRadius(8)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 10)
-                .background(.ultraThinMaterial)
-
-                Rectangle()
-                    .fill(Color.primary.opacity(0.06))
-                    .frame(height: 1)
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        // Display Configuration
-                        FrostedGroupBox(title: "Display Configuration", icon: "display") {
-                            VStack(alignment: .leading, spacing: 16) {
-                                // Resolution
-                                VStack(alignment: .leading, spacing: 8) {
-                                    HStack {
-                                        Text("Resolution")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.secondary)
-                                        Spacer()
-                                        Toggle("Show all", isOn: $settings.showAllResolutions)
-                                            .toggleStyle(.switch)
-                                            .controlSize(.mini)
-                                    }
-
-                                    ScrollView {
-                                        VStack(alignment: .leading, spacing: 0) {
-                                            if settings.showAllResolutions {
-                                                // Custom (Apply) values aren't in any preset group —
-                                                // surface them so the selection is visible in the list.
-                                                if !DisplaySettings.allResolutions.contains(settings.resolution) {
-                                                    HStack(spacing: 6) {
-                                                        Text("Custom")
-                                                            .font(.system(size: 11, weight: .semibold))
-                                                        Text("User defined")
-                                                            .font(.system(size: 10))
-                                                            .foregroundColor(.secondary)
-                                                    }
-                                                    .padding(.horizontal, 12)
-                                                    .padding(.vertical, 6)
-                                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                                    .background(Color.primary.opacity(0.03))
-
-                                                    ResolutionRow(resolution: settings.resolution, isSelected: true) {}
-                                                }
-                                                ForEach(DisplaySettings.resolutionGroups) { group in
-                                                    HStack(spacing: 6) {
-                                                        Text(group.name)
-                                                            .font(.system(size: 11, weight: .semibold))
-                                                        Text(group.ratio)
-                                                            .font(.system(size: 10))
-                                                            .foregroundColor(.secondary)
-                                                    }
-                                                    .padding(.horizontal, 12)
-                                                    .padding(.vertical, 6)
-                                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                                    .background(Color.primary.opacity(0.03))
-
-                                                    ForEach(group.resolutions, id: \.self) { res in
-                                                        ResolutionRow(resolution: res, isSelected: settings.resolution == res) {
-                                                            settings.resolution = res
-                                                        }
-                                                    }
-                                                }
-                                            } else {
-                                                ForEach(DisplaySettings.commonResolutions, id: \.self) { res in
-                                                    ResolutionRow(resolution: res, isSelected: settings.resolution == res) {
-                                                        settings.resolution = res
-                                                    }
-                                                }
-                                                // Current selection from the full list or a custom
-                                                // Apply — keep it visible in the compact list too.
-                                                if !DisplaySettings.commonResolutions.contains(settings.resolution) {
-                                                    ResolutionRow(resolution: settings.resolution, isSelected: true) {}
-                                                }
-                                            }
-                                        }
-                                    }
-                                    .frame(height: settings.showAllResolutions ? 180 : 140)
-                                    .background(.ultraThinMaterial)
-                                    .cornerRadius(8)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-                                    )
-
-                                    if settings.showAllResolutions {
-                                        HStack(spacing: 8) {
-                                            TextField("W", text: $customWidthText)
-                                                .textFieldStyle(.roundedBorder)
-                                                .frame(width: 70)
-                                            Text("x")
-                                                .foregroundColor(.secondary)
-                                            TextField("H", text: $customHeightText)
-                                                .textFieldStyle(.roundedBorder)
-                                                .frame(width: 70)
-                                            Button("Apply") {
-                                                guard customResolutionValid,
-                                                      let w = customWidthValue,
-                                                      let h = customHeightValue else { return }
-                                                settings.customWidth = w
-                                                settings.customHeight = h
-                                                settings.applyCustomResolution()
-                                            }
-                                            .buttonStyle(.bordered)
-                                            .controlSize(.small)
-                                            .disabled(!customResolutionValid)
-                                        }
-                                        .onAppear {
-                                            customWidthText = String(settings.customWidth)
-                                            customHeightText = String(settings.customHeight)
-                                        }
-                                        if !customResolutionValid {
-                                            Text("Supported range: 640–7680 × 480–4320")
-                                                .font(.system(size: 10))
-                                                .foregroundColor(.orange)
-                                        }
-                                    }
-                                }
-
-                                // HiDPI (Retina)
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("HiDPI (Retina)")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.secondary)
-                                        Text("Renders at 2× resolution for sharper text. Increases bandwidth.")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.secondary.opacity(0.7))
-                                    }
-                                    Spacer()
-                                    Toggle("", isOn: $settings.hiDPI)
-                                        .toggleStyle(.switch)
-                                        .controlSize(.mini)
-                                        .disabled(settings.isRunning)
-                                }
-
-                                // Rotation
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Rotation")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
-
-                                    HStack(spacing: 12) {
-                                        ZStack {
-                                            RoundedRectangle(cornerRadius: 4)
-                                                .stroke(Color.accentColor.opacity(0.5), lineWidth: 1)
-                                                .frame(width: 80, height: 50)
-                                                .scaleEffect(x: settings.flipHorizontal ? -1 : 1, y: settings.flipVertical ? -1 : 1)
-                                                .rotationEffect(.degrees(Double(settings.rotation)))
-
-                                            Text(settings.rotation == 90 || settings.rotation == 270 ? "Portrait" : "Landscape")
-                                                .font(.system(size: 8))
-                                                .foregroundColor(.secondary)
-                                        }
-                                        .frame(width: 100, height: 80)
-
-                                        VStack(spacing: 6) {
-                                            HStack(spacing: 6) {
-                                                RotationButton(degrees: 270, label: "270", isSelected: settings.rotation == 270) {
-                                                    settings.rotation = 270
-                                                }
-                                                RotationButton(degrees: 0, label: "0", isSelected: settings.rotation == 0) {
-                                                    settings.rotation = 0
-                                                }
-                                                RotationButton(degrees: 90, label: "90", isSelected: settings.rotation == 90) {
-                                                    settings.rotation = 90
-                                                }
-                                            }
-                                            HStack(spacing: 6) {
-                                                Spacer()
-                                                RotationButton(degrees: 180, label: "180", isSelected: settings.rotation == 180) {
-                                                    settings.rotation = 180
-                                                }
-                                                Spacer()
-                                            }
-                                        }
-                                    }
-
-                                    if settings.rotation == 90 || settings.rotation == 270 {
-                                        Text("Display will be in portrait mode")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.accentColor)
-                                    }
-
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        HStack {
-                                            VStack(alignment: .leading, spacing: 2) {
-                                                Text("Flip Horizontally")
-                                                    .font(.system(size: 11))
-                                                    .foregroundColor(.secondary)
-                                                Text("Mirror left and right")
-                                                    .font(.system(size: 10))
-                                                    .foregroundColor(.secondary.opacity(0.7))
-                                            }
-                                            Spacer()
-                                            Toggle("", isOn: $settings.flipHorizontal)
-                                                .toggleStyle(.switch)
-                                                .controlSize(.mini)
-                                        }
-
-                                        HStack {
-                                            VStack(alignment: .leading, spacing: 2) {
-                                                Text("Flip Vertically")
-                                                    .font(.system(size: 11))
-                                                    .foregroundColor(.secondary)
-                                                Text("Mirror top and bottom")
-                                                    .font(.system(size: 10))
-                                                    .foregroundColor(.secondary.opacity(0.7))
-                                            }
-                                            Spacer()
-                                            Toggle("", isOn: $settings.flipVertical)
-                                                .toggleStyle(.switch)
-                                                .controlSize(.mini)
-                                        }
-                                    }
-                                    .padding(.top, 4)
-
-                                    HStack {
-                                        Spacer()
-                                        Button(action: {
-                                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.displays?displayArrangement")!)
-                                        }) {
-                                            HStack(spacing: 4) {
-                                                Image(systemName: "rectangle.connected.to.line.below")
-                                                Text("Arrange Displays…")
-                                            }
-                                        }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
-                                    }
-                                    .padding(.top, 10)
-                                }
-
-                            }
-                        }
-
-                        // Refresh Rate (own block)
-                        FrostedGroupBox(title: "Refresh Rate", icon: "speedometer") {
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text("Frame Rate")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
-                                    Spacer()
-                                    Text("\(settings.refreshRate) Hz")
-                                        .font(.system(size: 11, weight: .medium))
-                                }
-
-                                HStack(spacing: 6) {
-                                    ForEach([30, 60, 90, 120], id: \.self) { rate in
-                                        BitrateButton(
-                                            label: "\(rate)",
-                                            value: rate,
-                                            currentValue: settings.refreshRate,
-                                            disabled: false
-                                        ) {
-                                            settings.refreshRate = rate
-                                        }
-                                    }
-                                }
-
-                                // Custom rate (issue #41): budget tablets can be
-                                // artifact-free below a preset but not at it —
-                                // let users find their panel's sweet spot.
-                                HStack(spacing: 8) {
-                                    Text("Custom")
-                                        .font(.system(size: 10))
-                                        .foregroundColor(.secondary)
-                                    Slider(
-                                        value: Binding(
-                                            get: { Double(settings.refreshRate) },
-                                            set: {
-                                                let rate = Int($0.rounded())
-                                                // Same-value stores still fire didSet +
-                                                // UserDefaults writes — skip them.
-                                                if rate != settings.refreshRate {
-                                                    settings.refreshRate = rate
-                                                }
-                                            }
-                                        ),
-                                        in: 15...120,
-                                        step: 1
-                                    )
-                                }
-
-                                if settings.refreshRate >= 90 {
-                                    Text("High refresh rate for smooth experience")
-                                        .font(.system(size: 10))
-                                        .foregroundColor(.green)
-                                } else if ![30, 60].contains(settings.refreshRate) {
-                                    Text("Custom rate — handy when a tablet shows artifacts above a certain FPS")
-                                        .font(.system(size: 10))
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                        }
-
-                        // Touch Control
-                        FrostedGroupBox(title: "Touch Control", icon: "hand.tap") {
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Enable Touch Input")
-                                            .font(.system(size: 12, weight: .medium))
-                                        Text("Control Mac from tablet touch")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.secondary)
-                                    }
-                                    Spacer()
-                                    Toggle("", isOn: $settings.touchEnabled)
-                                        .labelsHidden()
-                                }
-
-                                if !settings.touchEnabled {
-                                    Text("Touch input is disabled — tablet is display-only")
-                                        .font(.system(size: 10))
-                                        .foregroundColor(.orange)
-                                }
-                            }
-                        }
-
-                        // Network Settings (port — applies to both modes; listener binds on it)
-                        FrostedGroupBox(title: "Network Settings", icon: "network") {
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text("Server Port")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
-                                    Spacer()
-                                    TextField("Port", value: $settings.port, format: .number)
-                                        .textFieldStyle(.roundedBorder)
-                                        .frame(width: 80)
-                                        .disabled(settings.isRunning)
-                                }
-
-                                if settings.isRunning {
-                                    Text("Stop server to change port")
-                                        .font(.system(size: 10))
-                                        .foregroundColor(.orange)
-                                } else if settings.connectionMode == .wireless {
-                                    Text("Changing the port invalidates existing pairings — re-scan the QR on each tablet.")
-                                        .font(.system(size: 10))
-                                        .foregroundColor(.secondary)
-                                } else if settings.port != 54321 {
-                                    Text("Custom port set — Android client must use the same port.")
-                                        .font(.system(size: 10))
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                        }
-
-                        // Wireless-mode-only: QR + Paired Devices.
-                        if settings.connectionMode == .wireless {
-                            WirelessSection(settings: settings,
-                                            pairedDeviceStore: (NSApp.delegate as? AppDelegate)?.pairedDeviceStore ?? PairedDeviceStore())
-                        }
-
-                        // Startup / headless behaviour
-                        FrostedGroupBox(title: "Startup", icon: "power") {
-                            VStack(alignment: .leading, spacing: 12) {
-                                if #available(macOS 13.0, *) {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("Launch at Login")
-                                                .font(.system(size: 12, weight: .medium))
-                                            Text("Run SideScreen in the background automatically after you log in.")
-                                                .font(.system(size: 10))
-                                                .foregroundColor(.secondary)
-                                        }
-                                        Spacer()
-                                        Toggle("", isOn: Binding(
-                                            get: { daemonEnabled },
-                                            set: { newValue in
-                                                do {
-                                                    if newValue {
-                                                        try DaemonManager.shared.enable()
-                                                    } else {
-                                                        try DaemonManager.shared.disable()
-                                                    }
-                                                } catch {
-                                                    print("Daemon toggle failed: \(error)")
-                                                }
-                                                daemonEnabled = DaemonManager.shared.isEnabled
-                                            }
-                                        ))
-                                        .labelsHidden()
-                                    }
-                                    Divider()
-                                }
-
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Auto-start streaming on launch")
-                                            .font(.system(size: 12, weight: .medium))
-                                        Text("Start the server automatically when the app opens, so the tablet can connect without touching the Mac.")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.secondary)
-                                    }
-                                    Spacer()
-                                    Toggle("", isOn: $settings.autoStartStreamingOnLaunch)
-                                        .labelsHidden()
-                                }
-
-                                Divider()
-
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Startup mode")
-                                            .font(.system(size: 12, weight: .medium))
-                                        Text("Which connection mode to start in when auto-starting.")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.secondary)
-                                    }
-                                    Spacer()
-                                    Picker("", selection: $settings.startupMode) {
-                                        Text("USB").tag(ConnectionMode.usb)
-                                        Text("Wireless").tag(ConnectionMode.wireless)
-                                    }
-                                    .pickerStyle(.segmented)
-                                    .labelsHidden()
-                                    .frame(width: 150)
-                                    .disabled(!settings.autoStartStreamingOnLaunch)
-                                }
-                            }
-                        }
-                        .onAppear {
-                            if #available(macOS 13.0, *) {
-                                daemonEnabled = DaemonManager.shared.isEnabled
-                            }
-                        }
-
-                        // Gaming Boost
-                        FrostedGroupBox(title: "Gaming Boost", icon: settings.gamingBoost ? "bolt.fill" : "bolt") {
-                            VStack(alignment: .leading, spacing: 16) {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Enable Gaming Mode")
-                                            .font(.system(size: 12, weight: .medium))
-                                        Text("Optimized for competitive gaming")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.secondary)
-                                    }
-                                    Spacer()
-                                    Toggle("", isOn: $settings.gamingBoost)
-                                        .labelsHidden()
-                                }
-
-                                if settings.gamingBoost {
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        HStack(spacing: 4) {
-                                            Image(systemName: "checkmark.circle.fill")
-                                                .foregroundColor(.green)
-                                                .font(.system(size: 10))
-                                            Text("High bitrate (1000 Mbps)")
-                                                .font(.system(size: 11))
-                                        }
-                                        HStack(spacing: 4) {
-                                            Image(systemName: "checkmark.circle.fill")
-                                                .foregroundColor(.green)
-                                                .font(.system(size: 10))
-                                            Text("120 Hz refresh rate")
-                                                .font(.system(size: 11))
-                                        }
-                                        HStack(spacing: 4) {
-                                            Image(systemName: "checkmark.circle.fill")
-                                                .foregroundColor(.green)
-                                                .font(.system(size: 10))
-                                            Text("Ultra-low latency encoding")
-                                                .font(.system(size: 11))
-                                        }
-                                    }
-                                    .padding(.leading, 4)
-                                    .foregroundColor(.secondary)
-                                }
-                            }
-                        }
-
-                        // Streaming Settings
-                        FrostedGroupBox(title: "Streaming Settings", icon: "antenna.radiowaves.left.and.right") {
-                            VStack(alignment: .leading, spacing: 16) {
-                                // Bitrate
-                                VStack(alignment: .leading, spacing: 10) {
-                                    HStack {
-                                        Text("Bitrate")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.secondary)
-                                        Spacer()
-                                        Text("\(settings.effectiveBitrate) Mbps")
-                                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                                            .foregroundColor(.accentColor)
-                                    }
-
-                                    HStack(spacing: 6) {
-                                        BitrateButton(label: "100", value: 100, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
-                                            settings.bitrate = 100
-                                        }
-                                        BitrateButton(label: "300", value: 300, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
-                                            settings.bitrate = 300
-                                        }
-                                        BitrateButton(label: "500", value: 500, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
-                                            settings.bitrate = 500
-                                        }
-                                        BitrateButton(label: "1000", value: 1000, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
-                                            settings.bitrate = 1000
-                                        }
-                                        BitrateButton(label: "2000", value: 2000, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
-                                            settings.bitrate = 2000
-                                        }
-                                    }
-
-                                    HStack(spacing: 8) {
-                                        Text("20")
-                                            .font(.system(size: 9))
-                                            .foregroundColor(.secondary)
-                                        Slider(value: Binding(
-                                            get: { Double(settings.bitrate) },
-                                            set: { settings.bitrate = Int($0) }
-                                        ), in: 20...5000, step: 10)
-                                        .disabled(settings.gamingBoost)
-                                        Text("5000")
-                                            .font(.system(size: 9))
-                                            .foregroundColor(.secondary)
-                                    }
-
-                                    if settings.gamingBoost {
-                                        HStack(spacing: 4) {
-                                            Image(systemName: "bolt.fill")
-                                                .font(.system(size: 10))
-                                            Text("Locked at 1000 Mbps in Gaming Boost")
-                                                .font(.system(size: 10))
-                                        }
-                                        .foregroundColor(.orange)
-                                    }
-                                }
-
-                                // Quality
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Quality Preset")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
-
-                                    Picker("", selection: $settings.quality) {
-                                        Text("Ultra Low").tag("ultralow")
-                                        Text("Low").tag("low")
-                                        Text("Medium").tag("medium")
-                                        Text("High").tag("high")
-                                    }
-                                    .pickerStyle(.segmented)
-                                    .disabled(settings.gamingBoost)
-
-                                    if settings.gamingBoost {
-                                        Text("Quality locked to Ultra Low in Gaming Boost mode")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.orange)
-                                    } else if settings.quality == "ultralow" {
-                                        Text("Fastest encoding, lowest latency")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.green)
-                                    }
-                                }
-                            }
-                        }
-
-                        // Status
-                        FrostedGroupBox(title: "Status", icon: "checkmark.circle") {
-                            VStack(alignment: .leading, spacing: 12) {
-                                StatusRow(title: "Virtual Display",
-                                          status: settings.displayCreated ? "Active" : "Inactive",
-                                          color: settings.displayCreated ? .green : .secondary,
-                                          hint: "The macOS virtual display we render into. Created when you click Start; the tablet streams its pixels.")
-                                StatusRow(title: "Client Connected",
-                                          status: settings.clientConnected ? "Yes" : "No",
-                                          color: settings.clientConnected ? .green : .secondary,
-                                          hint: "Whether the Android client app currently has an active stream session.")
-                                StatusRow(
-                                    title: ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26 ? "Screen & System Audio" : "Screen Recording",
-                                    status: settings.hasScreenRecordingPermission ? "Granted" : "Required",
-                                    color: settings.hasScreenRecordingPermission ? .green : .red,
-                                    hint: "macOS privacy permission required to capture the virtual display. Grant in System Settings → Privacy & Security → Screen Recording."
-                                )
-                                StatusRow(title: "Accessibility",
-                                          status: settings.hasAccessibilityPermission ? "Granted" : "Optional",
-                                          color: settings.hasAccessibilityPermission ? .green : .orange,
-                                          hint: "Optional permission. Required only if you want touch/tap input from the tablet to control the Mac. Streaming works without it.")
-                                if settings.isRunning {
-                                    StatusRow(title: "Capture Method",
-                                              status: settings.captureMethod,
-                                              color: settings.captureMethod.contains("fallback") ? .orange : .green,
-                                              hint: "Which macOS API is currently capturing the virtual display. SCStream is the modern path; CGDisplayStream fallback activates if SCStream fails (e.g. on certain virtual display configs).")
-                                }
-
-                                // Mode-aware contextual rows
-                                Divider().padding(.vertical, 4)
-                                if settings.connectionMode == .usb {
-                                    StatusRow(title: "ADB installed",
-                                              status: settings.adbInstalled ? "Installed" : "Missing",
-                                              color: settings.adbInstalled ? .green : .red,
-                                              hint: "USB mode tunnels the TCP stream through the cable using `adb reverse`. Requires the `adb` command on the Mac. Searched paths: Homebrew, /usr/local/bin, ~/Library/Android/sdk/platform-tools, and PATH (`which adb`).")
-                                    if !settings.adbInstalled {
-                                        Text("brew install android-platform-tools")
-                                            .font(.system(size: 10, design: .monospaced))
-                                            .padding(6)
-                                            .background(Color.black.opacity(0.08))
-                                            .cornerRadius(4)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                            .textSelection(.enabled)
-                                    }
-                                    StatusRow(title: "ADB reverse",
-                                              status: settings.adbReverseConfigured ? "OK" : "Pending",
-                                              color: settings.adbReverseConfigured ? .green : .orange,
-                                              hint: "Whether `adb reverse tcp:\(settings.port) tcp:\(settings.port)` is currently configured. The Mac app sets this up automatically when you click Start. Goes green within ~2 seconds after the tablet is plugged in and authorized.")
-                                    StatusRow(title: "USB device",
-                                              status: settings.usbDeviceConnected ? "Detected" : "Not detected",
-                                              color: settings.usbDeviceConnected ? .green : .red,
-                                              hint: "An Android device authorized for ADB and visible to your Mac. Plug in via USB-C and tap Allow on the device's USB debugging prompt.")
-                                } else {
-                                    StatusRow(title: "WiFi",
-                                              status: settings.wifiConnected ? "Connected" : "Disconnected",
-                                              color: settings.wifiConnected ? .green : .red,
-                                              hint: "Whether the Mac currently has a working internet route. Wireless mode requires the Mac to be on a WiFi (or Ethernet) network — the same network the tablet is on.")
-                                    StatusRow(title: "Listening on",
-                                              status: settings.listeningAddress.map { "\($0):\(settings.port)" } ?? "—",
-                                              color: settings.listeningAddress != nil ? .green : .secondary,
-                                              hint: "The LAN address the tablet must reach. The QR code embeds this exact host:port — if it changes (e.g. you switch WiFi), re-scan the new QR on the tablet.")
-                                }
-
-                                if !settings.hasScreenRecordingPermission {
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: "exclamationmark.triangle.fill")
-                                                .foregroundColor(.orange)
-                                            Text(ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26 ? "Screen & System Audio Recording Required" : "Screen Recording Required")
-                                                .font(.system(size: 12, weight: .medium))
-                                        }
-                                        Text(ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26
-                                            ? "Required to capture the virtual display. Go to System Settings > Privacy & Security > Screen & System Audio Recording."
-                                            : "Required to capture the virtual display.")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.secondary)
-                                        Button(action: {
-                                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
-                                        }) {
-                                            HStack {
-                                                Image(systemName: "gear")
-                                                Text("Open System Settings")
-                                            }
-                                        }
-                                        .buttonStyle(.borderedProminent)
-                                        .controlSize(.small)
-                                    }
-                                    .padding(10)
-                                    .background(Color.orange.opacity(0.1))
-                                    .cornerRadius(8)
-                                }
-
-                                if !settings.displaysHaveSeparateSpaces {
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: "exclamationmark.triangle.fill")
-                                                .foregroundColor(.orange)
-                                            Text("Tablet goes black in fullscreen apps")
-                                                .font(.system(size: 12, weight: .medium))
-                                        }
-                                        Text("\"Displays have separate Spaces\" is turned off, so macOS blanks every other display — including the tablet — whenever an app enters fullscreen. Turn it on in System Settings → Desktop & Dock → Mission Control, then log out and back in.")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.secondary)
-                                            .fixedSize(horizontal: false, vertical: true)
-                                        Button(action: {
-                                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Desktop-Settings.extension")!)
-                                        }) {
-                                            HStack {
-                                                Image(systemName: "gear")
-                                                Text("Open System Settings")
-                                            }
-                                        }
-                                        .buttonStyle(.borderedProminent)
-                                        .controlSize(.small)
-                                    }
-                                    .padding(10)
-                                    .background(Color.orange.opacity(0.1))
-                                    .cornerRadius(8)
-                                }
-
-                                if !settings.hasAccessibilityPermission {
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: "hand.tap.fill")
-                                                .foregroundColor(.blue)
-                                            Text("Enable Touch Control")
-                                                .font(.system(size: 12, weight: .medium))
-                                        }
-                                        Text("Control your Mac from your tablet.")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.secondary)
-                                        Button(action: {
-                                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
-                                        }) {
-                                            HStack {
-                                                Image(systemName: "gear")
-                                                Text("Open Settings")
-                                            }
-                                            .frame(maxWidth: .infinity)
-                                        }
-                                        .buttonStyle(.borderedProminent)
-                                        .controlSize(.small)
-                                    }
-                                    .padding(10)
-                                    .background(Color.blue.opacity(0.08))
-                                    .cornerRadius(8)
-                                }
-                            }
-                        }
-
-                        // Performance (when connected)
-                        if settings.clientConnected {
-                            FrostedGroupBox(title: "Performance", icon: "speedometer") {
-                                HStack {
-                                    VStack(alignment: .leading) {
-                                        Text("FPS")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.secondary)
-                                        Text(String(format: "%.1f", settings.currentFPS))
-                                            .font(.system(size: 16, weight: .semibold))
-                                            .foregroundColor(.green)
-                                    }
-                                    Spacer()
-                                    VStack(alignment: .leading) {
-                                        Text("Bitrate")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.secondary)
-                                        Text(String(format: "%.1f Mbps", settings.currentBitrate))
-                                            .font(.system(size: 16, weight: .semibold))
-                                            .foregroundColor(.accentColor)
-                                    }
-                                }
-                            }
-                        }
-
-                    }
-                    .padding(20)
-                }
-
-                // Footer
-                VStack(spacing: 0) {
                     Rectangle()
                         .fill(Color.primary.opacity(0.06))
-                        .frame(height: 1)
+                        .frame(width: 1)
 
-                    HStack(spacing: 12) {
-                        Button(action: {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                settings.toggleServer()
-                            }
-                        }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: settings.isRunning ? "stop.fill" : "play.fill")
-                                    .font(.system(size: 12))
-                                Text(settings.isRunning ? "Stop" : "Start")
-                                    .font(.system(size: 13, weight: .medium))
-                            }
-                            .frame(width: 90)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(settings.isRunning ? .red : .accentColor)
-                        .controlSize(.large)
-                        .disabled(!settings.hasScreenRecordingPermission)
-
-                        if settings.isRunning {
-                            HStack(spacing: 6) {
-                                Circle()
-                                    .fill(Color.green)
-                                    .frame(width: 8, height: 8)
-                                    .overlay {
-                                        Circle()
-                                            .stroke(Color.green.opacity(0.3), lineWidth: 2)
-                                            .scaleEffect(1.5)
-                                    }
-                                Text("Running on port \(settings.port)")
-                                    .font(.system(size: 12))
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background {
-                                Capsule().fill(.ultraThinMaterial)
-                                    .overlay {
-                                        Capsule().strokeBorder(Color.green.opacity(0.2), lineWidth: 1)
-                                    }
-                            }
-                            .transition(.scale.combined(with: .opacity))
-                        }
-
-                        Spacer()
-
-                        // Restart button
-                        Button(action: {
-                            restartApp()
-                        }) {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.secondary)
-                                .frame(width: 32, height: 32)
-                                .background {
-                                    Circle().fill(.ultraThinMaterial)
-                                        .overlay {
-                                            Circle().strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-                                        }
-                                }
-                        }
-                        .buttonStyle(.plain)
-                        .help("Restart App")
-
-                        // Quit button
-                        Button(action: {
-                            NSApp.terminate(nil)
-                        }) {
-                            Image(systemName: "power")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.secondary)
-                                .frame(width: 32, height: 32)
-                                .background {
-                                    Circle().fill(.ultraThinMaterial)
-                                        .overlay {
-                                            Circle().strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-                                        }
-                                }
-                        }
-                        .buttonStyle(.plain)
-                        .help("Quit Side Screen (⌘Q)")
+                    HStack(spacing: 10) {
+                        Image(systemName: pane.icon)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(.accentColor)
+                            .frame(width: 26)
+                        Text(pane.title)
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                        Spacer(minLength: 0)
                     }
                     .padding(.horizontal, 20)
-                    .padding(.vertical, 14)
-                    .background(.ultraThinMaterial)
+                    .frame(minWidth: Self.contentWidth, maxWidth: .infinity)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .background(.ultraThinMaterial)
+
+                Rectangle()
+                    .fill(Color.primary.opacity(0.06))
+                    .frame(height: 1)
+
+                HStack(spacing: 0) {
+                    sidebar
+                        .frame(width: Self.sidebarWidth)
+
+                    Rectangle()
+                        .fill(Color.primary.opacity(0.06))
+                        .frame(width: 1)
+
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            paneContent
+                        }
+                        .padding(20)
+                    }
+                    .frame(minWidth: Self.contentWidth, maxWidth: .infinity)
+                    // A fresh scroll position for every page.
+                    .id(pane)
+                }
+            }
+
+            // Resize grip: the window can be dragged bigger, say so.
+            ResizeGrip()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .padding(5)
+                .allowsHitTesting(false)
+        }
+        .frame(minWidth: Self.windowSize.width, maxWidth: Self.maxWindowSize.width,
+               minHeight: Self.minWindowHeight, maxHeight: Self.maxWindowSize.height)
+    }
+
+    private func select(_ item: SettingsPane) {
+        // No animation: a page is several frosted boxes, and animating the
+        // swap re-lays them out on every frame.
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { pane = item }
+    }
+
+    // MARK: - Top band and sidebar
+
+    private var sidebarHeader: some View {
+        // App identity: logo, name, version, slogan. Clicking it opens About.
+        Button(action: { select(.about) }) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 48, height: 48)
+                        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                        .shadow(color: Color.black.opacity(0.25), radius: 8, y: 4)
+                        .scaleEffect(headerHovered ? 1.05 : 1)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text("Side Screen")
+                                .font(.system(size: 17, weight: .bold, design: .rounded))
+                                .fixedSize()
+                            FreeBadge()
+                        }
+                        Text("v\(AppInfo.version)")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                Text("Turn your tablet into a second display")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("About Side Screen")
+        .animation(.spring(response: 0.3), value: headerHovered)
+        .onHover { headerHovered = $0 }
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 16)
+    }
+
+    private var sidebar: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 3) {
+                ForEach(SettingsPane.allCases) { item in
+                    if item == .general {
+                        Rectangle()
+                            .fill(Color.primary.opacity(0.06))
+                            .frame(height: 1)
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 6)
+                    }
+                    SidebarItem(pane: item, isSelected: pane == item) { select(item) }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
+
+            Spacer(minLength: 0)
+
+            // Footer: Start/Stop and the running capsule.
+            VStack(spacing: 0) {
+                Rectangle()
+                    .fill(Color.primary.opacity(0.06))
+                    .frame(height: 1)
+
+                VStack(spacing: 10) {
+                    if settings.isRunning {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 8, height: 8)
+                                .overlay {
+                                    Circle()
+                                        .stroke(Color.green.opacity(0.3), lineWidth: 2)
+                                        .scaleEffect(1.5)
+                                }
+                            Text("Running on port \(settings.port)")
+                                .font(.system(size: 12))
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background {
+                            Capsule().fill(.ultraThinMaterial)
+                                .overlay {
+                                    Capsule().strokeBorder(Color.green.opacity(0.2), lineWidth: 1)
+                                }
+                        }
+                        .transition(.scale.combined(with: .opacity))
+                    }
+
+                    Button(action: {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            settings.toggleServer()
+                        }
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: settings.isRunning ? "stop.fill" : "play.fill")
+                                .font(.system(size: 12))
+                            Text(settings.isRunning ? "Stop" : "Start")
+                                .font(.system(size: 13, weight: .medium))
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(settings.isRunning ? .red : .accentColor)
+                    .controlSize(.large)
+                    .disabled(!settings.hasScreenRecordingPermission)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+            }
+        }
+        .background(.ultraThinMaterial)
+    }
+
+    // MARK: - Pages
+
+    @ViewBuilder
+    private var paneContent: some View {
+        switch pane {
+        case .overview: overviewPane
+        case .display: displayPane
+        case .audio: audioPane
+        case .connection: connectionPane
+        case .general: generalPane
+        case .about: AboutContent(updater: updater)
+        }
+    }
+
+    @ViewBuilder
+    private var overviewPane: some View {
+        // Status
+        FrostedGroupBox(title: "Status", icon: "checkmark.circle") {
+            VStack(alignment: .leading, spacing: 12) {
+                StatusRow(title: "Virtual Display",
+                          status: settings.displayCreated ? "Active" : "Inactive",
+                          color: settings.displayCreated ? .green : .secondary,
+                          hint: "The macOS virtual display we render into. Created when you click Start; the tablet streams its pixels.")
+                StatusRow(title: "Client Connected",
+                          status: settings.clientConnected ? "Yes" : "No",
+                          color: settings.clientConnected ? .green : .secondary,
+                          hint: "Whether the Android client app currently has an active stream session.")
+                StatusRow(
+                    title: ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26 ? "Screen & System Audio" : "Screen Recording",
+                    status: settings.hasScreenRecordingPermission ? "Granted" : "Required",
+                    color: settings.hasScreenRecordingPermission ? .green : .red,
+                    hint: "macOS privacy permission required to capture the virtual display. Grant in System Settings → Privacy & Security → Screen Recording."
+                )
+                StatusRow(title: "Accessibility",
+                          status: settings.hasAccessibilityPermission ? "Granted" : "Optional",
+                          color: settings.hasAccessibilityPermission ? .green : .orange,
+                          hint: "Optional permission. Required only if you want touch/tap input from the tablet to control the Mac. Streaming works without it.")
+                if settings.isRunning {
+                    StatusRow(title: "Capture Method",
+                              status: settings.captureMethod,
+                              color: settings.captureMethod.contains("fallback") ? .orange : .green,
+                              hint: "Which macOS API is currently capturing the virtual display. SCStream is the modern path; CGDisplayStream fallback activates if SCStream fails (e.g. on certain virtual display configs).")
+                }
+
+                // Mode-aware contextual rows
+                Divider().padding(.vertical, 4)
+                if settings.connectionMode == .usb {
+                    StatusRow(title: "ADB installed",
+                              status: settings.adbInstalled ? "Installed" : "Missing",
+                              color: settings.adbInstalled ? .green : .red,
+                              hint: "USB mode tunnels the TCP stream through the cable using `adb reverse`. Requires the `adb` command on the Mac. Searched paths: Homebrew, /usr/local/bin, ~/Library/Android/sdk/platform-tools, and PATH (`which adb`).")
+                    if !settings.adbInstalled {
+                        Text("brew install android-platform-tools")
+                            .font(.system(size: 10, design: .monospaced))
+                            .padding(6)
+                            .background(Color.black.opacity(0.08))
+                            .cornerRadius(4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                    }
+                    StatusRow(title: "ADB reverse",
+                              status: settings.adbReverseConfigured ? "OK" : "Pending",
+                              color: settings.adbReverseConfigured ? .green : .orange,
+                              hint: "Whether `adb reverse tcp:\(settings.port) tcp:\(settings.port)` is currently configured. The Mac app sets this up automatically when you click Start. Goes green within ~2 seconds after the tablet is plugged in and authorized.")
+                    StatusRow(title: "USB device",
+                              status: settings.usbDeviceConnected ? "Detected" : "Not detected",
+                              color: settings.usbDeviceConnected ? .green : .red,
+                              hint: "An Android device authorized for ADB and visible to your Mac. Plug in via USB-C and tap Allow on the device's USB debugging prompt.")
+                } else {
+                    StatusRow(title: "WiFi",
+                              status: settings.wifiConnected ? "Connected" : "Disconnected",
+                              color: settings.wifiConnected ? .green : .red,
+                              hint: "Whether the Mac currently has a working internet route. Wireless mode requires the Mac to be on a WiFi (or Ethernet) network — the same network the tablet is on.")
+                    StatusRow(title: "Listening on",
+                              status: settings.listeningAddress.map { "\($0):\(settings.port)" } ?? "—",
+                              color: settings.listeningAddress != nil ? .green : .secondary,
+                              hint: "The LAN address the tablet must reach. The QR code embeds this exact host:port — if it changes (e.g. you switch WiFi), re-scan the new QR on the tablet.")
+                }
+
+                if !settings.hasScreenRecordingPermission {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                            Text(ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26 ? "Screen & System Audio Recording Required" : "Screen Recording Required")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        Text(ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26
+                            ? "Required to capture the virtual display. Go to System Settings > Privacy & Security > Screen & System Audio Recording."
+                            : "Required to capture the virtual display.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        Button(action: {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+                        }) {
+                            HStack {
+                                Image(systemName: "gear")
+                                Text("Open System Settings")
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
+                    .padding(10)
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(8)
+                }
+
+                if !settings.displaysHaveSeparateSpaces {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                            Text("Tablet goes black in fullscreen apps")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        Text("\"Displays have separate Spaces\" is turned off, so macOS blanks every other display — including the tablet — whenever an app enters fullscreen. Turn it on in System Settings → Desktop & Dock → Mission Control, then log out and back in.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button(action: {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Desktop-Settings.extension")!)
+                        }) {
+                            HStack {
+                                Image(systemName: "gear")
+                                Text("Open System Settings")
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
+                    .padding(10)
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(8)
+                }
+
+                if !settings.hasAccessibilityPermission {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "hand.tap.fill")
+                                .foregroundColor(.blue)
+                            Text("Enable Touch Control")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        Text("Control your Mac from your tablet.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        Button(action: {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                        }) {
+                            HStack {
+                                Image(systemName: "gear")
+                                Text("Open Settings")
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
+                    .padding(10)
+                    .background(Color.blue.opacity(0.08))
+                    .cornerRadius(8)
                 }
             }
         }
-        .frame(width: 480, height: 780)
+
+        // Performance (when connected)
+        if settings.clientConnected {
+            FrostedGroupBox(title: "Performance", icon: "speedometer") {
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text("FPS")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                        Text(String(format: "%.1f", settings.currentFPS))
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.green)
+                    }
+                    Spacer()
+                    VStack(alignment: .leading) {
+                        Text("Bitrate")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                        Text(String(format: "%.1f Mbps", settings.currentBitrate))
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.accentColor)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var displayPane: some View {
+        FrostedGroupBox(title: "Display Configuration", icon: "display") {
+            VStack(alignment: .leading, spacing: 16) {
+                // Number of displays: more than one is part of Side Screen
+                // Pro. Shown, not selectable.
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("Number of displays")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        ProBadge()
+                        Spacer()
+                        // The system segmented control, stretched; 2 and 3
+                        // are there to be seen, not chosen.
+                        WideSegmentedControl(labels: ["1", "2", "3"], selectedIndex: .constant(0), enabledCount: 1)
+                            .frame(width: 200, height: 24)
+                            .help("Two or three tablets at once are part of SideScreen Pro")
+                    }
+                    Text("One tablet, one display. Two or three tablets at once, each as its own display, are part of SideScreen Pro.")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                // The display and the connection it takes.
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(settings.clientConnected ? Color.green : Color.secondary.opacity(0.3))
+                            .frame(width: 6, height: 6)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Side Screen")
+                                .font(.system(size: 11, weight: .medium))
+                            Text(settings.clientConnected
+                                 ? "Streaming to a tablet"
+                                 : (settings.isRunning ? "Waiting for a tablet" : "Not running"))
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        ConnectionModePicker(selection: settings.connectionMode) { settings.connectionMode = $0 }
+                            .help("How the tablet connects: by cable, or over Wi‑Fi")
+                        // Keeping a display for one particular tablet is part
+                        // of SideScreen Pro. Shown, not selectable.
+                        Picker("", selection: .constant("")) {
+                            Text("Automatic").tag("")
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .controlSize(.small)
+                        .frame(width: 124)
+                        .disabled(true)
+                        .help("Any tablet may connect. Keeping a display for one particular tablet is part of SideScreen Pro.")
+                    }
+                    .frame(minHeight: 22)
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.primary.opacity(0.04))
+                    )
+                    Text("The display takes one connection, USB or Wi‑Fi; changing it disconnects the tablet.")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary.opacity(0.7))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+
+        // Display Configuration
+        FrostedGroupBox(title: "Resolution & Orientation", icon: "slider.horizontal.3") {
+            VStack(alignment: .leading, spacing: 16) {
+                // Resolution
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Resolution")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Toggle("Show all", isOn: $settings.showAllResolutions)
+                            .toggleStyle(.switch)
+                            .controlSize(.mini)
+                    }
+
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            if settings.showAllResolutions {
+                                // Custom (Apply) values aren't in any preset group —
+                                // surface them so the selection is visible in the list.
+                                if !DisplaySettings.allResolutions.contains(settings.resolution) {
+                                    HStack(spacing: 6) {
+                                        Text("Custom")
+                                            .font(.system(size: 11, weight: .semibold))
+                                        Text("User defined")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(Color.primary.opacity(0.03))
+
+                                    ResolutionRow(resolution: settings.resolution, isSelected: true) {}
+                                }
+                                ForEach(DisplaySettings.resolutionGroups) { group in
+                                    HStack(spacing: 6) {
+                                        Text(group.name)
+                                            .font(.system(size: 11, weight: .semibold))
+                                        Text(group.ratio)
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(Color.primary.opacity(0.03))
+
+                                    ForEach(group.resolutions, id: \.self) { res in
+                                        ResolutionRow(resolution: res, isSelected: settings.resolution == res) {
+                                            settings.resolution = res
+                                        }
+                                    }
+                                }
+                            } else {
+                                ForEach(DisplaySettings.commonResolutions, id: \.self) { res in
+                                    ResolutionRow(resolution: res, isSelected: settings.resolution == res) {
+                                        settings.resolution = res
+                                    }
+                                }
+                                // Current selection from the full list or a custom
+                                // Apply — keep it visible in the compact list too.
+                                if !DisplaySettings.commonResolutions.contains(settings.resolution) {
+                                    ResolutionRow(resolution: settings.resolution, isSelected: true) {}
+                                }
+                            }
+                        }
+                    }
+                    .frame(height: settings.showAllResolutions ? 180 : 140)
+                    .background(.ultraThinMaterial)
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+                    )
+
+                    if settings.showAllResolutions {
+                        HStack(spacing: 8) {
+                            TextField("W", text: $customWidthText)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 70)
+                            Text("x")
+                                .foregroundColor(.secondary)
+                            TextField("H", text: $customHeightText)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 70)
+                            Button("Apply") {
+                                guard customResolutionValid,
+                                      let w = customWidthValue,
+                                      let h = customHeightValue else { return }
+                                settings.customWidth = w
+                                settings.customHeight = h
+                                settings.applyCustomResolution()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(!customResolutionValid)
+                        }
+                        .onAppear {
+                            customWidthText = String(settings.customWidth)
+                            customHeightText = String(settings.customHeight)
+                        }
+                        if !customResolutionValid {
+                            Text("Supported range: 640–7680 × 480–4320")
+                                .font(.system(size: 10))
+                                .foregroundColor(.orange)
+                        }
+                    }
+                }
+
+                // HiDPI (Retina)
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("HiDPI (Retina)")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        Text("Renders at 2× resolution for sharper text. Increases bandwidth.")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary.opacity(0.7))
+                    }
+                    Spacer()
+                    Toggle("", isOn: $settings.hiDPI)
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                        .disabled(settings.isRunning)
+                }
+
+                // Rotation
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Rotation")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+
+                    HStack(spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(Color.accentColor.opacity(0.5), lineWidth: 1)
+                                .frame(width: 80, height: 50)
+                                .scaleEffect(x: settings.flipHorizontal ? -1 : 1, y: settings.flipVertical ? -1 : 1)
+                                .rotationEffect(.degrees(Double(settings.rotation)))
+
+                            Text(settings.rotation == 90 || settings.rotation == 270 ? "Portrait" : "Landscape")
+                                .font(.system(size: 8))
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(width: 100, height: 80)
+
+                        VStack(spacing: 6) {
+                            HStack(spacing: 6) {
+                                RotationButton(degrees: 270, label: "270", isSelected: settings.rotation == 270) {
+                                    settings.rotation = 270
+                                }
+                                RotationButton(degrees: 0, label: "0", isSelected: settings.rotation == 0) {
+                                    settings.rotation = 0
+                                }
+                                RotationButton(degrees: 90, label: "90", isSelected: settings.rotation == 90) {
+                                    settings.rotation = 90
+                                }
+                            }
+                            HStack(spacing: 6) {
+                                Spacer()
+                                RotationButton(degrees: 180, label: "180", isSelected: settings.rotation == 180) {
+                                    settings.rotation = 180
+                                }
+                                Spacer()
+                            }
+                        }
+                    }
+
+                    if settings.rotation == 90 || settings.rotation == 270 {
+                        Text("Display will be in portrait mode")
+                            .font(.system(size: 10))
+                            .foregroundColor(.accentColor)
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Flip Horizontally")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                Text("Mirror left and right")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary.opacity(0.7))
+                            }
+                            Spacer()
+                            Toggle("", isOn: $settings.flipHorizontal)
+                                .toggleStyle(.switch)
+                                .controlSize(.mini)
+                        }
+
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Flip Vertically")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                Text("Mirror top and bottom")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary.opacity(0.7))
+                            }
+                            Spacer()
+                            Toggle("", isOn: $settings.flipVertical)
+                                .toggleStyle(.switch)
+                                .controlSize(.mini)
+                        }
+                    }
+                    .padding(.top, 4)
+
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.displays?displayArrangement")!)
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "rectangle.connected.to.line.below")
+                                Text("Arrange Displays…")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                    .padding(.top, 10)
+                }
+
+            }
+        }
+
+        // Refresh Rate (own block)
+        FrostedGroupBox(title: "Refresh Rate", icon: "speedometer") {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Frame Rate")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text("\(settings.refreshRate) Hz")
+                        .font(.system(size: 11, weight: .medium))
+                }
+
+                HStack(spacing: 6) {
+                    ForEach([30, 60, 90, 120], id: \.self) { rate in
+                        BitrateButton(
+                            label: "\(rate)",
+                            value: rate,
+                            currentValue: settings.refreshRate,
+                            disabled: false
+                        ) {
+                            settings.refreshRate = rate
+                        }
+                    }
+                }
+
+                // Custom rate (issue #41): budget tablets can be
+                // artifact-free below a preset but not at it —
+                // let users find their panel's sweet spot.
+                HStack(spacing: 8) {
+                    Text("Custom")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                    Slider(
+                        value: Binding(
+                            get: { Double(settings.refreshRate) },
+                            set: {
+                                let rate = Int($0.rounded())
+                                // Same-value stores still fire didSet +
+                                // UserDefaults writes — skip them.
+                                if rate != settings.refreshRate {
+                                    settings.refreshRate = rate
+                                }
+                            }
+                        ),
+                        in: 15...120,
+                        step: 1
+                    )
+                }
+
+                if settings.refreshRate >= 90 {
+                    Text("High refresh rate for smooth experience")
+                        .font(.system(size: 10))
+                        .foregroundColor(.green)
+                } else if ![30, 60].contains(settings.refreshRate) {
+                    Text("Custom rate — handy when a tablet shows artifacts above a certain FPS")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+
+        // Streaming Settings
+        FrostedGroupBox(title: "Streaming Settings", icon: "antenna.radiowaves.left.and.right") {
+            VStack(alignment: .leading, spacing: 16) {
+                // Bitrate
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("Bitrate")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("\(settings.effectiveBitrate) Mbps")
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            .foregroundColor(.accentColor)
+                    }
+
+                    HStack(spacing: 6) {
+                        BitrateButton(label: "100", value: 100, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
+                            settings.bitrate = 100
+                        }
+                        BitrateButton(label: "300", value: 300, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
+                            settings.bitrate = 300
+                        }
+                        BitrateButton(label: "500", value: 500, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
+                            settings.bitrate = 500
+                        }
+                        BitrateButton(label: "1000", value: 1000, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
+                            settings.bitrate = 1000
+                        }
+                        BitrateButton(label: "2000", value: 2000, currentValue: settings.bitrate, disabled: settings.gamingBoost) {
+                            settings.bitrate = 2000
+                        }
+                    }
+
+                    HStack(spacing: 8) {
+                        Text("20")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                        Slider(value: Binding(
+                            get: { Double(settings.bitrate) },
+                            set: { settings.bitrate = Int($0) }
+                        ), in: 20...5000, step: 10)
+                        .disabled(settings.gamingBoost)
+                        Text("5000")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                    }
+
+                    if settings.gamingBoost {
+                        HStack(spacing: 4) {
+                            Image(systemName: "bolt.fill")
+                                .font(.system(size: 10))
+                            Text("Locked at 1000 Mbps in Gaming Boost")
+                                .font(.system(size: 10))
+                        }
+                        .foregroundColor(.orange)
+                    }
+                }
+
+                // Quality
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Quality Preset")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+
+                    Picker("", selection: $settings.quality) {
+                        Text("Ultra Low").tag("ultralow")
+                        Text("Low").tag("low")
+                        Text("Medium").tag("medium")
+                        Text("High").tag("high")
+                    }
+                    .pickerStyle(.segmented)
+                    .disabled(settings.gamingBoost)
+
+                    if settings.gamingBoost {
+                        Text("Quality locked to Ultra Low in Gaming Boost mode")
+                            .font(.system(size: 10))
+                            .foregroundColor(.orange)
+                    } else if settings.quality == "ultralow" {
+                        Text("Fastest encoding, lowest latency")
+                            .font(.system(size: 10))
+                            .foregroundColor(.green)
+                    }
+                }
+            }
+        }
+
+        // Gaming Boost
+        FrostedGroupBox(title: "Gaming Boost", icon: settings.gamingBoost ? "bolt.fill" : "bolt") {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Enable Gaming Mode")
+                            .font(.system(size: 12, weight: .medium))
+                        Text("Optimized for competitive gaming")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $settings.gamingBoost)
+                        .labelsHidden()
+                }
+
+                if settings.gamingBoost {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                                .font(.system(size: 10))
+                            Text("High bitrate (1000 Mbps)")
+                                .font(.system(size: 11))
+                        }
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                                .font(.system(size: 10))
+                            Text("120 Hz refresh rate")
+                                .font(.system(size: 11))
+                        }
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                                .font(.system(size: 10))
+                            Text("Ultra-low latency encoding")
+                                .font(.system(size: 11))
+                        }
+                    }
+                    .padding(.leading, 4)
+                    .foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var audioPane: some View {
+        // Sound to the tablet is part of SideScreen Pro: shown, not selectable.
+        FrostedGroupBox(title: "Audio", icon: "speaker.wave.2", content: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Sound to the tablet")
+                            .font(.system(size: 12, weight: .medium))
+                        Text("Play what the Mac plays through the tablet's speakers.")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: .constant(false))
+                        .labelsHidden()
+                        .disabled(true)
+                }
+                Text("Sound to the tablet is part of SideScreen Pro.")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }, trailing: { ProBadge() })
+    }
+
+    @ViewBuilder
+    private var connectionPane: some View {
+        // Network Settings (port — applies to both modes; listener binds on it)
+        FrostedGroupBox(title: "Network Settings", icon: "network") {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Server Port")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    TextField("Port", value: $settings.port, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 80)
+                        .disabled(settings.isRunning)
+                }
+
+                if settings.isRunning {
+                    Text("Stop server to change port")
+                        .font(.system(size: 10))
+                        .foregroundColor(.orange)
+                } else if settings.connectionMode == .wireless {
+                    Text("Changing the port invalidates existing pairings — re-scan the QR on each tablet.")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                } else if settings.port != 54321 {
+                    Text("Custom port set — Android client must use the same port.")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+
+        // Wireless-mode-only: QR + Paired Devices.
+        if settings.connectionMode == .wireless {
+            WirelessSection(settings: settings,
+                            pairedDeviceStore: (NSApp.delegate as? AppDelegate)?.pairedDeviceStore ?? PairedDeviceStore())
+        }
+    }
+
+    @ViewBuilder
+    private var generalPane: some View {
+        // Startup / headless behaviour
+        FrostedGroupBox(title: "Startup", icon: "power") {
+            VStack(alignment: .leading, spacing: 12) {
+                if #available(macOS 13.0, *) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Launch at Login")
+                                .font(.system(size: 12, weight: .medium))
+                            Text("Run SideScreen in the background automatically after you log in.")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: Binding(
+                            get: { daemonEnabled },
+                            set: { newValue in
+                                do {
+                                    if newValue {
+                                        try DaemonManager.shared.enable()
+                                    } else {
+                                        try DaemonManager.shared.disable()
+                                    }
+                                } catch {
+                                    print("Daemon toggle failed: \(error)")
+                                }
+                                daemonEnabled = DaemonManager.shared.isEnabled
+                            }
+                        ))
+                        .labelsHidden()
+                    }
+                    Divider()
+                }
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Auto-start streaming on launch")
+                            .font(.system(size: 12, weight: .medium))
+                        Text("Start the server automatically when the app opens, so the tablet can connect without touching the Mac.")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $settings.autoStartStreamingOnLaunch)
+                        .labelsHidden()
+                }
+
+                Divider()
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Startup mode")
+                            .font(.system(size: 12, weight: .medium))
+                        Text("Which connection mode to start in when auto-starting.")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Picker("", selection: $settings.startupMode) {
+                        Text("USB").tag(ConnectionMode.usb)
+                        Text("Wireless").tag(ConnectionMode.wireless)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 150)
+                    .disabled(!settings.autoStartStreamingOnLaunch)
+                }
+            }
+        }
+        .onAppear {
+            if #available(macOS 13.0, *) {
+                daemonEnabled = DaemonManager.shared.isEnabled
+            }
+        }
+
+        // Touch Control
+        FrostedGroupBox(title: "Touch Control", icon: "hand.tap") {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Enable Touch Input")
+                            .font(.system(size: 12, weight: .medium))
+                        Text("Control Mac from tablet touch")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $settings.touchEnabled)
+                        .labelsHidden()
+                }
+
+                if !settings.touchEnabled {
+                    Text("Touch input is disabled — tablet is display-only")
+                        .font(.system(size: 10))
+                        .foregroundColor(.orange)
+                }
+            }
+        }
+
+        FrostedGroupBox(title: "App", icon: "macwindow") {
+            VStack(alignment: .leading, spacing: 12) {
+                appActionRow(title: "Restart Side Screen",
+                             detail: "Closes the app and opens it again.",
+                             button: "Restart") {
+                    restartApp()
+                }
+                Divider()
+                appActionRow(title: "Quit Side Screen",
+                             detail: "Stops streaming and closes the app (⌘Q).",
+                             button: "Quit") {
+                    NSApp.terminate(nil)
+                }
+                Divider()
+                appActionRow(title: "Reset settings",
+                             detail: "Puts every setting back to its default value.",
+                             button: "Reset…",
+                             role: .destructive) {
+                    showResetConfirmation = true
+                }
+            }
+        }
+        .alert("Reset Settings", isPresented: $showResetConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Reset", role: .destructive) {
+                settings.resetToDefaults()
+                if let window = NSApp.windows.first(where: { $0.title == "Side Screen" }) {
+                    window.center()
+                }
+            }
+        } message: {
+            Text("This will reset all settings to default values.")
+        }
+    }
+
+    // MARK: - Shared pieces
+
+    private func appActionRow(title: String, detail: String, button: String, role: ButtonRole? = nil, action: @escaping () -> Void) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                Text(detail)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+            Button(button, role: role, action: action)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+        }
     }
 
     /// Restart the app by launching a new instance and terminating current one
@@ -1067,55 +1250,269 @@ struct SettingsView: View {
 
 // MARK: - Supporting Views
 
-/// Header ⓘ popover: version, what the app is, links, support, credits.
-struct AboutPopover: View {
+/// The small "PRO" mark on a feature that belongs to SideScreen Pro.
+struct ProBadge: View {
+    var body: some View {
+        Text("PRO")
+            .font(.system(size: 9, weight: .heavy, design: .rounded))
+            .foregroundColor(.white)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(LinearGradient(colors: [Color(red: 0.48, green: 0.38, blue: 1.0), .accentColor],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+            }
+            .fixedSize()
+            .help("Part of SideScreen Pro")
+    }
+}
+
+/// The small "FREE" mark next to the app name.
+struct FreeBadge: View {
+    var body: some View {
+        Text("FREE")
+            .font(.system(size: 9, weight: .heavy, design: .rounded))
+            .foregroundColor(.secondary)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(Color.primary.opacity(0.1))
+            }
+            .fixedSize()
+    }
+}
+
+/// The native segmented control with equal segments filling whatever width it
+/// is given. Segments from `enabledCount` on are shown disabled.
+struct WideSegmentedControl: NSViewRepresentable {
+    let labels: [String]
+    @Binding var selectedIndex: Int
+    var enabledCount: Int?
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeNSView(context: Context) -> NSSegmentedControl {
+        let control = NSSegmentedControl(labels: labels, trackingMode: .selectOne,
+                                         target: context.coordinator, action: #selector(Coordinator.changed(_:)))
+        control.segmentDistribution = .fillEqually
+        control.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        control.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        control.selectedSegment = selectedIndex
+        for segment in labels.indices {
+            control.setEnabled(segment < (enabledCount ?? labels.count), forSegment: segment)
+        }
+        return control
+    }
+
+    func updateNSView(_ control: NSSegmentedControl, context: Context) {
+        context.coordinator.parent = self
+        if control.selectedSegment != selectedIndex {
+            control.selectedSegment = selectedIndex
+        }
+    }
+
+    final class Coordinator: NSObject {
+        var parent: WideSegmentedControl
+
+        init(_ parent: WideSegmentedControl) {
+            self.parent = parent
+        }
+
+        @objc func changed(_ sender: NSSegmentedControl) {
+            parent.selectedIndex = sender.selectedSegment
+        }
+    }
+}
+
+/// USB | Wi‑Fi for the display. The highlight slides between the two.
+struct ConnectionModePicker: View {
+    let selection: ConnectionMode
+    let onSelect: (ConnectionMode) -> Void
+    @Namespace private var highlight
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(ConnectionMode.allCases, id: \.self) { mode in
+                Button(action: { if mode != selection { onSelect(mode) } }) {
+                    Text(mode == .usb ? "USB" : "Wi‑Fi")
+                        .font(.system(size: 10, weight: selection == mode ? .semibold : .regular))
+                        .padding(.horizontal, 9)
+                        .frame(height: 20)
+                        .background {
+                            if selection == mode {
+                                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    .fill(Color(nsColor: .controlColor))
+                                    .shadow(color: Color.black.opacity(0.18), radius: 1, y: 0.5)
+                                    .matchedGeometryEffect(id: "highlight", in: highlight)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(2)
+        .background {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color.primary.opacity(0.08))
+        }
+        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: selection)
+        .fixedSize()
+    }
+}
+
+/// The classic three diagonal lines in the window's bottom-right corner.
+struct ResizeGrip: View {
+    var body: some View {
+        Canvas { context, size in
+            let w = size.width
+            for offset in stride(from: 3, through: w - 1, by: 4) {
+                var path = Path()
+                path.move(to: CGPoint(x: w, y: w - offset))
+                path.addLine(to: CGPoint(x: w - offset, y: w))
+                context.stroke(path, with: .color(.secondary.opacity(0.35)), lineWidth: 1)
+            }
+        }
+        .frame(width: 12, height: 12)
+        .help("Drag to resize")
+    }
+}
+
+/// One row of the settings sidebar.
+struct SidebarItem: View {
+    let pane: SettingsPane
+    let isSelected: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: pane.icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(isSelected ? .white : .accentColor)
+                    .frame(width: 20)
+                Text(pane.title)
+                    .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .foregroundColor(isSelected ? .white : .primary)
+            .background(isSelected ? Color.accentColor : Color.primary.opacity(hovering ? 0.06 : 0))
+            .cornerRadius(6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+    }
+}
+
+/// The About page: version and updates, what the app is, links, support, credits.
+struct AboutContent: View {
     @ObservedObject var updater: AppUpdater
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 12) {
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 52, height: 52)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .shadow(color: Color.black.opacity(0.25), radius: 8, y: 4)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text("Side Screen")
+                                .font(.system(size: 17, weight: .bold, design: .rounded))
+                            FreeBadge()
+                        }
+                        Text("Version \(AppInfo.version)")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Button("Check for Updates…") {
+                        AppUpdater.shared.checkForUpdates(nil)
+                    }
+                    .controlSize(.small)
+                    .disabled(!updater.canCheckForUpdates)
+                    .help(updater.canCheckForUpdates
+                          ? "Look for a newer version now. Side Screen also checks once a day."
+                          : "Update checks are only available in the released build.")
+                }
+
+                Divider()
+
+                Text("Turns an Android tablet or phone into a second display for your Mac — over USB or Wi‑Fi, with touch control. Free and open source.")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frostedCard()
+
+            // SideScreen Pro: what it adds, and the way to its page.
             HStack(spacing: 12) {
-                Image(nsImage: NSApp.applicationIconImage)
-                    .resizable()
-                    .frame(width: 44, height: 44)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Side Screen")
-                        .font(.system(size: 15, weight: .semibold))
-                    Text("Version \(AppInfo.version)")
-                        .font(.system(size: 12))
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text("SideScreen Pro")
+                            .font(.system(size: 12, weight: .semibold))
+                        ProBadge()
+                    }
+                    Text("Two or three tablets at once, each as its own display, and the Mac's sound on the tablet.")
+                        .font(.system(size: 11))
                         .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer()
-                Button("Check for Updates…") {
-                    AppUpdater.shared.checkForUpdates(nil)
+                Spacer(minLength: 0)
+                Link(destination: AppInfo.pro) {
+                    Text("Upgrade to Pro")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background { Capsule().fill(Color.accentColor) }
                 }
-                .disabled(!updater.canCheckForUpdates)
-                .help(updater.canCheckForUpdates
-                      ? "Look for a newer version now. Side Screen also checks once a day."
-                      : "Update checks are only available in the released build.")
+                .buttonStyle(.plain)
+                .help("Opens the SideScreen Pro page")
+            }
+            .frostedCard()
+
+            FrostedGroupBox(title: "Links", icon: "link") {
+                VStack(spacing: 10) {
+                    linkRow("Website", "sidescreen.dev", AppInfo.website)
+                    Divider()
+                    linkRow("GitHub", "Source code", AppInfo.github)
+                    Divider()
+                    linkRow("What's New", "Release notes", AppInfo.changelog)
+                    Divider()
+                    linkRow("Report a Problem", "Open an issue", AppInfo.reportProblem)
+                }
             }
 
-            Text("Turns an Android tablet or phone into a second display for your Mac — over USB or Wi‑Fi, with touch control. Free and open source.")
-                .font(.system(size: 12))
-                .foregroundColor(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            // Justified: first link flush left, last flush right, equal gaps between.
-            HStack(spacing: 0) {
-                Link("Website", destination: AppInfo.website)
-                Spacer()
-                Link("GitHub", destination: AppInfo.github)
-                Spacer()
-                Link("What's New", destination: AppInfo.changelog)
-                Spacer()
-                Link("Report a Problem", destination: AppInfo.reportProblem)
+            HStack(spacing: 12) {
+                Text("If you find Side Screen useful, support the developer — it keeps me motivated to build more useful things.")
+                    .font(.system(size: 12))
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                Link(destination: AppInfo.donate) {
+                    HStack(spacing: 4) {
+                        Text("Support")
+                        Image(systemName: "heart.fill")
+                            .foregroundColor(.red)
+                    }
+                    .font(.system(size: 12, weight: .medium))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background { Capsule().fill(.ultraThinMaterial) }
+                    .overlay { Capsule().strokeBorder(Color.primary.opacity(0.1), lineWidth: 1) }
+                }
+                .buttonStyle(.plain)
             }
-            .font(.system(size: 12))
-
-            Divider()
-
-            Text("If you find Side Screen useful, [support the developer](https://sidescreen.dev/donate.html) — it keeps me motivated to build more useful things.")
-                .font(.system(size: 12))
-                .fixedSize(horizontal: false, vertical: true)
+            .frostedCard()
 
             HStack(spacing: 4) {
                 Spacer()
@@ -1127,8 +1524,38 @@ struct AboutPopover: View {
             .font(.system(size: 11))
             .foregroundColor(.secondary)
         }
-        .padding(16)
-        .frame(width: 400)
+    }
+
+    private func linkRow(_ title: String, _ label: String, _ url: URL) -> some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+            Spacer()
+            Link(destination: url) {
+                HStack(spacing: 3) {
+                    Text(label)
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .font(.system(size: 12))
+            }
+        }
+    }
+}
+
+extension View {
+    /// The FrostedGroupBox surface without a title row.
+    func frostedCard() -> some View {
+        padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(.ultraThinMaterial)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+            }
     }
 }
 
@@ -1550,8 +1977,8 @@ class DisplaySettings: ObservableObject {
 class SettingsWindowController: NSWindowController, NSWindowDelegate {
     convenience init(settings: DisplaySettings) {
         let window = ConstrainedWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 780),
-            styleMask: [.titled, .closable, .miniaturizable],
+            contentRect: NSRect(origin: .zero, size: SettingsView.windowSize),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -1562,6 +1989,10 @@ class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.isMovableByWindowBackground = true
         window.center()
         window.contentView = NSHostingView(rootView: SettingsView(settings: settings))
+        // Resizable within limits; the size is remembered between launches.
+        window.contentMinSize = SettingsView.minWindowSize
+        window.contentMaxSize = SettingsView.maxWindowSize
+        window.setFrameAutosaveName("SideScreenSettingsWindow")
         window.isReleasedWhenClosed = false
 
         self.init(window: window)
