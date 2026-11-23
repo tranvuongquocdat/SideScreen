@@ -24,13 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Mac: new Settings window.** Settings are grouped in a sidebar (Overview, Display, Audio, Connection, General, About) instead of one long page. Every setting is still there and works as before.
 - **Mac: shows what SideScreen Pro adds.** More than one tablet at once and sound on the tablet appear greyed out with a "SideScreen Pro" label, and About has a link to the Pro page. Nothing was taken out of the free app.
 
-The Android app and SideScreen Pro stay at 1.2.0.
+SideScreen Pro moves to 1.2.1 as well, with no change of its own. The Android app stays at 1.2.0.
 
 ### Installation
 - **macOS**: SideScreen offers this update by itself. Otherwise download `SideScreen-1.2.1-mac-universal.dmg` below, open it and drag SideScreen to Applications.
 - **Homebrew**: `brew upgrade --cask sidescreen`
 - **Android**: unchanged, [Get it on Google Play](https://play.google.com/store/apps/details?id=com.sidescreen.app). Devices without Google Play: `SideScreen-1.2.0-android.apk` below.
-- **SideScreen Pro**: unchanged, `SideScreenPro.dmg` below; it needs a license key from [sidescreen.dev/pro.html](https://sidescreen.dev/pro.html).
+- **SideScreen Pro**: offers the update by itself; otherwise `SideScreenPro-1.2.1-mac-universal.dmg` below. It needs a license key from [sidescreen.dev/pro.html](https://sidescreen.dev/pro.html).
 
 ---
 
