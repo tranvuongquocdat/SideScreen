@@ -1761,6 +1761,11 @@ a:hover {
     color: var(--color-text);
 }
 .plan-terms a { color: var(--pro-accent); }
+/* A card that takes the whole row, for a note that is not one of the six terms. */
+.plan-terms .plan-terms-wide {
+    grid-column: 1 / -1;
+    text-align: center;
+}
 .plan-terms-by {
     margin-top: 24px;
     text-align: center;
