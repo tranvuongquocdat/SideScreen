@@ -17,6 +17,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+<a id="1.2.0"></a>
+## [1.2.0] - 2026-11-23 — SideScreen Pro, Android settings fix
+
+### Added
+- **SideScreen Pro.** A separate Mac app for people who want more: up to 3 tablets at once, sound on the tablet, settings kept per tablet and a connection check. One-time purchase for 3 Macs, 30% off until December 20 — see [sidescreen.dev/pro.html](https://sidescreen.dev/pro.html). SideScreen itself stays free and open source.
+
+### Fixed
+- **Android: Settings scrolls to the end on small screens.** The last rows of the in-stream Settings could be out of reach after rotating the device.
+- **Android: offered on more devices.** The app no longer asks for a portrait screen, so Google Play also shows it on landscape-only devices.
+
+The free Mac app is unchanged in this release.
+
+### Installation
+- **Android**: [Get it on Google Play](https://play.google.com/store/apps/details?id=com.sidescreen.app). The update installs on its own.
+- **Android without Google Play** (Huawei and other devices without Google services): download `SideScreen-1.2.0-android.apk` below and open it to install.
+- **macOS**: SideScreen offers this update by itself. Otherwise download `SideScreen-1.2.0-mac-universal.dmg` below, open it and drag SideScreen to Applications.
+- **Homebrew**: `brew upgrade --cask sidescreen`
+- **SideScreen Pro**: `SideScreenPro-1.2.0-mac-universal.dmg` below; it needs a license key from [sidescreen.dev/pro.html](https://sidescreen.dev/pro.html).
+
+---
+
 <a id="1.1.1"></a>
 ## [1.1.1] - 2026-11-07 — Sharper picture, smoother bitrate changes
 

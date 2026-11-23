@@ -858,11 +858,11 @@ class MainActivity : AppCompatActivity() {
 
         dialog.show()
 
-        // Cap dialog height to 85% of screen so content scrolls on smaller screens / landscape
-        dialog.window?.let { win ->
-            val maxH = (resources.displayMetrics.heightPixels * 0.85).toInt()
-            win.setLayout(WindowManager.LayoutParams.MATCH_PARENT, maxH)
-        }
+        // Full width; the height follows the content. Android keeps such a window inside
+        // the visible screen and measures it again after a rotation, so the list always
+        // scrolls to its end. A height fixed in pixels here went stale on rotation and
+        // left the bottom rows off screen on small devices.
+        dialog.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT)
     }
 
     private fun updateSettingsButtonOpacity(opacity: Float) {

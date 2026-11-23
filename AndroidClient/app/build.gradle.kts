@@ -5,7 +5,12 @@ plugins {
 
 val appVersion = rootProject.file("../VERSION").readText().trim()
 val versionParts = appVersion.split(".")
-val computedVersionCode = versionParts[0].toInt() * 10000 + versionParts[1].toInt() * 100 + versionParts[2].toInt()
+// Google Play takes each version code once. When a version already uploaded there is
+// built again (1.2.0 was), raise this offset by one instead of renaming the version.
+// Never lower it: later versions must keep getting higher codes.
+val versionCodeOffset = 1
+val computedVersionCode =
+    versionParts[0].toInt() * 10000 + versionParts[1].toInt() * 100 + versionParts[2].toInt() + versionCodeOffset
 
 android {
     namespace = "com.sidescreen.app"

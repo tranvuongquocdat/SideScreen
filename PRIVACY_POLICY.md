@@ -1,6 +1,6 @@
 # Side Screen — Privacy Policy
 
-_Last updated: 2026-10-09_
+_Last updated: 2026-11-23_
 
 Side Screen ("the app") turns an Android tablet or phone into a second display for a Mac. This policy describes what the Android app does with your data.
 
@@ -28,6 +28,13 @@ Side Screen ("the app") turns an Android tablet or phone into a second display f
 
 The app does not share data with third parties. It contains no analytics, advertising or tracking libraries. The ML Kit barcode-scanning library used for QR scanning runs entirely on the device.
 
+## SideScreen Pro (Mac app)
+
+SideScreen Pro is a separate, paid Mac app. The Android app and the free Mac app work as described above. SideScreen Pro contacts the internet in two cases:
+
+- **License key.** When you enter your key, and about once a day after that, the app sends the key, an anonymous ID for your Mac (a one-way hash; the hardware ID itself never leaves the Mac), and your Mac's name and model to Polar (polar.sh), which sells SideScreen Pro and keeps the license keys. The name is what you see when you manage the Macs your key is used on. Purchases are handled by Polar under its own privacy policy.
+- **Feedback.** Only when you press Send under About → Feedback: your note, your email address if you typed one, the app and macOS version, your Mac's model and, if you leave it ticked, the last lines of the app's log, which can include device names and addresses on your local network. The box shows exactly what will be sent. It reaches the developer as an email, relayed by Cloudflare, and is not stored anywhere else.
+
 ## Children
 
 The app is not directed at children and does not knowingly collect any data from anyone.
@@ -38,4 +45,4 @@ If this policy changes, the updated version will be published at the same URL an
 
 ## Contact
 
-Questions about this policy: open an issue at https://github.com/tranvuongquocdat/SideScreen/issues or contact the developer through the GitHub profile.
+Questions about this policy: open an issue at https://github.com/tranvuongquocdat/SideScreen/issues or write to support@sidescreen.dev.
