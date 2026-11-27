@@ -153,6 +153,10 @@ class VideoDecoder(
             format.setInteger(MediaFormat.KEY_PRIORITY, 0)
             format.setInteger(MediaFormat.KEY_OPERATING_RATE, displayRefreshRate.toInt())
             format.setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
+            // MediaTek's pre-Android-10 ACodec maps this vendor key to
+            // OMX.MTK.index.param.video.LowLatencyDecode (the Miracast sink mode),
+            // which stops the decoder holding frames. Ignored by everyone else.
+            format.setInteger("vdec-lowlatency", 1)
             codec.configure(format, surface, null, 0)
             configured = true
             diagLog("Configured with full low-latency")
