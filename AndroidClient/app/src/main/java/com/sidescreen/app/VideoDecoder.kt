@@ -87,6 +87,41 @@ class VideoDecoder(
         }
     }
 
+    private fun makeCodec(decoderName: String?): MediaCodec =
+        if (decoderName != null) {
+            MediaCodec.createByCodecName(decoderName)
+        } else {
+            MediaCodec.createDecoderByType(mime)
+        }
+
+    /**
+     * API 21-22 has no setCallback(callback, handler): async callbacks run on the looper of the
+     * thread that created the codec. Create it on the decoder thread there so callbacks stay off
+     * the UI thread.
+     */
+    private fun createCodec(decoderName: String?): MediaCodec {
+        if (android.os.Build.VERSION.SDK_INT >= 23) return makeCodec(decoderName)
+        var result: Result<MediaCodec>? = null
+        val latch = java.util.concurrent.CountDownLatch(1)
+        decoderHandler!!.post {
+            result = runCatching { makeCodec(decoderName) }
+            latch.countDown()
+        }
+        latch.await()
+        return result!!.getOrThrow()
+    }
+
+    private fun attachCallback(
+        codec: MediaCodec,
+        callback: MediaCodec.Callback,
+    ) {
+        if (android.os.Build.VERSION.SDK_INT >= 23) {
+            codec.setCallback(callback, decoderHandler)
+        } else {
+            codec.setCallback(callback)
+        }
+    }
+
     private fun setupDecoder() {
         decoderThread = HandlerThread("DecoderThread", Process.THREAD_PRIORITY_DISPLAY).also { it.start() }
         decoderHandler = Handler(decoderThread!!.looper)
@@ -95,12 +130,7 @@ class VideoDecoder(
         val decoderName = findBestDecoder(currentWidth, currentHeight)
         diagLog("setupDecoder: ${currentWidth}x$currentHeight, decoder=$decoderName")
 
-        val codec =
-            if (decoderName != null) {
-                MediaCodec.createByCodecName(decoderName)
-            } else {
-                MediaCodec.createDecoderByType(mime)
-            }
+        val codec = createCodec(decoderName)
 
         val callback =
             object : MediaCodec.Callback() {
@@ -136,7 +166,7 @@ class VideoDecoder(
                     diagLog("Output format changed: $format")
                 }
             }
-        codec.setCallback(callback, decoderHandler)
+        attachCallback(codec, callback)
 
         val format =
             MediaFormat.createVideoFormat(
@@ -159,7 +189,7 @@ class VideoDecoder(
         } catch (e: Exception) {
             diagLog("Full low-latency config failed: ${e.message}")
             codec.reset()
-            codec.setCallback(callback, decoderHandler)
+            attachCallback(codec, callback)
         }
 
         // Attempt 2: Without KEY_LOW_LATENCY
@@ -179,7 +209,7 @@ class VideoDecoder(
             } catch (e: Exception) {
                 diagLog("Basic config failed: ${e.message}")
                 codec.reset()
-                codec.setCallback(callback, decoderHandler)
+                attachCallback(codec, callback)
             }
         }
 
