@@ -28,12 +28,21 @@ let package = Package(
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.10.1")
     ],
     targets: [
+        // libx264 is loaded at runtime (dlopen); only its header is needed to build.
+        .target(
+            name: "X264Shim",
+            path: "Sources/X264Shim",
+            cSettings: [
+                .unsafeFlags(["-I/usr/local/include", "-I/opt/homebrew/include"])
+            ]),
         .executableTarget(
             name: "SideScreen",
             dependencies: [
-                .product(name: "Sparkle", package: "Sparkle")
+                .product(name: "Sparkle", package: "Sparkle"),
+                "X264Shim"
             ],
             path: "Sources",
+            exclude: ["X264Shim"],
             cSettings: [
                 .unsafeFlags(["-I", sourcesPath])
             ],
