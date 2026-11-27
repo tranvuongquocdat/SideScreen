@@ -17,7 +17,9 @@ data class PanelGeometry(
          * tablet is turned. Null when the display or its mode is unavailable.
          */
         fun of(display: Display?): PanelGeometry? {
-            val mode = display?.mode ?: return null
+            if (display == null) return null
+            if (android.os.Build.VERSION.SDK_INT < 23) return legacyOf(display)
+            val mode = display.mode ?: return null
             val w = maxOf(mode.physicalWidth, mode.physicalHeight)
             val h = minOf(mode.physicalWidth, mode.physicalHeight)
             if (w <= 0 || h <= 0) return null
@@ -29,6 +31,17 @@ data class PanelGeometry(
                     ?.toInt()
                     ?: display.refreshRate.toInt()
             return PanelGeometry(w, h, hz.coerceIn(24, 240))
+        }
+
+        /** API 21-22 has no Display.Mode: real size is the panel, rotated to landscape. */
+        @Suppress("DEPRECATION")
+        private fun legacyOf(display: Display): PanelGeometry? {
+            val size = android.graphics.Point()
+            display.getRealSize(size)
+            val w = maxOf(size.x, size.y)
+            val h = minOf(size.x, size.y)
+            if (w <= 0 || h <= 0) return null
+            return PanelGeometry(w, h, display.refreshRate.toInt().coerceIn(24, 240))
         }
 
         fun ofDefaultDisplay(context: Context): PanelGeometry? =

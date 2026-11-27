@@ -51,6 +51,9 @@ object CodecCapabilities {
     }
 
     val hasHevcDecoder: Boolean by lazy {
+        // Pre-Marshmallow HEVC decoders (e.g. OMX.MTK.VIDEO.DECODER.HEVC on MT6592) are listed
+        // but fail to configure for real-time streams; H.264 is the safe choice there.
+        if (android.os.Build.VERSION.SDK_INT < 23) return@lazy false
         try {
             MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos.any {
                 isUsableHardwareDecoder(it, MediaFormat.MIMETYPE_VIDEO_HEVC)

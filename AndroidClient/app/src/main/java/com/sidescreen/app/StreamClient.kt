@@ -187,9 +187,10 @@ class StreamClient(
         try {
             val sock = Socket()
             sock.tcpNoDelay = true
-            val cm = context.getSystemService(ConnectivityManager::class.java)
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            // Network.bindSocket needs API 23; older devices use default routing.
             val wifiNetwork =
-                cm.allNetworks.firstOrNull { net ->
+                if (android.os.Build.VERSION.SDK_INT < 23) null else cm.allNetworks.firstOrNull { net ->
                     val caps = cm.getNetworkCapabilities(net)
                     caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true &&
                         caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)

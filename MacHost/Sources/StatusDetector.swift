@@ -30,17 +30,69 @@ enum StatusDetector {
         }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         let output = String(data: data, encoding: .utf8) ?? ""
-        return output.split(separator: "\n").compactMap { line in
+        let serials: [String] = output.split(separator: "\n").compactMap { line in
             let parts = line.split(separator: "\t").map(String.init)
             guard parts.count == 2, parts[1] == "device" else { return nil }
             return parts[0]
         }
+        // A replugged legacy device lost its reverse: forget it once it is gone.
+        legacyLock.lock()
+        reversedLegacySerials.formIntersection(serials)
+        legacyLock.unlock()
+        return serials
+    }
+
+    // Android 5.x adbd crashes on `adb reverse --list` once a reverse exists, which
+    // drops the device and the stream every refresh tick. For those devices remember
+    // the reverses this app set instead of asking adbd.
+    private static let legacyLock = NSLock()
+    private static var legacyBySerial: [String: Bool] = [:]
+    private static var reversedLegacySerials = Set<String>()
+
+    static func isLegacyAdbd(serial: String) -> Bool {
+        legacyLock.lock()
+        if let known = legacyBySerial[serial] {
+            legacyLock.unlock()
+            return known
+        }
+        legacyLock.unlock()
+        guard let adbPath = adbExecutablePath() else { return false }
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: adbPath)
+        task.arguments = ["-s", serial, "shell", "getprop", "ro.build.version.sdk"]
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = Pipe()
+        do {
+            try task.run()
+            task.waitUntilExit()
+        } catch {
+            return false
+        }
+        let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        guard let sdk = Int(out.trimmingCharacters(in: .whitespacesAndNewlines)) else { return false }
+        let legacy = sdk < 23
+        legacyLock.lock()
+        legacyBySerial[serial] = legacy
+        legacyLock.unlock()
+        return legacy
+    }
+
+    static func markReversed(serial: String) {
+        legacyLock.lock()
+        reversedLegacySerials.insert(serial)
+        legacyLock.unlock()
     }
 
     /// Heuristic: parse `adb reverse --list` for `tcp:<port> tcp:<port>`.
     /// `serial` targets one device; without it adb refuses as soon as two
     /// devices are attached ("more than one device").
     static func adbReverseConfigured(port: Int, serial: String? = nil) -> Bool {
+        if let serial, isLegacyAdbd(serial: serial) {
+            legacyLock.lock()
+            defer { legacyLock.unlock() }
+            return reversedLegacySerials.contains(serial)
+        }
         guard let adbPath = adbExecutablePath() else { return false }
         let task = Process()
         task.executableURL = URL(fileURLWithPath: adbPath)

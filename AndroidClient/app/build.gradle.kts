@@ -18,7 +18,7 @@ android {
 
     defaultConfig {
         applicationId = "com.sidescreen.app"
-        minSdk = 26
+        minSdk = 22
         targetSdk = 36
         versionCode = computedVersionCode
         versionName = appVersion

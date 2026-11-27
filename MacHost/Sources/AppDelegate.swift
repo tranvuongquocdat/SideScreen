@@ -507,6 +507,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 let output = String(data: data, encoding: .utf8) ?? ""
 
                 if process.terminationStatus == 0 {
+                    StatusDetector.markReversed(serial: serial)
                     print("✅ ADB reverse setup successful for \(serial): tcp:\(port) -> tcp:\(port)")
                     return
                 } else {
