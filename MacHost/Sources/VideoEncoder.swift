@@ -246,7 +246,7 @@ class VideoEncoder {
             ? [kVTEncodeFrameOptionKey_ForceKeyFrame: true] as CFDictionary
             : nil
 
-        VTCompressionSessionEncodeFrame(
+        let status = VTCompressionSessionEncodeFrame(
             session,
             imageBuffer: pixelBuffer,
             presentationTimeStamp: presentationTimeStamp,
@@ -255,6 +255,7 @@ class VideoEncoder {
             sourceFrameRefcon: refconValue,
             infoFlagsOut: nil
         )
+        if status != noErr { logEncoderFailure("VTCompressionSessionEncodeFrame failed: \(status)") }
     }
 
     deinit {
@@ -265,10 +266,35 @@ class VideoEncoder {
     }
 }
 
+/// Encoder failures used to be dropped silently, which made a black tablet
+/// screen undiagnosable. Log the first few so the cause shows up in the log.
+private let encoderFailureLog = EncoderFailureLog()
+private func logEncoderFailure(_ message: String) { encoderFailureLog.log(message) }
+
+private final class EncoderFailureLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    private let limit = 20
+
+    func log(_ message: String) {
+        lock.lock()
+        count += 1
+        let current = count
+        lock.unlock()
+        guard current <= limit else { return }
+        debugLog("Encoder: \(message)\(current == limit ? " (further failures not logged)" : "")")
+    }
+}
+
 // Static start code to avoid repeated allocations
 private let nalStartCode: [UInt8] = [0, 0, 0, 1]
 
-private let encodingOutputCallback: VTCompressionOutputCallback = { (outputCallbackRefCon, sourceFrameRefCon, status, _, sampleBuffer) in
+private let encodingOutputCallback: VTCompressionOutputCallback = { (outputCallbackRefCon, sourceFrameRefCon, status, infoFlags, sampleBuffer) in
+    if status != noErr {
+        logEncoderFailure("output callback status \(status)")
+    } else if sampleBuffer == nil {
+        logEncoderFailure("frame dropped by encoder (info flags \(infoFlags.rawValue))")
+    }
     guard status == noErr,
           let sampleBuffer = sampleBuffer,
           let refcon = outputCallbackRefCon else {
