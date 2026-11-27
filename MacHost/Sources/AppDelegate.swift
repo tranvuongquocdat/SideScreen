@@ -124,12 +124,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             settings.connectionMode = settings.startupMode
             Task {
                 await self.checkPermissions()
+                await self.waitForUSBDeviceIfNeeded()
                 if self.settings.hasScreenRecordingPermission {
                     await self.startServer()
                 } else {
                     debugLog("Auto-start skipped: Screen Recording permission not granted")
                 }
             }
+        }
+    }
+
+    /// Auto-start in USB mode right after login usually runs before the tablet is
+    /// plugged in. Starting then creates an empty virtual display the cursor can
+    /// get lost on, so wait until adb sees a device (or the user starts manually).
+    private func waitForUSBDeviceIfNeeded() async {
+        guard settings.connectionMode == .usb, StatusDetector.adbInstalled() else { return }
+        var logged = false
+        while StatusDetector.usbDevices().isEmpty {
+            if await MainActor.run(body: { settings.isRunning }) { return }
+            if !logged {
+                debugLog("Auto-start: waiting for a USB device")
+                logged = true
+            }
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
         }
     }
 
